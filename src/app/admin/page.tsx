@@ -25,6 +25,7 @@ export default function AdminPage() {
   const [loginError, setLoginError] = useState(false);
 
   const [products, setProducts] = useState<Product[]>([]);
+  const [deletedCount, setDeletedCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -59,7 +60,9 @@ export default function AdminPage() {
         const data = await res.json();
         if (data.products && Array.isArray(data.products)) {
           setProducts(data.products);
+          setDeletedCount(data.deletedCount || 0);
           localStorage.setItem('el_arca_products', JSON.stringify(data.products));
+          localStorage.setItem('el_arca_deleted', (data.deletedCount || 0).toString());
           setLoading(false);
           return;
         }
@@ -69,6 +72,10 @@ export default function AdminPage() {
     }
 
     const local = localStorage.getItem('el_arca_products');
+    const localDeleted = localStorage.getItem('el_arca_deleted');
+    if (localDeleted) {
+      setDeletedCount(parseInt(localDeleted) || 0);
+    }
     if (local) {
       try {
         setProducts(JSON.parse(local));
@@ -116,7 +123,10 @@ export default function AdminPage() {
   const handleDeleteProduct = async (id: string) => {
     const updated = products.filter((p) => p.id !== id);
     setProducts(updated);
+    const newDeleted = deletedCount + 1;
+    setDeletedCount(newDeleted);
     localStorage.setItem('el_arca_products', JSON.stringify(updated));
+    localStorage.setItem('el_arca_deleted', newDeleted.toString());
 
     try {
       await fetch('/api/products', {
@@ -142,7 +152,9 @@ export default function AdminPage() {
 
     const original = seedProducts as Product[];
     setProducts(original);
+    setDeletedCount(0);
     localStorage.setItem('el_arca_products', JSON.stringify(original));
+    localStorage.setItem('el_arca_deleted', '0');
 
     try {
       await fetch('/api/products', {
@@ -271,7 +283,9 @@ export default function AdminPage() {
 
         // Update Products globally and locally
         setProducts(parsedProducts);
+        setDeletedCount(0);
         localStorage.setItem('el_arca_products', JSON.stringify(parsedProducts));
+        localStorage.setItem('el_arca_deleted', '0');
 
         try {
           await fetch('/api/products', {
@@ -338,21 +352,18 @@ export default function AdminPage() {
                   type="password"
                   value={passwordInput}
                   onChange={(e) => setPasswordInput(e.target.value)}
-                  placeholder="Ingresa la clave (ej. arca2026)"
+                  placeholder="Ingresa la clave de acceso"
                   className="w-full pl-10 pr-4 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm focus:outline-none focus:border-[#D4AF37] transition-all"
                   required
                 />
                 <KeyRound className="w-4 h-4 text-gray-400 absolute left-3.5 top-3.5" />
               </div>
-              <p className="text-[11px] text-[#D4AF37]/80 pt-1">
-                Clave predeterminada de prueba: <strong className="text-white">arca2026</strong>
-              </p>
             </div>
 
             {loginError && (
               <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
                 <ShieldAlert className="w-4 h-4 shrink-0" />
-                <span>Contraseña incorrecta. Intenta con arca2026</span>
+                <span>Contraseña incorrecta. Inténtalo nuevamente.</span>
               </div>
             )}
 
@@ -460,7 +471,7 @@ export default function AdminPage() {
               Productos Ocultos / Eliminados
             </span>
             <span className="text-3xl font-extrabold text-rose-400 mt-1 block">
-              {Math.max(0, 163 - products.length)}
+              {deletedCount}
             </span>
           </div>
         </div>

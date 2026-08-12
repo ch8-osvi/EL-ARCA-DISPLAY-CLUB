@@ -5,11 +5,13 @@ import { Product } from '../../../lib/types';
 // In-memory state for prototype server persistence
 // On Vercel, this persists across requests in warm serverless instances
 let productsState: Product[] = [...(seedProducts as Product[])];
+let deletedCount = 0;
 
 export async function GET() {
   return NextResponse.json({
     success: true,
     count: productsState.length,
+    deletedCount,
     products: productsState,
   });
 }
@@ -21,6 +23,7 @@ export async function POST(request: Request) {
 
     if (action === 'delete' && id) {
       productsState = productsState.filter((p) => p.id !== id);
+      deletedCount += 1;
       return NextResponse.json({
         success: true,
         message: 'Producto eliminado globalmente',
@@ -31,6 +34,7 @@ export async function POST(request: Request) {
 
     if (action === 'restore') {
       productsState = [...(seedProducts as Product[])];
+      deletedCount = 0;
       return NextResponse.json({
         success: true,
         message: 'Catálogo restaurado al estado original del Excel',
@@ -60,6 +64,7 @@ export async function POST(request: Request) {
 
     if (action === 'sync' && Array.isArray(initialList)) {
       productsState = [...initialList];
+      deletedCount = 0;
       return NextResponse.json({
         success: true,
         count: productsState.length,
@@ -91,6 +96,7 @@ export async function DELETE(request: Request) {
   }
 
   productsState = productsState.filter((p) => p.id !== id);
+  deletedCount += 1;
   return NextResponse.json({
     success: true,
     message: `Producto ${id} eliminado`,

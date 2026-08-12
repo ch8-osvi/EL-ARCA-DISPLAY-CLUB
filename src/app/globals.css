@@ -1,0 +1,129 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-obsidian: #090A0F;
+  --bg-card: #11141F;
+  --gold-primary: #D4AF37;
+  --gold-light: #E5C158;
+  --gold-accent: #F3E0A9;
+  --champagne: #FAF7F2;
+  --text-muted: #8E94A5;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-obsidian);
+  color: #FFFFFF;
+  font-family: var(--font-outfit), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+  background-image: 
+    radial-gradient(circle at 15% 15%, rgba(212, 175, 55, 0.04) 0%, transparent 40%),
+    radial-gradient(circle at 85% 65%, rgba(229, 193, 88, 0.03) 0%, transparent 45%);
+  background-attachment: fixed;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0D0F17;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(212, 175, 55, 0.25);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(212, 175, 55, 0.45);
+}
+
+/* Luxury utilities */
+.gold-gradient-text {
+  background: linear-gradient(135deg, #FFF6D6 0%, #E5C158 40%, #D4AF37 70%, #AA8826 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gold-gradient-bg {
+  background: linear-gradient(135deg, #E5C158 0%, #D4AF37 50%, #AA8826 100%);
+}
+
+.gold-gradient-border {
+  border: 1px solid transparent;
+  background: linear-gradient(#11141F, #11141F) padding-box,
+              linear-gradient(135deg, rgba(229, 193, 88, 0.4), rgba(212, 175, 55, 0.1), rgba(255, 255, 255, 0.05)) border-box;
+}
+
+.glass-card {
+  background: rgba(17, 20, 31, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(212, 175, 55, 0.12);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card:hover {
+  border-color: rgba(212, 175, 55, 0.35);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.8), 0 0 20px -5px rgba(212, 175, 55, 0.15);
+  transform: translateY(-2px);
+}
+
+.glass-panel {
+  background: rgba(15, 18, 28, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.badge-quality {
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-weight: 600;
+  padding: 0.25rem 0.6rem;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.badge-original {
+  background: rgba(212, 175, 55, 0.12);
+  color: #F3E0A9;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+}
+
+.badge-incell {
+  background: rgba(59, 130, 246, 0.12);
+  color: #93C5FD;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.badge-oled {
+  background: rgba(168, 85, 247, 0.12);
+  color: #E9D5FF;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.badge-cm {
+  background: rgba(245, 158, 11, 0.15);
+  color: #FCD34D;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.badge-other {
+  background: rgba(255, 255, 255, 0.08);
+  color: #D1D5DB;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}

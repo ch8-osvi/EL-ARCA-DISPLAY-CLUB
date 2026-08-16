@@ -1,4 +1,4 @@
-// File: C:\Users\osw\Documents\PROGRAMACION\EL ARCA DISPLAY CLUB\src\app\api\products\route.ts
+// File: C:\Users\osw\OneDrive\Documents\PROGRAMACION\EL ARCA DISPLAY CLUB\src\app\api\products\route.ts
 import * as entry from '../../../../../src/app/api/products/route.js'
 import type { NextRequest } from 'next/server.js'
 

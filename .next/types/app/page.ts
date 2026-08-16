@@ -1,4 +1,4 @@
-// File: C:\Users\osw\Documents\PROGRAMACION\EL ARCA DISPLAY CLUB\src\app\page.tsx
+// File: C:\Users\osw\OneDrive\Documents\PROGRAMACION\EL ARCA DISPLAY CLUB\src\app\page.tsx
 import * as entry from '../../../src/app/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

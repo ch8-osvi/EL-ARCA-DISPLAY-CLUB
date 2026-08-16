@@ -1,74 +1,127 @@
 import { NextResponse } from 'next/server';
+import connectToDatabase from '../../../lib/mongoose';
+import { Product } from '../../../lib/models/Product';
 import seedProducts from '../../../data/products_seed.json';
-import { Product } from '../../../lib/types';
 
-// In-memory state for prototype server persistence
-// On Vercel, this persists across requests in warm serverless instances
-let productsState: Product[] = [...(seedProducts as Product[])];
-let deletedCount = 0;
-
+// Make sure we connect to the DB
 export async function GET() {
-  return NextResponse.json({
-    success: true,
-    count: productsState.length,
-    deletedCount,
-    products: productsState,
-  });
+  try {
+    await connectToDatabase();
+
+    // Fetch all active products
+    const activeProducts = await Product.find({ isHidden: false }).sort({ createdAt: -1 }).lean();
+    
+    // Count how many are hidden (soft deleted)
+    const deletedCount = await Product.countDocuments({ isHidden: true });
+
+    return NextResponse.json({
+      success: true,
+      count: activeProducts.length,
+      deletedCount,
+      products: activeProducts,
+    });
+  } catch (error) {
+    console.error('API GET Error:', error);
+    return NextResponse.json(
+      { success: false, error: 'Error obteniendo productos de la base de datos' },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(request: Request) {
   try {
+    await connectToDatabase();
+    
     const body = await request.json();
     const { action, id, product, initialList } = body;
 
+    // -----------------------------------------
+    // ACTION: DELETE (SOFT DELETE)
+    // -----------------------------------------
     if (action === 'delete' && id) {
-      productsState = productsState.filter((p) => p.id !== id);
-      deletedCount += 1;
+      await Product.findOneAndUpdate({ id }, { isHidden: true });
+      
+      const activeProducts = await Product.find({ isHidden: false }).sort({ createdAt: -1 }).lean();
+      const deletedCount = await Product.countDocuments({ isHidden: true });
+
       return NextResponse.json({
         success: true,
-        message: 'Producto eliminado globalmente',
-        count: productsState.length,
-        products: productsState,
+        message: 'Producto ocultado en la base de datos globalmente',
+        count: activeProducts.length,
+        deletedCount,
+        products: activeProducts,
       });
     }
 
+    // -----------------------------------------
+    // ACTION: RESTORE (Reset to Seed)
+    // -----------------------------------------
     if (action === 'restore') {
-      productsState = [...(seedProducts as Product[])];
-      deletedCount = 0;
+      // Clear entire collection
+      await Product.deleteMany({});
+      
+      // Insert Seed Data
+      const newProducts = seedProducts.map((p: any) => ({ ...p, isHidden: false }));
+      await Product.insertMany(newProducts);
+
+      const activeProducts = await Product.find({ isHidden: false }).sort({ createdAt: -1 }).lean();
+      
       return NextResponse.json({
         success: true,
-        message: 'Catálogo restaurado al estado original del Excel',
-        count: productsState.length,
-        products: productsState,
+        message: 'Catálogo restaurado al estado original en la base de datos',
+        count: activeProducts.length,
+        deletedCount: 0,
+        products: activeProducts,
       });
     }
 
+    // -----------------------------------------
+    // ACTION: ADD
+    // -----------------------------------------
     if (action === 'add' && product) {
-      const newProduct: Product = {
+      const newProductDoc = await Product.create({
         id: `display-custom-${Date.now()}`,
         marca: (product.marca || 'VARIOS').toUpperCase().trim(),
         modelo: product.modelo?.trim() || 'Nuevo Modelo',
         calidad: product.calidad?.toUpperCase().trim() || 'ORIGINAL',
         precio: Number(product.precio) || 0,
         stock: Number(product.stock) || 1,
-      };
+        isHidden: false
+      });
 
-      productsState = [newProduct, ...productsState];
+      const activeProducts = await Product.find({ isHidden: false }).sort({ createdAt: -1 }).lean();
+      const deletedCount = await Product.countDocuments({ isHidden: true });
+
       return NextResponse.json({
         success: true,
-        message: 'Producto agregado globalmente',
-        product: newProduct,
-        products: productsState,
+        message: 'Producto agregado globalmente a la base de datos',
+        product: newProductDoc,
+        count: activeProducts.length,
+        deletedCount,
+        products: activeProducts,
       });
     }
 
+    // -----------------------------------------
+    // ACTION: SYNC (Upload new Excel)
+    // -----------------------------------------
     if (action === 'sync' && Array.isArray(initialList)) {
-      productsState = [...initialList];
-      deletedCount = 0;
+      // Hard delete old database to completely refresh catalog based on Excel
+      await Product.deleteMany({});
+      
+      // Prepare mapping
+      const toInsert = initialList.map((p) => ({ ...p, isHidden: false }));
+      await Product.insertMany(toInsert);
+
+      const activeProducts = await Product.find({ isHidden: false }).sort({ createdAt: -1 }).lean();
+
       return NextResponse.json({
         success: true,
-        count: productsState.length,
-        products: productsState,
+        message: 'Catálogo sincronizado exitosamente con el Excel en la BD',
+        count: activeProducts.length,
+        deletedCount: 0,
+        products: activeProducts,
       });
     }
 
@@ -77,30 +130,44 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   } catch (error) {
+    console.error('API POST Error:', error);
     return NextResponse.json(
-      { success: false, error: 'Error procesando solicitud' },
+      { success: false, error: 'Error procesando solicitud en la base de datos' },
       { status: 500 }
     );
   }
 }
 
 export async function DELETE(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const id = searchParams.get('id');
+  try {
+    await connectToDatabase();
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
 
-  if (!id) {
+    if (!id) {
+      return NextResponse.json(
+        { success: false, error: 'ID de producto requerido' },
+        { status: 400 }
+      );
+    }
+
+    await Product.findOneAndUpdate({ id }, { isHidden: true });
+
+    const activeProducts = await Product.find({ isHidden: false }).sort({ createdAt: -1 }).lean();
+    const deletedCount = await Product.countDocuments({ isHidden: true });
+
+    return NextResponse.json({
+      success: true,
+      message: `Producto ${id} ocultado`,
+      count: activeProducts.length,
+      deletedCount,
+      products: activeProducts,
+    });
+  } catch (error) {
+    console.error('API DELETE Error:', error);
     return NextResponse.json(
-      { success: false, error: 'ID de producto requerido' },
-      { status: 400 }
+      { success: false, error: 'Error procesando eliminación en la base de datos' },
+      { status: 500 }
     );
   }
-
-  productsState = productsState.filter((p) => p.id !== id);
-  deletedCount += 1;
-  return NextResponse.json({
-    success: true,
-    message: `Producto ${id} eliminado`,
-    count: productsState.length,
-    products: productsState,
-  });
 }

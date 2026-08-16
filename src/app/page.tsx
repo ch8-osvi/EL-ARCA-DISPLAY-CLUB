@@ -64,11 +64,33 @@ export default function CatalogPage() {
     }
   }, [products]);
 
+  // Helper to get canonical brand group
+  const getCanonicalBrand = (brand: string): string => {
+    const b = brand.toUpperCase().trim();
+    if (!b) return 'OTROS';
+    if (b.includes('SAMSUNG')) return 'SAMSUNG';
+    if (b.includes('IPHONE') || b.includes('APPLE')) return 'IPHONE';
+    if (b.includes('MOTOROLA')) return 'MOTOROLA';
+    if (b.includes('XIAOMI') || b.includes('REDMI') || b.includes('POCO')) return 'XIAOMI';
+    if (b.includes('HUAWEI') || b.includes('HONOR') || b.includes('NOVA')) return 'HUAWEI / HONOR / NOVA';
+    if (b.includes('INFINIX') || b.includes('TECNO') || b.includes('ITEL')) return 'INFINIX / TECNO / ITEL';
+    if (b.includes('OPPO') || b.includes('REALME') || b.includes('RENO') || b.includes('ONEPLUS') || b.includes('ONE PLUS') || b.includes('NARZO')) return 'OPPO / REALME / RENO / ONEPLUS';
+    if (b.includes('ZTE') || b.includes('NUBIA')) return 'ZTE / NUBIA';
+    if (b.includes('TCL') || b.includes('ALCATEL')) return 'TCL / ALCATEL';
+    if (b.includes('LG')) return 'LG';
+    if (b.includes('VIVO')) return 'VIVO';
+    if (b.includes('BLACKVIEW')) return 'BLACKVIEW';
+    if (b.includes('NOKIA')) return 'NOKIA';
+    return b;
+  };
+
   // Extract unique brands and qualities
   const brands = useMemo(() => {
     const set = new Set<string>();
     products.forEach((p) => {
-      if (p.marca) set.add(p.marca);
+      if (p.marca) {
+        set.add(getCanonicalBrand(p.marca));
+      }
     });
     return Array.from(set).sort();
   }, [products]);
@@ -85,9 +107,13 @@ export default function CatalogPage() {
   const filteredProducts = useMemo(() => {
     return products
       .filter((p) => {
-        // Brand filter
-        if (selectedBrand !== 'ALL' && p.marca !== selectedBrand) {
-          return false;
+        // Brand filter with flexible matching for consolidated groups
+        if (selectedBrand !== 'ALL') {
+          const pm = p.marca.toUpperCase();
+          const fb = selectedBrand.toUpperCase();
+          const filterComponents = fb.split('/').map((s) => s.trim());
+          const hasMatch = filterComponents.some((comp) => pm.includes(comp));
+          if (!hasMatch) return false;
         }
 
         // Quality filter

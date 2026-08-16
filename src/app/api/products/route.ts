@@ -3,6 +3,8 @@ import connectToDatabase from '../../../lib/mongoose';
 import { Product } from '../../../lib/models/Product';
 import seedProducts from '../../../data/products_seed.json';
 
+export const dynamic = 'force-dynamic'; // Evita que Next.js guarde la respuesta en caché
+
 // Make sure we connect to the DB
 export async function GET() {
   try {

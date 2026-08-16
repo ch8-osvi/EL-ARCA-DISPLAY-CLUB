@@ -254,9 +254,28 @@ export default function AdminPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const merges: any[] = [];
 
+    const getCanonicalBrand = (brand: string): string => {
+      const b = brand.toUpperCase().trim();
+      if (!b) return 'OTROS';
+      if (b.includes('SAMSUNG')) return 'SAMSUNG';
+      if (b.includes('IPHONE') || b.includes('APPLE')) return 'IPHONE';
+      if (b.includes('MOTOROLA')) return 'MOTOROLA';
+      if (b.includes('XIAOMI') || b.includes('REDMI') || b.includes('POCO')) return 'XIAOMI';
+      if (b.includes('HUAWEI') || b.includes('HONOR') || b.includes('NOVA')) return 'HUAWEI / HONOR / NOVA';
+      if (b.includes('INFINIX') || b.includes('TECNO') || b.includes('ITEL')) return 'INFINIX / TECNO / ITEL';
+      if (b.includes('OPPO') || b.includes('REALME') || b.includes('RENO') || b.includes('ONEPLUS') || b.includes('ONE PLUS') || b.includes('NARZO')) return 'OPPO / REALME / RENO / ONEPLUS';
+      if (b.includes('ZTE') || b.includes('NUBIA')) return 'ZTE / NUBIA';
+      if (b.includes('TCL') || b.includes('ALCATEL')) return 'TCL / ALCATEL';
+      if (b.includes('LG')) return 'LG';
+      if (b.includes('VIVO')) return 'VIVO';
+      if (b.includes('BLACKVIEW')) return 'BLACKVIEW';
+      if (b.includes('NOKIA')) return 'NOKIA';
+      return b;
+    };
+
     const grouped = new Map<string, typeof products>();
     products.forEach((p) => {
-      const brand = p.marca.toUpperCase().trim();
+      const brand = getCanonicalBrand(p.marca);
       if (!grouped.has(brand)) grouped.set(brand, []);
       grouped.get(brand)!.push(p);
     });
@@ -279,14 +298,11 @@ export default function AdminPage() {
       const items = grouped.get(brand)!;
 
       // Brand header row (black background)
-      // Usually users put the brand in column B and leave A and C empty but black.
-      // We will merge A to G for a cleaner look, or just style them all black.
       ws[`A${row + 1}`] = { v: '', t: 's', s: BRAND_HEADER };
       ws[`B${row + 1}`] = { v: brand, t: 's', s: BRAND_HEADER };
       for (let c = 2; c < 7; c++) {
         ws[`${COLS[c]}${row + 1}`] = { v: '', t: 's', s: BRAND_HEADER };
       }
-      // Merge B to G if desired, or just leave as is. We'll merge B to D for the brand name.
       merges.push({ s: { r: row, c: 1 }, e: { r: row, c: 3 } });
       row++;
 
@@ -314,7 +330,7 @@ export default function AdminPage() {
       { wch: 5 },  // F
       { wch: 12 }, // G: UNIDADES
     ];
-    ws['!rows'] = Array.from({ length: row }, () => ({ hpt: 25 }));
+    // No ws['!rows'] so Excel auto-fits the row heights for multi-line wrapped text
 
     const wb = XLSXStyle.utils.book_new();
     XLSXStyle.utils.book_append_sheet(wb, ws, 'DISPLAYS');

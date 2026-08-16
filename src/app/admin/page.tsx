@@ -218,14 +218,10 @@ export default function AdminPage() {
       return;
     }
 
-    // -------------------------------------------------------
-    // Styles
-    // -------------------------------------------------------
-    const CENTER: XLSXStyle.Style = {
-      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const s = (style: any) => style;
 
-    const BRAND_HEADER_STYLE: XLSXStyle.Style = {
+    const BRAND_HEADER = s({
       font: { bold: true, sz: 13, color: { rgb: '000000' }, name: 'Arial' },
       fill: { patternType: 'solid', fgColor: { rgb: 'D4AF37' } },
       alignment: { horizontal: 'center', vertical: 'center' },
@@ -233,46 +229,43 @@ export default function AdminPage() {
         bottom: { style: 'medium', color: { rgb: '8B6914' } },
         top: { style: 'medium', color: { rgb: '8B6914' } },
       },
-    };
+    });
 
-    const COL_HEADER_STYLE: XLSXStyle.Style = {
+    const COL_HDR = s({
       font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' }, name: 'Arial' },
       fill: { patternType: 'solid', fgColor: { rgb: '1A1F35' } },
       alignment: { horizontal: 'center', vertical: 'center' },
       border: { bottom: { style: 'thin', color: { rgb: 'D4AF37' } } },
-    };
+    });
 
-    const PRICE_HEADER_STYLE: XLSXStyle.Style = {
+    const PRICE_HDR = s({
       font: { bold: true, sz: 10, color: { rgb: '5B9BD5' }, name: 'Arial' },
       fill: { patternType: 'solid', fgColor: { rgb: '1A1F35' } },
       alignment: { horizontal: 'center', vertical: 'center' },
       border: { bottom: { style: 'thin', color: { rgb: 'D4AF37' } } },
-    };
+    });
 
-    const DATA_STYLE: XLSXStyle.Style = {
+    const DATA = s({
       font: { sz: 10, color: { rgb: 'DDDDDD' }, name: 'Arial' },
       fill: { patternType: 'solid', fgColor: { rgb: '0F1220' } },
       alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
       border: { bottom: { style: 'thin', color: { rgb: '2A3050' } } },
-    };
+    });
 
-    const PRICE_DATA_STYLE: XLSXStyle.Style = {
+    const PRICE_DATA = s({
       font: { bold: true, sz: 10, color: { rgb: '5B9BD5' }, name: 'Arial' },
       fill: { patternType: 'solid', fgColor: { rgb: '0F1220' } },
       alignment: { horizontal: 'center', vertical: 'center' },
       border: { bottom: { style: 'thin', color: { rgb: '2A3050' } } },
       numFmt: '$#,##0.00',
-    };
+    });
 
-    // -------------------------------------------------------
-    // Columns: A=MODELO B=CALIDAD C=PRECIO D=empty E=empty F=empty G=STOCK
-    // -------------------------------------------------------
     const COLS = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
-    type WSData = { [key: string]: XLSXStyle.CellObject };
-    const ws: WSData = {};
-    const merges: XLSXStyle.Range[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ws: Record<string, any> = {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const merges: any[] = [];
 
-    // Group products by brand
     const grouped = new Map<string, typeof products>();
     products.forEach((p) => {
       const brand = p.marca.toUpperCase().trim();
@@ -281,96 +274,83 @@ export default function AdminPage() {
     });
     const sortedBrands = Array.from(grouped.keys()).sort();
 
-    let row = 0; // 0-indexed
+    let row = 0;
 
-    // Title row
-    const titleCell = `A1`;
-    ws[titleCell] = {
+    // Title row (merged A1:G1)
+    ws['A1'] = {
       v: 'EL ARCA DISPLAY CLUB — Catálogo Oficial de Displays',
       t: 's',
-      s: {
+      s: s({
         font: { bold: true, sz: 15, color: { rgb: 'D4AF37' }, name: 'Arial' },
         fill: { patternType: 'solid', fgColor: { rgb: '090A0F' } },
         alignment: { horizontal: 'center', vertical: 'center' },
-      },
+      }),
     };
-    merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }); // A1:G1 merged
-    row = 1; // next is row 2 (0-indexed)
+    merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } });
+    row = 1;
 
     sortedBrands.forEach((brand) => {
       const items = grouped.get(brand)!;
 
-      // ---- BRAND HEADER ROW ----
-      ws[`A${row + 1}`] = { v: `●  ${brand}  ●`, t: 's', s: BRAND_HEADER_STYLE };
-      // Fill the rest of merged cells with empty styled cells
+      // Brand header row (merged A:G)
+      ws[`A${row + 1}`] = { v: `●  ${brand}  ●`, t: 's', s: BRAND_HEADER };
       for (let c = 1; c < 7; c++) {
-        ws[`${COLS[c]}${row + 1}`] = { v: '', t: 's', s: BRAND_HEADER_STYLE };
+        ws[`${COLS[c]}${row + 1}`] = { v: '', t: 's', s: BRAND_HEADER };
       }
       merges.push({ s: { r: row, c: 0 }, e: { r: row, c: 6 } });
       row++;
 
-      // ---- COLUMN HEADERS ROW ----
-      const headers = ['MODELO', 'CALIDAD', 'PRECIO', '', '', '', 'STOCK'];
-      headers.forEach((h, ci) => {
+      // Column headers row
+      ['MODELO', 'CALIDAD', 'PRECIO', '', '', '', 'STOCK'].forEach((h, ci) => {
         ws[`${COLS[ci]}${row + 1}`] = {
           v: h,
           t: 's',
-          s: ci === 2 ? PRICE_HEADER_STYLE : COL_HEADER_STYLE,
+          s: ci === 2 ? PRICE_HDR : COL_HDR,
         };
       });
       row++;
 
-      // ---- DATA ROWS ----
+      // Data rows
       items.forEach((p) => {
-        // A: MODELO
-        ws[`A${row + 1}`] = { v: p.modelo, t: 's', s: { ...DATA_STYLE, alignment: { horizontal: 'left', vertical: 'center', wrapText: true } } };
-        // B: CALIDAD
-        ws[`B${row + 1}`] = { v: p.calidad, t: 's', s: DATA_STYLE };
-        // C: PRECIO (blue + bold)
-        ws[`C${row + 1}`] = { v: p.precio, t: 'n', s: PRICE_DATA_STYLE };
-        // D, E, F: empty
-        ws[`D${row + 1}`] = { v: '', t: 's', s: DATA_STYLE };
-        ws[`E${row + 1}`] = { v: '', t: 's', s: DATA_STYLE };
-        ws[`F${row + 1}`] = { v: '', t: 's', s: DATA_STYLE };
-        // G: STOCK
-        ws[`G${row + 1}`] = { v: p.stock, t: 'n', s: DATA_STYLE };
+        ws[`A${row + 1}`] = { v: p.modelo, t: 's', s: { ...DATA, alignment: { horizontal: 'left', vertical: 'center', wrapText: true } } };
+        ws[`B${row + 1}`] = { v: p.calidad, t: 's', s: DATA };
+        ws[`C${row + 1}`] = { v: p.precio, t: 'n', s: PRICE_DATA };
+        ws[`D${row + 1}`] = { v: '', t: 's', s: DATA };
+        ws[`E${row + 1}`] = { v: '', t: 's', s: DATA };
+        ws[`F${row + 1}`] = { v: '', t: 's', s: DATA };
+        ws[`G${row + 1}`] = { v: p.stock, t: 'n', s: DATA };
         row++;
       });
 
-      // Empty separator after brand
+      // Separator row
       for (let c = 0; c < 7; c++) {
-        ws[`${COLS[c]}${row + 1}`] = { v: '', t: 's', s: { fill: { patternType: 'solid', fgColor: { rgb: '090A0F' } } } };
+        ws[`${COLS[c]}${row + 1}`] = { v: '', t: 's', s: s({ fill: { patternType: 'solid', fgColor: { rgb: '090A0F' } } }) };
       }
       row++;
     });
 
-    // -------------------------------------------------------
-    // Sheet range and column widths
-    // -------------------------------------------------------
     ws['!ref'] = `A1:G${row}`;
     ws['!merges'] = merges;
     ws['!cols'] = [
       { wch: 55 }, // A: MODELO
       { wch: 22 }, // B: CALIDAD
       { wch: 12 }, // C: PRECIO
-      { wch: 4 },  // D: empty
-      { wch: 4 },  // E: empty
-      { wch: 4 },  // F: empty
+      { wch: 4 },  // D
+      { wch: 4 },  // E
+      { wch: 4 },  // F
       { wch: 10 }, // G: STOCK
     ];
-    ws['!rows'] = Array.from({ length: row }, () => ({ hpt: 20 })); // 20pt row height
+    ws['!rows'] = Array.from({ length: row }, () => ({ hpt: 20 }));
 
-    // -------------------------------------------------------
-    // Build workbook and download
-    // -------------------------------------------------------
     const wb = XLSXStyle.utils.book_new();
-    XLSXStyle.utils.book_append_sheet(wb, ws as any, 'DISPLAYS');
+    XLSXStyle.utils.book_append_sheet(wb, ws, 'DISPLAYS');
     const fileName = `EL_ARCA_DISPLAY_CLUB_${new Date().toISOString().slice(0, 10)}.xlsx`;
     XLSXStyle.writeFile(wb, fileName);
     triggerToast(`Catálogo exportado con formato: ${fileName}`);
   };
 
   // Handle Uploading and Parsing New Excel File directly in the browser
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;

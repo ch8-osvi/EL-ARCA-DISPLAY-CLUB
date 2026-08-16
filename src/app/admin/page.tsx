@@ -17,6 +17,7 @@ import {
   X,
   FileSpreadsheet,
   Upload,
+  Download,
 } from 'lucide-react';
 
 export default function AdminPage() {
@@ -208,6 +209,39 @@ export default function AdminPage() {
     setNewCalidadCustom('');
     setNewPrecio('');
     setShowAddModal(false);
+  };
+
+  // Export current product list to Excel
+  const handleExportExcel = () => {
+    if (products.length === 0) {
+      triggerToast('No hay productos para exportar');
+      return;
+    }
+
+    const exportData = products.map((p) => ({
+      MARCA: p.marca,
+      MODELO: p.modelo,
+      CALIDAD: p.calidad,
+      PRECIO: p.precio,
+      STOCK: p.stock,
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'DISPLAYS');
+
+    // Set column widths
+    ws['!cols'] = [
+      { wch: 20 }, // MARCA
+      { wch: 60 }, // MODELO
+      { wch: 20 }, // CALIDAD
+      { wch: 10 }, // PRECIO
+      { wch: 10 }, // STOCK
+    ];
+
+    const fileName = `EL_ARCA_DISPLAY_CLUB_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+    triggerToast(`Catálogo exportado: ${fileName}`);
   };
 
   // Handle Uploading and Parsing New Excel File directly in the browser
@@ -422,6 +456,16 @@ export default function AdminPage() {
             >
               <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
               <span>Cargar Nuevo Excel</span>
+            </button>
+
+            {/* Export Excel Button */}
+            <button
+              id="btn-export-excel"
+              onClick={handleExportExcel}
+              className="px-4 py-2.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 font-bold text-xs flex items-center gap-2 transition-all hover:scale-105"
+            >
+              <Download className="w-4 h-4 text-blue-400" />
+              <span>Exportar Excel</span>
             </button>
 
             {/* Add product button */}

@@ -48,6 +48,20 @@ export default function AdminProductCard({ product, onDelete }: AdminProductCard
           <Smartphone className="w-4 h-4 text-gray-400 mt-1 shrink-0" />
           <span>{product.modelo}</span>
         </h3>
+
+        {/* Stock Indicator — admin only */}
+        <div className="flex items-center gap-1.5 mb-1">
+          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Stock:</span>
+          <span className={`text-[11px] font-extrabold px-2 py-0.5 rounded-full ${
+            product.stock <= 0
+              ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+              : product.stock <= 2
+              ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+              : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+          }`}>
+            {product.stock <= 0 ? 'Sin stock' : `${product.stock} uds.`}
+          </span>
+        </div>
       </div>
 
       <div className="pt-4 mt-2 border-t border-white/5 flex items-center justify-between gap-3">

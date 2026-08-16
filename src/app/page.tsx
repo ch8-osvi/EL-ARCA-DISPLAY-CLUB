@@ -241,9 +241,22 @@ export default function CatalogPage() {
 
         {/* Catalog Grid or Table View */}
         {loading ? (
-          <div className="py-20 text-center space-y-3">
-            <div className="w-10 h-10 border-4 border-[#D4AF37] border-t-transparent rounded-full animate-spin mx-auto"></div>
-            <p className="text-gray-400 text-sm">Cargando inventario de displays...</p>
+          // Skeleton loading state
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="glass-card rounded-2xl p-5 flex flex-col gap-3 animate-pulse">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="h-6 w-20 bg-white/10 rounded-lg" />
+                  <div className="h-5 w-16 bg-white/10 rounded-full" />
+                </div>
+                <div className="h-4 w-full bg-white/10 rounded-lg" />
+                <div className="h-4 w-3/4 bg-white/10 rounded-lg" />
+                <div className="mt-auto pt-4 border-t border-white/5 flex items-center justify-between">
+                  <div className="h-7 w-16 bg-white/10 rounded-lg" />
+                  <div className="h-8 w-24 bg-white/10 rounded-xl" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : filteredProducts.length > 0 ? (
           viewMode === 'grid' ? (

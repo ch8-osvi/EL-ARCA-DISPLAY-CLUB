@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, EyeOff, RotateCcw, Trash2, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, EyeOff, RotateCcw, ShieldAlert } from 'lucide-react';
 
 interface HiddenProduct {
   _id?: string;
@@ -65,23 +65,6 @@ export default function OcultosPage() {
       }
     } catch {
       triggerToast('Error al restaurar el producto');
-    }
-  };
-
-  const handlePermanentDelete = async (id: string) => {
-    if (!confirm('¿Eliminar permanentemente este producto? Esta acción no se puede deshacer.')) return;
-    try {
-      const res = await fetch('/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete-permanent', id }),
-      });
-      if (res.ok) {
-        setHiddenProducts((prev) => prev.filter((p) => p.id !== id));
-        triggerToast('Producto eliminado permanentemente');
-      }
-    } catch {
-      triggerToast('Error al eliminar el producto');
     }
   };
 
@@ -200,14 +183,7 @@ export default function OcultosPage() {
                     className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition-all hover:scale-105"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
-                    Restaurar
-                  </button>
-                  <button
-                    onClick={() => handlePermanentDelete(product.id)}
-                    className="px-3 py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 text-xs font-bold transition-all hover:scale-105"
-                    title="Eliminar permanentemente"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    Restaurar al Catálogo
                   </button>
                 </div>
               </div>

@@ -222,41 +222,29 @@ export default function AdminPage() {
     const s = (style: any) => style;
 
     const BRAND_HEADER = s({
-      font: { bold: true, sz: 13, color: { rgb: '000000' }, name: 'Arial' },
-      fill: { patternType: 'solid', fgColor: { rgb: 'D4AF37' } },
+      font: { bold: true, sz: 12, color: { rgb: 'FFFFFF' }, name: 'Arial' },
+      fill: { patternType: 'solid', fgColor: { rgb: '000000' } },
       alignment: { horizontal: 'center', vertical: 'center' },
-      border: {
-        bottom: { style: 'medium', color: { rgb: '8B6914' } },
-        top: { style: 'medium', color: { rgb: '8B6914' } },
-      },
     });
 
     const COL_HDR = s({
-      font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' }, name: 'Arial' },
-      fill: { patternType: 'solid', fgColor: { rgb: '1A1F35' } },
-      alignment: { horizontal: 'center', vertical: 'center' },
-      border: { bottom: { style: 'thin', color: { rgb: 'D4AF37' } } },
+      font: { bold: true, sz: 11, color: { rgb: '000000' }, name: 'Arial' },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
     });
 
     const PRICE_HDR = s({
-      font: { bold: true, sz: 10, color: { rgb: '5B9BD5' }, name: 'Arial' },
-      fill: { patternType: 'solid', fgColor: { rgb: '1A1F35' } },
-      alignment: { horizontal: 'center', vertical: 'center' },
-      border: { bottom: { style: 'thin', color: { rgb: 'D4AF37' } } },
+      font: { bold: true, sz: 11, color: { rgb: '5B9BD5' }, name: 'Arial' },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
     });
 
     const DATA = s({
-      font: { sz: 10, color: { rgb: 'DDDDDD' }, name: 'Arial' },
-      fill: { patternType: 'solid', fgColor: { rgb: '0F1220' } },
+      font: { sz: 11, color: { rgb: '000000' }, name: 'Arial' },
       alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-      border: { bottom: { style: 'thin', color: { rgb: '2A3050' } } },
     });
 
     const PRICE_DATA = s({
-      font: { bold: true, sz: 10, color: { rgb: '5B9BD5' }, name: 'Arial' },
-      fill: { patternType: 'solid', fgColor: { rgb: '0F1220' } },
+      font: { bold: true, sz: 11, color: { rgb: '5B9BD5' }, name: 'Arial' },
       alignment: { horizontal: 'center', vertical: 'center' },
-      border: { bottom: { style: 'thin', color: { rgb: '2A3050' } } },
       numFmt: '$#,##0.00',
     });
 
@@ -276,71 +264,57 @@ export default function AdminPage() {
 
     let row = 0;
 
-    // Title row (merged A1:G1)
-    ws['A1'] = {
-      v: 'EL ARCA DISPLAY CLUB — Catálogo Oficial de Displays',
-      t: 's',
-      s: s({
-        font: { bold: true, sz: 15, color: { rgb: 'D4AF37' }, name: 'Arial' },
-        fill: { patternType: 'solid', fgColor: { rgb: '090A0F' } },
-        alignment: { horizontal: 'center', vertical: 'center' },
-      }),
-    };
-    merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } });
-    row = 1;
+    // Header row
+    const headers = ['MARCA', 'MODELO', 'CALIDAD', 'PRECIO \nUSD', '', '', 'UNIDADES'];
+    headers.forEach((h, ci) => {
+      ws[`${COLS[ci]}${row + 1}`] = {
+        v: h,
+        t: 's',
+        s: ci === 3 ? PRICE_HDR : COL_HDR,
+      };
+    });
+    row++;
 
     sortedBrands.forEach((brand) => {
       const items = grouped.get(brand)!;
 
-      // Brand header row (merged A:G)
-      ws[`A${row + 1}`] = { v: `●  ${brand}  ●`, t: 's', s: BRAND_HEADER };
-      for (let c = 1; c < 7; c++) {
+      // Brand header row (black background)
+      // Usually users put the brand in column B and leave A and C empty but black.
+      // We will merge A to G for a cleaner look, or just style them all black.
+      ws[`A${row + 1}`] = { v: '', t: 's', s: BRAND_HEADER };
+      ws[`B${row + 1}`] = { v: brand, t: 's', s: BRAND_HEADER };
+      for (let c = 2; c < 7; c++) {
         ws[`${COLS[c]}${row + 1}`] = { v: '', t: 's', s: BRAND_HEADER };
       }
-      merges.push({ s: { r: row, c: 0 }, e: { r: row, c: 6 } });
-      row++;
-
-      // Column headers row
-      ['MODELO', 'CALIDAD', 'PRECIO', '', '', '', 'STOCK'].forEach((h, ci) => {
-        ws[`${COLS[ci]}${row + 1}`] = {
-          v: h,
-          t: 's',
-          s: ci === 2 ? PRICE_HDR : COL_HDR,
-        };
-      });
+      // Merge B to G if desired, or just leave as is. We'll merge B to D for the brand name.
+      merges.push({ s: { r: row, c: 1 }, e: { r: row, c: 3 } });
       row++;
 
       // Data rows
       items.forEach((p) => {
-        ws[`A${row + 1}`] = { v: p.modelo, t: 's', s: { ...DATA, alignment: { horizontal: 'left', vertical: 'center', wrapText: true } } };
-        ws[`B${row + 1}`] = { v: p.calidad, t: 's', s: DATA };
-        ws[`C${row + 1}`] = { v: p.precio, t: 'n', s: PRICE_DATA };
-        ws[`D${row + 1}`] = { v: '', t: 's', s: DATA };
+        ws[`A${row + 1}`] = { v: p.marca, t: 's', s: DATA };
+        ws[`B${row + 1}`] = { v: p.modelo, t: 's', s: DATA };
+        ws[`C${row + 1}`] = { v: p.calidad, t: 's', s: DATA };
+        ws[`D${row + 1}`] = { v: p.precio, t: 'n', s: PRICE_DATA };
         ws[`E${row + 1}`] = { v: '', t: 's', s: DATA };
         ws[`F${row + 1}`] = { v: '', t: 's', s: DATA };
         ws[`G${row + 1}`] = { v: p.stock, t: 'n', s: DATA };
         row++;
       });
-
-      // Separator row
-      for (let c = 0; c < 7; c++) {
-        ws[`${COLS[c]}${row + 1}`] = { v: '', t: 's', s: s({ fill: { patternType: 'solid', fgColor: { rgb: '090A0F' } } }) };
-      }
-      row++;
     });
 
     ws['!ref'] = `A1:G${row}`;
     ws['!merges'] = merges;
     ws['!cols'] = [
-      { wch: 55 }, // A: MODELO
-      { wch: 22 }, // B: CALIDAD
-      { wch: 12 }, // C: PRECIO
-      { wch: 4 },  // D
-      { wch: 4 },  // E
-      { wch: 4 },  // F
-      { wch: 10 }, // G: STOCK
+      { wch: 15 }, // A: MARCA
+      { wch: 45 }, // B: MODELO
+      { wch: 20 }, // C: CALIDAD
+      { wch: 15 }, // D: PRECIO USD
+      { wch: 5 },  // E
+      { wch: 5 },  // F
+      { wch: 12 }, // G: UNIDADES
     ];
-    ws['!rows'] = Array.from({ length: row }, () => ({ hpt: 20 }));
+    ws['!rows'] = Array.from({ length: row }, () => ({ hpt: 25 }));
 
     const wb = XLSXStyle.utils.book_new();
     XLSXStyle.utils.book_append_sheet(wb, ws, 'DISPLAYS');

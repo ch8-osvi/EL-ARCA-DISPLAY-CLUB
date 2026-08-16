@@ -362,14 +362,16 @@ export default function AdminPage() {
     reader.onload = async (evt) => {
       try {
         const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: 'array' });
+        const wb = XLSXStyle.read(bstr, { type: 'array' });
 
         // Find sheet 'DISPLAYS' or default to first sheet
-        let sheetName = wb.SheetNames.find((s) => s.toUpperCase() === 'DISPLAYS');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let sheetName = wb.SheetNames.find((s: any) => String(s).toUpperCase() === 'DISPLAYS');
         if (!sheetName) sheetName = wb.SheetNames[0];
 
         const sheet = wb.Sheets[sheetName];
-        const rawData: any[] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const rawData: any[] = XLSXStyle.utils.sheet_to_json(sheet, { header: 1 });
 
         if (!rawData || rawData.length === 0) {
           alert('El archivo Excel está vacío o no contiene hojas válidas.');

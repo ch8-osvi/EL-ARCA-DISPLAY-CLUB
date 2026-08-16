@@ -57,6 +57,39 @@ export async function POST(request: Request) {
     }
 
     // -----------------------------------------
+    // ACTION: UNHIDE (Restore a hidden product)
+    // -----------------------------------------
+    if (action === 'unhide' && id) {
+      await Product.findOneAndUpdate({ id }, { isHidden: false });
+
+      const activeProducts = await Product.find({ isHidden: false }).sort({ createdAt: -1 }).lean();
+      const deletedCount = await Product.countDocuments({ isHidden: true });
+
+      return NextResponse.json({
+        success: true,
+        message: 'Producto restaurado al catálogo activo',
+        count: activeProducts.length,
+        deletedCount,
+        products: activeProducts,
+      });
+    }
+
+    // -----------------------------------------
+    // ACTION: DELETE-PERMANENT (Hard delete)
+    // -----------------------------------------
+    if (action === 'delete-permanent' && id) {
+      await Product.findOneAndDelete({ id });
+
+      const deletedCount = await Product.countDocuments({ isHidden: true });
+
+      return NextResponse.json({
+        success: true,
+        message: 'Producto eliminado permanentemente de la base de datos',
+        deletedCount,
+      });
+    }
+
+    // -----------------------------------------
     // ACTION: RESTORE (Reset to Seed)
     // -----------------------------------------
     if (action === 'restore') {

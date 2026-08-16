@@ -466,14 +466,20 @@ export default function AdminPage() {
             </span>
           </div>
 
-          <div className="glass-card rounded-2xl p-5 border border-white/10">
+          <a
+            href="/admin/ocultos"
+            className="glass-card rounded-2xl p-5 border border-rose-500/20 hover:border-rose-500/40 hover:bg-rose-500/5 transition-all duration-200 cursor-pointer group"
+          >
             <span className="text-xs font-semibold text-gray-400 block uppercase">
               Productos Ocultos / Eliminados
             </span>
             <span className="text-3xl font-extrabold text-rose-400 mt-1 block">
               {deletedCount}
             </span>
-          </div>
+            <span className="text-[10px] text-rose-400/60 group-hover:text-rose-400 transition-colors mt-1 block font-semibold">
+              Ver todos →
+            </span>
+          </a>
         </div>
 
         {/* Search filter for Admin */}

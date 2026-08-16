@@ -84,15 +84,16 @@ export default function CatalogPage() {
     return b;
   };
 
-  // Extract unique brands and qualities
+  // Extract unique brands and sort by frequency (most models first)
   const brands = useMemo(() => {
-    const set = new Set<string>();
+    const counts = new Map<string, number>();
     products.forEach((p) => {
       if (p.marca) {
-        set.add(getCanonicalBrand(p.marca));
+        const canonical = getCanonicalBrand(p.marca);
+        counts.set(canonical, (counts.get(canonical) || 0) + 1);
       }
     });
-    return Array.from(set).sort();
+    return Array.from(counts.keys()).sort((a, b) => counts.get(b)! - counts.get(a)!);
   }, [products]);
 
   const qualities = useMemo(() => {

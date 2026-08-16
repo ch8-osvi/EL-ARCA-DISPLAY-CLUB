@@ -279,7 +279,10 @@ export default function AdminPage() {
       if (!grouped.has(brand)) grouped.set(brand, []);
       grouped.get(brand)!.push(p);
     });
-    const sortedBrands = Array.from(grouped.keys()).sort();
+    // Sort brands by the number of products they have (highest first)
+    const sortedBrands = Array.from(grouped.keys()).sort((a, b) => {
+      return grouped.get(b)!.length - grouped.get(a)!.length;
+    });
 
     let row = 0;
 
@@ -293,6 +296,23 @@ export default function AdminPage() {
       };
     });
     row++;
+
+    const getCalidadStyle = (calidad: string) => {
+      const c = calidad.toUpperCase().trim();
+      const baseFont = { sz: 11, name: 'Arial' };
+      const baseAlign = { horizontal: 'center', vertical: 'center', wrapText: true };
+      
+      if (c === 'ORIGINAL C/M' || c === 'INCELL C/M' || c === 'OLED C/M') {
+        return s({ font: { ...baseFont, bold: true, color: { rgb: '000000' } }, alignment: baseAlign });
+      }
+      if (c.includes('AMOLED C/M') || c.includes('OLED SOFT')) {
+        return s({ font: { ...baseFont, bold: true, color: { rgb: '8A2BE2' } }, alignment: baseAlign }); // Violet
+      }
+      if (c.includes('MECHANIC')) {
+        return s({ font: { ...baseFont, bold: true, color: { rgb: 'FF0000' } }, alignment: baseAlign }); // Red
+      }
+      return DATA;
+    };
 
     sortedBrands.forEach((brand) => {
       const items = grouped.get(brand)!;
@@ -310,7 +330,7 @@ export default function AdminPage() {
       items.forEach((p) => {
         ws[`A${row + 1}`] = { v: p.marca, t: 's', s: DATA };
         ws[`B${row + 1}`] = { v: p.modelo, t: 's', s: DATA };
-        ws[`C${row + 1}`] = { v: p.calidad, t: 's', s: DATA };
+        ws[`C${row + 1}`] = { v: p.calidad, t: 's', s: getCalidadStyle(p.calidad) };
         ws[`D${row + 1}`] = { v: p.precio, t: 'n', s: PRICE_DATA };
         ws[`E${row + 1}`] = { v: '', t: 's', s: DATA };
         ws[`F${row + 1}`] = { v: '', t: 's', s: DATA };

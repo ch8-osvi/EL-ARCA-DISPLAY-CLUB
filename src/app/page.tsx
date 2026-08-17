@@ -84,8 +84,8 @@ export default function CatalogPage() {
     return b;
   };
 
-  // Extract unique brands and sort by frequency (most models first)
-  const brands = useMemo(() => {
+  // Extract brand frequencies
+  const brandCounts = useMemo(() => {
     const counts = new Map<string, number>();
     products.forEach((p) => {
       if (p.marca) {
@@ -93,8 +93,13 @@ export default function CatalogPage() {
         counts.set(canonical, (counts.get(canonical) || 0) + 1);
       }
     });
-    return Array.from(counts.keys()).sort((a, b) => counts.get(b)! - counts.get(a)!);
+    return counts;
   }, [products]);
+
+  // Extract unique brands and sort by frequency (most models first)
+  const brands = useMemo(() => {
+    return Array.from(brandCounts.keys()).sort((a, b) => brandCounts.get(b)! - brandCounts.get(a)!);
+  }, [brandCounts]);
 
   const qualities = useMemo(() => {
     const set = new Set<string>();
@@ -139,9 +144,21 @@ export default function CatalogPage() {
         if (sortOption === 'price-desc') return b.precio - a.precio;
         if (sortOption === 'brand-asc') return a.marca.localeCompare(b.marca);
         if (sortOption === 'model-asc') return a.modelo.localeCompare(b.modelo);
-        return 0;
+        
+        // Default sort: Brand Frequency (Descending) -> Brand Name -> Model
+        const countA = brandCounts.get(getCanonicalBrand(a.marca)) || 0;
+        const countB = brandCounts.get(getCanonicalBrand(b.marca)) || 0;
+
+        if (countA !== countB) {
+          return countB - countA;
+        }
+
+        const brandCompare = a.marca.localeCompare(b.marca);
+        if (brandCompare !== 0) return brandCompare;
+
+        return a.modelo.localeCompare(b.modelo);
       });
-  }, [products, searchTerm, selectedBrand, selectedQuality, sortOption]);
+  }, [products, searchTerm, selectedBrand, selectedQuality, sortOption, brandCounts]);
 
   return (
     <div className="min-h-screen bg-[#090A0F] text-white flex flex-col">

@@ -21,6 +21,25 @@ import {
   Download,
 } from 'lucide-react';
 
+const getCanonicalBrand = (brand: string): string => {
+  const b = brand.toUpperCase().trim();
+  if (!b) return 'OTROS';
+  if (b.includes('SAMSUNG')) return 'SAMSUNG';
+  if (b.includes('IPHONE') || b.includes('APPLE')) return 'IPHONE';
+  if (b.includes('MOTOROLA')) return 'MOTOROLA';
+  if (b.includes('XIAOMI') || b.includes('REDMI') || b.includes('POCO')) return 'XIAOMI';
+  if (b.includes('HUAWEI') || b.includes('HONOR') || b.includes('NOVA')) return 'HUAWEI / HONOR / NOVA';
+  if (b.includes('INFINIX') || b.includes('TECNO') || b.includes('ITEL')) return 'INFINIX / TECNO / ITEL';
+  if (b.includes('OPPO') || b.includes('REALME') || b.includes('RENO') || b.includes('ONEPLUS') || b.includes('ONE PLUS') || b.includes('NARZO')) return 'OPPO / REALME / RENO / ONEPLUS';
+  if (b.includes('ZTE') || b.includes('NUBIA')) return 'ZTE / NUBIA';
+  if (b.includes('TCL') || b.includes('ALCATEL')) return 'TCL / ALCATEL';
+  if (b.includes('LG')) return 'LG';
+  if (b.includes('VIVO')) return 'VIVO';
+  if (b.includes('BLACKVIEW')) return 'BLACKVIEW';
+  if (b.includes('NOKIA')) return 'NOKIA';
+  return b;
+};
+
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
@@ -180,10 +199,26 @@ export default function AdminPage() {
         ? newCalidadCustom.trim().toUpperCase() || 'ORIGINAL C/M'
         : newCalidadSelect.trim().toUpperCase();
 
+    const marcaTrimmed = (newMarca || 'VARIOS').toUpperCase().trim();
+    const modeloTrimmed = newModelo.trim();
+
+    // Check for duplicates (same brand, same model, same quality)
+    const isDuplicate = products.some(
+      (p) => 
+        p.marca.toUpperCase() === marcaTrimmed &&
+        p.modelo.toUpperCase() === modeloTrimmed.toUpperCase() &&
+        p.calidad.toUpperCase() === finalCalidad
+    );
+
+    if (isDuplicate) {
+      alert('Error: Ya existe un display con la misma Marca, Modelo y Calidad en el catálogo.');
+      return;
+    }
+
     const newProd: Product = {
       id: `prod-custom-${Date.now()}`,
-      marca: (newMarca || 'VARIOS').toUpperCase().trim(),
-      modelo: newModelo.trim(),
+      marca: marcaTrimmed,
+      modelo: modeloTrimmed,
       calidad: finalCalidad,
       precio: parseFloat(newPrecio) || 0,
       stock: 1,
@@ -254,25 +289,6 @@ export default function AdminPage() {
     const ws: Record<string, any> = {};
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const merges: any[] = [];
-
-    const getCanonicalBrand = (brand: string): string => {
-      const b = brand.toUpperCase().trim();
-      if (!b) return 'OTROS';
-      if (b.includes('SAMSUNG')) return 'SAMSUNG';
-      if (b.includes('IPHONE') || b.includes('APPLE')) return 'IPHONE';
-      if (b.includes('MOTOROLA')) return 'MOTOROLA';
-      if (b.includes('XIAOMI') || b.includes('REDMI') || b.includes('POCO')) return 'XIAOMI';
-      if (b.includes('HUAWEI') || b.includes('HONOR') || b.includes('NOVA')) return 'HUAWEI / HONOR / NOVA';
-      if (b.includes('INFINIX') || b.includes('TECNO') || b.includes('ITEL')) return 'INFINIX / TECNO / ITEL';
-      if (b.includes('OPPO') || b.includes('REALME') || b.includes('RENO') || b.includes('ONEPLUS') || b.includes('ONE PLUS') || b.includes('NARZO')) return 'OPPO / REALME / RENO / ONEPLUS';
-      if (b.includes('ZTE') || b.includes('NUBIA')) return 'ZTE / NUBIA';
-      if (b.includes('TCL') || b.includes('ALCATEL')) return 'TCL / ALCATEL';
-      if (b.includes('LG')) return 'LG';
-      if (b.includes('VIVO')) return 'VIVO';
-      if (b.includes('BLACKVIEW')) return 'BLACKVIEW';
-      if (b.includes('NOKIA')) return 'NOKIA';
-      return b;
-    };
 
     const grouped = new Map<string, typeof products>();
     products.forEach((p) => {
@@ -467,14 +483,38 @@ export default function AdminPage() {
 
   // Filtered list inside admin
   const filteredProducts = useMemo(() => {
-    if (!searchTerm.trim()) return products;
-    const query = searchTerm.toLowerCase().trim();
-    return products.filter(
-      (p) =>
-        p.marca.toLowerCase().includes(query) ||
-        p.modelo.toLowerCase().includes(query) ||
-        p.calidad.toLowerCase().includes(query)
-    );
+    // 1. Filter
+    let filtered = products;
+    if (searchTerm.trim()) {
+      const query = searchTerm.toLowerCase().trim();
+      filtered = products.filter(
+        (p) =>
+          p.marca.toLowerCase().includes(query) ||
+          p.modelo.toLowerCase().includes(query) ||
+          p.calidad.toLowerCase().includes(query)
+      );
+    }
+
+    // 2. Count Brand Frequencies
+    const brandCounts = new Map<string, number>();
+    products.forEach((p) => {
+      const canonical = getCanonicalBrand(p.marca);
+      brandCounts.set(canonical, (brandCounts.get(canonical) || 0) + 1);
+    });
+
+    // 3. Sort
+    return filtered.sort((a, b) => {
+      const countA = brandCounts.get(getCanonicalBrand(a.marca)) || 0;
+      const countB = brandCounts.get(getCanonicalBrand(b.marca)) || 0;
+
+      if (countA !== countB) {
+        return countB - countA; // Descending count
+      }
+      const brandCompare = a.marca.localeCompare(b.marca);
+      if (brandCompare !== 0) return brandCompare;
+
+      return a.modelo.localeCompare(b.modelo);
+    });
   }, [products, searchTerm]);
 
   // Login Screen Render

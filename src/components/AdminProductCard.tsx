@@ -44,38 +44,33 @@ export default function AdminProductCard({ product, onDelete }: AdminProductCard
           </span>
         </div>
 
-        <h3 className="text-base font-bold text-white leading-snug mb-3 flex items-start gap-2">
+        <h3 className="text-base font-bold text-white leading-snug flex items-start gap-2">
           <Smartphone className="w-4 h-4 text-gray-400 mt-1 shrink-0" />
           <span>{product.modelo}</span>
         </h3>
+      </div>
 
-        {/* Stock Indicator — admin only */}
-        <div className="flex items-center gap-1.5 mb-1">
-          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Stock:</span>
-          <span className={`text-[11px] font-extrabold px-2 py-0.5 rounded-full ${
-            product.stock <= 0
-              ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
-              : product.stock <= 2
-              ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-              : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-          }`}>
+      <div className="mt-4">
+        {/* Stock text directly above the fine line of price */}
+        <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
+          <span className="font-medium text-gray-400">Stock:</span>
+          <span className="font-semibold text-gray-200">
             {product.stock <= 0 ? 'Sin stock' : `${product.stock} uds.`}
           </span>
         </div>
-      </div>
 
-      <div className="pt-4 mt-2 border-t border-white/5 flex items-center justify-between gap-3">
-        <div>
-          <span className="text-[10px] uppercase font-semibold text-gray-400 block tracking-wider">
-            Precio
-          </span>
-          <div className="flex items-baseline gap-1">
-            <span className="text-xl font-extrabold text-[#F3E0A9]">
-              ${product.precio}
+        <div className="pt-3 border-t border-white/5 flex items-center justify-between gap-3">
+          <div>
+            <span className="text-[10px] uppercase font-semibold text-gray-400 block tracking-wider">
+              Precio
             </span>
-            <span className="text-xs font-semibold text-gray-400">USD</span>
+            <div className="flex items-baseline gap-1">
+              <span className="text-xl font-extrabold text-[#F3E0A9]">
+                ${product.precio}
+              </span>
+              <span className="text-xs font-semibold text-gray-400">USD</span>
+            </div>
           </div>
-        </div>
 
         {/* Delete Trigger */}
         {!showConfirm ? (
@@ -105,6 +100,7 @@ export default function AdminProductCard({ product, onDelete }: AdminProductCard
             </button>
           </div>
         )}
+        </div>
       </div>
     </div>
   );

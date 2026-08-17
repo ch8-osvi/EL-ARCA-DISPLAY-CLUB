@@ -198,7 +198,7 @@ export default function CatalogPage() {
                 rel="noopener noreferrer"
                 className="px-5 py-3 rounded-2xl bg-gradient-to-r from-[#E5C158] to-[#D4AF37] text-black font-extrabold text-sm shadow-gold-glow hover:scale-105 active:scale-95 transition-all duration-200 flex items-center gap-2"
               >
-                <MessageSquare className="w-4 h-4 fill-black" />
+                <MessageSquare className="w-4 h-4 text-black stroke-[2.5]" />
                 <span>Contactar por WhatsApp (+53 52031972)</span>
               </a>
 

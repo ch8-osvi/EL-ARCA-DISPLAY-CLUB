@@ -582,18 +582,10 @@ export default function AdminPage() {
         totalProducts={products.length}
       />
 
-      {/* Toast Notification Banner */}
-      {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 glass-panel border border-[#D4AF37]/40 bg-[#121522] px-5 py-3.5 rounded-2xl shadow-gold-glow flex items-center gap-3 animate-bounce">
-          <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-          <span className="text-xs font-bold text-white">{toastMessage}</span>
-        </div>
-      )}
-
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {/* Admin Header Banner */}
-        <section className="glass-panel rounded-3xl p-6 sm:p-8 border border-amber-500/30 relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-          <div className="space-y-2">
+        <section className="glass-panel rounded-3xl p-6 sm:p-8 border border-amber-500/30 relative overflow-hidden flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+          <div className="space-y-2 max-w-xl">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-xs font-bold text-amber-300">
               <Lock className="w-3.5 h-3.5" />
               Panel Administrativo Activo
@@ -606,14 +598,15 @@ export default function AdminPage() {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+          {/* 4 Action Buttons - Uniformly sized & aligned */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 w-full lg:w-auto">
             {/* Upload Excel Button */}
             <button
               id="btn-open-excel-modal"
               onClick={() => setShowExcelModal(true)}
-              className="px-4 py-2.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 font-bold text-xs flex items-center gap-2 transition-all hover:scale-105"
+              className="h-11 px-4 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-sm whitespace-nowrap min-w-[155px]"
             >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+              <FileSpreadsheet className="w-4 h-4 text-emerald-400 shrink-0" />
               <span>Cargar Nuevo Excel</span>
             </button>
 
@@ -621,9 +614,9 @@ export default function AdminPage() {
             <button
               id="btn-export-excel"
               onClick={handleExportExcel}
-              className="px-4 py-2.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 font-bold text-xs flex items-center gap-2 transition-all hover:scale-105"
+              className="h-11 px-4 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-sm whitespace-nowrap min-w-[155px]"
             >
-              <Download className="w-4 h-4 text-blue-400" />
+              <Download className="w-4 h-4 text-blue-400 shrink-0" />
               <span>Exportar Excel</span>
             </button>
 
@@ -631,9 +624,9 @@ export default function AdminPage() {
             <button
               id="btn-open-add-modal"
               onClick={() => setShowAddModal(true)}
-              className="px-4 py-2.5 rounded-xl gold-gradient-bg text-black font-extrabold text-xs shadow-gold-glow flex items-center gap-2 hover:scale-105 transition-all"
+              className="h-11 px-4 rounded-xl gold-gradient-bg text-black font-extrabold text-xs shadow-gold-glow flex items-center justify-center gap-2 hover:scale-105 transition-all whitespace-nowrap min-w-[155px]"
             >
-              <Plus className="w-4 h-4 text-black stroke-[3]" />
+              <Plus className="w-4 h-4 text-black stroke-[3] shrink-0" />
               <span>Agregar Producto</span>
             </button>
 
@@ -641,9 +634,9 @@ export default function AdminPage() {
             <button
               id="btn-restore-excel"
               onClick={handleRestoreCatalog}
-              className="px-3.5 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center gap-2 transition-all"
+              className="h-11 px-4 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-all hover:scale-105 whitespace-nowrap min-w-[155px]"
             >
-              <RefreshCw className="w-3.5 h-3.5" />
+              <RefreshCw className="w-3.5 h-3.5 shrink-0" />
               <span>Restaurar Excel</span>
             </button>
           </div>
@@ -903,6 +896,24 @@ export default function AdminPage() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Toast Notification Banner - Always on top (z-[100]) */}
+      {toastMessage && (
+        <div
+          className={`fixed bottom-6 right-6 z-[100] glass-panel px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-bounce border ${
+            toastMessage.toLowerCase().includes('error')
+              ? 'border-rose-500/60 bg-[#1A1118] text-rose-300 shadow-rose-950/50'
+              : 'border-[#D4AF37]/40 bg-[#121522] text-white shadow-gold-glow'
+          }`}
+        >
+          {toastMessage.toLowerCase().includes('error') ? (
+            <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />
+          ) : (
+            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          )}
+          <span className="text-xs font-bold">{toastMessage}</span>
         </div>
       )}
     </div>

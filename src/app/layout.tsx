@@ -15,8 +15,8 @@ export const metadata: Metadata = {
   keywords: 'displays, repuestos celulares, pantallas lcd, oled, incell, samsung, iphone, xiaomi, el arca display club',
   manifest: '/manifest.json',
   icons: {
-    icon: '/logo.png',
-    apple: '/logo.png',
+    icon: '/icon-192.png',
+    apple: '/apple-touch-icon.png',
   },
   appleWebApp: {
     capable: true,

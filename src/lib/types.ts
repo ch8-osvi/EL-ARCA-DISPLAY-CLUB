@@ -9,4 +9,4 @@ export interface Product {
 
 export type ViewMode = 'grid' | 'table';
 
-export type SortOption = 'price-asc' | 'price-desc' | 'brand-asc' | 'model-asc';
+export type SortOption = 'default' | 'price-asc' | 'price-desc' | 'brand-asc' | 'model-asc';

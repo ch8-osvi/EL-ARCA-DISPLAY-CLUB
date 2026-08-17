@@ -16,7 +16,7 @@ export default function CatalogPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedBrand, setSelectedBrand] = useState('ALL');
   const [selectedQuality, setSelectedQuality] = useState('ALL');
-  const [sortOption, setSortOption] = useState<SortOption>('brand-asc');
+  const [sortOption, setSortOption] = useState<SortOption>('default');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
 
   const whatsappNumber = '5352031972';

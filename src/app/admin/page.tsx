@@ -211,7 +211,7 @@ export default function AdminPage() {
     );
 
     if (isDuplicate) {
-      alert('Error: Ya existe un display con la misma Marca, Modelo y Calidad en el catálogo.');
+      triggerToast('Error: Ya existe un display con la misma Marca, Modelo y Calidad.');
       return;
     }
 

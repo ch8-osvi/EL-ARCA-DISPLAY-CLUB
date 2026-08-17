@@ -83,6 +83,7 @@ export default function SearchBar({
             onChange={(e) => onSortChange(e.target.value as SortOption)}
             className="w-full pl-9 pr-8 py-3.5 bg-[#10131E] border border-white/10 rounded-2xl text-white text-xs font-semibold focus:outline-none focus:border-[#D4AF37] transition-all cursor-pointer appearance-none"
           >
+            <option value="default">Relevancia (Más Populares)</option>
             <option value="price-asc">Precio: Menor a Mayor</option>
             <option value="price-desc">Precio: Mayor a Menor</option>
             <option value="brand-asc">Marca: A - Z</option>

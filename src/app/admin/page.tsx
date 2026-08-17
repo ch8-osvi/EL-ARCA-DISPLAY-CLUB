@@ -11,6 +11,7 @@ import {
   KeyRound,
   ShieldAlert,
   RefreshCw,
+  Plus,
   PlusCircle,
   Search,
   CheckCircle2,
@@ -592,7 +593,7 @@ export default function AdminPage() {
               onClick={() => setShowAddModal(true)}
               className="px-4 py-2.5 rounded-xl gold-gradient-bg text-black font-extrabold text-xs shadow-gold-glow flex items-center gap-2 hover:scale-105 transition-all"
             >
-              <PlusCircle className="w-4 h-4 fill-black" />
+              <Plus className="w-4 h-4 text-black stroke-[3]" />
               <span>Agregar Producto</span>
             </button>
 

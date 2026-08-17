@@ -13,6 +13,16 @@ export const metadata: Metadata = {
   title: 'EL ARCA DISPLAY CLUB | Catálogo Premium de Repuestos y Displays',
   description: 'Explora nuestro catálogo exclusivo de repuestos y pantallas displays de alta calidad para celulares. Samsung, iPhone, Xiaomi, Motorola y más.',
   keywords: 'displays, repuestos celulares, pantallas lcd, oled, incell, samsung, iphone, xiaomi, el arca display club',
+  manifest: '/manifest.json',
+  icons: {
+    icon: '/logo.png',
+    apple: '/logo.png',
+  },
+  appleWebApp: {
+    capable: true,
+    title: 'EL ARCA',
+    statusBarStyle: 'black-translucent',
+  },
 };
 
 export default function RootLayout({

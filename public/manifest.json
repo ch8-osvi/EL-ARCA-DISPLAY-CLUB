@@ -1,0 +1,23 @@
+{
+  "name": "EL ARCA DISPLAY CLUB",
+  "short_name": "EL ARCA",
+  "description": "Catálogo Premium de Repuestos y Displays",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090A0F",
+  "theme_color": "#D4AF37",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -598,23 +598,23 @@ export default function AdminPage() {
             </p>
           </div>
 
-          {/* 4 Action Buttons - Uniformly sized & aligned */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 w-full lg:w-auto">
+          {/* 4 Action Buttons - 2x2 grid, uniformly sized */}
+          <div className="grid grid-cols-2 gap-3 w-full sm:w-[340px] shrink-0">
             {/* Upload Excel Button */}
             <button
               id="btn-open-excel-modal"
               onClick={() => setShowExcelModal(true)}
-              className="h-11 px-4 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-sm whitespace-nowrap min-w-[155px]"
+              className="h-11 px-3 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-sm w-full"
             >
               <FileSpreadsheet className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>Cargar Nuevo Excel</span>
+              <span>Cargar Excel</span>
             </button>
 
             {/* Export Excel Button */}
             <button
               id="btn-export-excel"
               onClick={handleExportExcel}
-              className="h-11 px-4 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-sm whitespace-nowrap min-w-[155px]"
+              className="h-11 px-3 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-sm w-full"
             >
               <Download className="w-4 h-4 text-blue-400 shrink-0" />
               <span>Exportar Excel</span>
@@ -624,7 +624,7 @@ export default function AdminPage() {
             <button
               id="btn-open-add-modal"
               onClick={() => setShowAddModal(true)}
-              className="h-11 px-4 rounded-xl gold-gradient-bg text-black font-extrabold text-xs shadow-gold-glow flex items-center justify-center gap-2 hover:scale-105 transition-all whitespace-nowrap min-w-[155px]"
+              className="h-11 px-3 rounded-xl gold-gradient-bg text-black font-extrabold text-xs shadow-gold-glow flex items-center justify-center gap-2 hover:scale-105 transition-all w-full"
             >
               <Plus className="w-4 h-4 text-black stroke-[3] shrink-0" />
               <span>Agregar Producto</span>
@@ -634,7 +634,7 @@ export default function AdminPage() {
             <button
               id="btn-restore-excel"
               onClick={handleRestoreCatalog}
-              className="h-11 px-4 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-all hover:scale-105 whitespace-nowrap min-w-[155px]"
+              className="h-11 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-all hover:scale-105 w-full"
             >
               <RefreshCw className="w-3.5 h-3.5 shrink-0" />
               <span>Restaurar Excel</span>

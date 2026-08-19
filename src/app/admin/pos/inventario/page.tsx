@@ -9,16 +9,11 @@ import {
   Plus,
   History,
   CheckCircle2,
-  AlertTriangle,
   Smartphone,
-  Tag,
   X,
-  RotateCcw,
   ShieldAlert,
   ArrowUpRight,
   ArrowDownRight,
-  Clock,
-  Layers,
 } from 'lucide-react';
 import { Product } from '@/lib/types';
 
@@ -63,10 +58,10 @@ export default function InventoryPage() {
     loading: boolean;
   }>({ open: false, product: null, records: [], loading: false });
 
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<{ text: string; isError?: boolean } | null>(null);
 
-  const triggerToast = (msg: string) => {
-    setToastMessage(msg);
+  const triggerToast = (text: string, isError = false) => {
+    setToastMessage({ text, isError });
     setTimeout(() => setToastMessage(null), 4000);
   };
 
@@ -217,9 +212,19 @@ export default function InventoryPage() {
     <div className="min-h-screen bg-[#090A0F] text-white flex flex-col">
       {/* Toast */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-[100] glass-panel border border-[#D4AF37]/40 bg-[#121522] px-5 py-3.5 rounded-2xl shadow-gold-glow flex items-center gap-3 animate-bounce">
-          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-          <span className="text-xs font-bold text-white">{toastMessage}</span>
+        <div
+          className={`fixed bottom-6 right-6 z-[100] glass-panel px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-bounce border ${
+            toastMessage.isError
+              ? 'border-rose-500/60 bg-[#1A1118] text-rose-300 shadow-rose-950/50'
+              : 'border-[#D4AF37]/40 bg-[#121522] text-white shadow-gold-glow'
+          }`}
+        >
+          {toastMessage.isError ? (
+            <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />
+          ) : (
+            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          )}
+          <span className="text-xs font-bold">{toastMessage.text}</span>
         </div>
       )}
 

@@ -9,6 +9,13 @@ import ProductTable from '../components/ProductTable';
 import seedProducts from '../data/products_seed.json';
 import { Product, ViewMode, SortOption } from '../lib/types';
 import { Sparkles, SearchX, MessageSquare, Users, ShieldCheck } from 'lucide-react';
+import {
+  getCanonicalBrand,
+  getBrandCounts,
+  getSortedBrands,
+  matchBrandFilter,
+  sortProductsByPopularity,
+} from '@/lib/brandUtils';
 
 export default function CatalogPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -64,42 +71,15 @@ export default function CatalogPage() {
     }
   }, [products]);
 
-  // Helper to get canonical brand group
-  const getCanonicalBrand = (brand: string): string => {
-    const b = brand.toUpperCase().trim();
-    if (!b) return 'OTROS';
-    if (b.includes('SAMSUNG')) return 'SAMSUNG';
-    if (b.includes('IPHONE') || b.includes('APPLE')) return 'IPHONE';
-    if (b.includes('MOTOROLA')) return 'MOTOROLA';
-    if (b.includes('XIAOMI') || b.includes('REDMI') || b.includes('POCO')) return 'XIAOMI';
-    if (b.includes('HUAWEI') || b.includes('HONOR') || b.includes('NOVA')) return 'HUAWEI / HONOR / NOVA';
-    if (b.includes('INFINIX') || b.includes('TECNO') || b.includes('ITEL')) return 'INFINIX / TECNO / ITEL';
-    if (b.includes('OPPO') || b.includes('REALME') || b.includes('RENO') || b.includes('ONEPLUS') || b.includes('ONE PLUS') || b.includes('NARZO')) return 'OPPO / REALME / RENO / ONEPLUS';
-    if (b.includes('ZTE') || b.includes('NUBIA')) return 'ZTE / NUBIA';
-    if (b.includes('TCL') || b.includes('ALCATEL')) return 'TCL / ALCATEL';
-    if (b.includes('LG')) return 'LG';
-    if (b.includes('VIVO')) return 'VIVO';
-    if (b.includes('BLACKVIEW')) return 'BLACKVIEW';
-    if (b.includes('NOKIA')) return 'NOKIA';
-    return b;
-  };
-
   // Extract brand frequencies
   const brandCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    products.forEach((p) => {
-      if (p.marca) {
-        const canonical = getCanonicalBrand(p.marca);
-        counts.set(canonical, (counts.get(canonical) || 0) + 1);
-      }
-    });
-    return counts;
+    return getBrandCounts(products);
   }, [products]);
 
   // Extract unique brands and sort by frequency (most models first)
   const brands = useMemo(() => {
-    return Array.from(brandCounts.keys()).sort((a, b) => brandCounts.get(b)! - brandCounts.get(a)!);
-  }, [brandCounts]);
+    return getSortedBrands(products);
+  }, [products]);
 
   const qualities = useMemo(() => {
     const set = new Set<string>();
@@ -111,53 +91,36 @@ export default function CatalogPage() {
 
   // Filter & Sort Products Instantaneously
   const filteredProducts = useMemo(() => {
-    return products
-      .filter((p) => {
-        // Brand filter with flexible matching for consolidated groups
-        if (selectedBrand !== 'ALL') {
-          const pm = p.marca.toUpperCase();
-          const fb = selectedBrand.toUpperCase();
-          const filterComponents = fb.split('/').map((s) => s.trim());
-          const hasMatch = filterComponents.some((comp) => pm.includes(comp));
-          if (!hasMatch) return false;
-        }
+    const filtered = products.filter((p) => {
+      // Brand filter with flexible matching for consolidated groups
+      if (!matchBrandFilter(p.marca, selectedBrand)) {
+        return false;
+      }
 
-        // Quality filter
-        if (selectedQuality !== 'ALL' && p.calidad !== selectedQuality) {
-          return false;
-        }
+      // Quality filter
+      if (selectedQuality !== 'ALL' && p.calidad !== selectedQuality) {
+        return false;
+      }
 
-        // Search term filter (Brand, Model, Quality, Price)
-        if (searchTerm.trim() !== '') {
-          const query = searchTerm.toLowerCase().trim();
-          const matchMarca = p.marca.toLowerCase().includes(query);
-          const matchModelo = p.modelo.toLowerCase().includes(query);
-          const matchCalidad = p.calidad.toLowerCase().includes(query);
-          const matchPrecio = p.precio.toString().includes(query);
-          return matchMarca || matchModelo || matchCalidad || matchPrecio;
-        }
+      // Search term filter (Brand, Model, Quality, Price)
+      if (searchTerm.trim() !== '') {
+        const query = searchTerm.toLowerCase().trim();
+        const matchMarca = p.marca.toLowerCase().includes(query);
+        const matchModelo = p.modelo.toLowerCase().includes(query);
+        const matchCalidad = p.calidad.toLowerCase().includes(query);
+        const matchPrecio = p.precio.toString().includes(query);
+        return matchMarca || matchModelo || matchCalidad || matchPrecio;
+      }
 
-        return true;
-      })
-      .sort((a, b) => {
-        if (sortOption === 'price-asc') return a.precio - b.precio;
-        if (sortOption === 'price-desc') return b.precio - a.precio;
-        if (sortOption === 'brand-asc') return a.marca.localeCompare(b.marca);
-        if (sortOption === 'model-asc') return a.modelo.localeCompare(b.modelo);
-        
-        // Default sort: Brand Frequency (Descending) -> Brand Name -> Model
-        const countA = brandCounts.get(getCanonicalBrand(a.marca)) || 0;
-        const countB = brandCounts.get(getCanonicalBrand(b.marca)) || 0;
+      return true;
+    });
 
-        if (countA !== countB) {
-          return countB - countA;
-        }
+    if (sortOption === 'price-asc') return [...filtered].sort((a, b) => a.precio - b.precio);
+    if (sortOption === 'price-desc') return [...filtered].sort((a, b) => b.precio - a.precio);
+    if (sortOption === 'brand-asc') return [...filtered].sort((a, b) => a.marca.localeCompare(b.marca));
+    if (sortOption === 'model-asc') return [...filtered].sort((a, b) => a.modelo.localeCompare(b.modelo));
 
-        const brandCompare = a.marca.localeCompare(b.marca);
-        if (brandCompare !== 0) return brandCompare;
-
-        return a.modelo.localeCompare(b.modelo);
-      });
+    return sortProductsByPopularity(filtered, brandCounts);
   }, [products, searchTerm, selectedBrand, selectedQuality, sortOption, brandCounts]);
 
   return (
@@ -232,6 +195,8 @@ export default function CatalogPage() {
             brands={brands}
             selectedBrand={selectedBrand}
             onBrandSelect={setSelectedBrand}
+            brandCounts={brandCounts}
+            totalCount={products.length}
           />
         </section>
 

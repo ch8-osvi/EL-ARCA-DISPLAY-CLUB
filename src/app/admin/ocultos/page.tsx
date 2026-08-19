@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, EyeOff, RotateCcw, ShieldAlert, X, Plus, CheckCircle2 } from 'lucide-react';
+import { sortProductsByPopularity } from '@/lib/brandUtils';
 
 interface HiddenProduct {
   _id?: string;
@@ -47,7 +48,8 @@ export default function OcultosPage() {
       const res = await fetch('/api/products/hidden');
       if (res.ok) {
         const data = await res.json();
-        setHiddenProducts(data.products || []);
+        const raw = data.products || [];
+        setHiddenProducts(sortProductsByPopularity(raw));
       }
     } catch (err) {
       console.error('Error fetching hidden products:', err);

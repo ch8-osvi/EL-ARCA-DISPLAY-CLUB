@@ -18,6 +18,12 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { Product } from '@/lib/types';
+import {
+  getBrandCounts,
+  getSortedBrands,
+  matchBrandFilter,
+  sortProductsByPopularity,
+} from '@/lib/brandUtils';
 
 interface ProductWithHidden extends Product {
   isHidden?: boolean;
@@ -173,15 +179,24 @@ export default function InventoryPage() {
     }
   };
 
-  // Filtered Products
+  // Brand counts (most products first)
+  const brandCounts = useMemo(() => {
+    return getBrandCounts(products);
+  }, [products]);
+
+  // Brand list sorted by frequency (majority of models first)
+  const brands = useMemo(() => {
+    return ['ALL', ...getSortedBrands(products)];
+  }, [products]);
+
+  // Filtered & Sorted Products
   const filtered = useMemo(() => {
-    return products.filter((p) => {
+    const filteredList = products.filter((p) => {
       if (filterStock === 'OUT' && p.stock > 0) return false;
       if (filterStock === 'LOW' && (p.stock <= 0 || p.stock > 2)) return false;
 
-      if (selectedBrand !== 'ALL') {
-        const brandMatch = p.marca.toUpperCase().includes(selectedBrand.toUpperCase());
-        if (!brandMatch) return false;
+      if (!matchBrandFilter(p.marca, selectedBrand)) {
+        return false;
       }
 
       if (searchTerm.trim() !== '') {
@@ -194,7 +209,9 @@ export default function InventoryPage() {
 
       return true;
     });
-  }, [products, filterStock, selectedBrand, searchTerm]);
+
+    return sortProductsByPopularity(filteredList, brandCounts);
+  }, [products, filterStock, selectedBrand, searchTerm, brandCounts]);
 
   // Filtered Mermas
   const filteredMermas = useMemo(() => {
@@ -210,14 +227,6 @@ export default function InventoryPage() {
   const totalMermaUnits = useMemo(() => {
     return mermas.reduce((acc, m) => acc + m.qty, 0);
   }, [mermas]);
-
-  const brands = useMemo(() => {
-    const set = new Set<string>();
-    products.forEach((p) => {
-      const b = p.marca.toUpperCase().trim();
-      if (b.includes('SAMSUNG')) set.add('SAMSUNG');
-      else if (b.includes('IPHONE') || b.includes('APPLE')) set.add('IPHONE');
-      else if (b.includes('XIAOMI') || b.includes('REDMI') || b.includes('POCO')) set.add('XIAOMI');
       else if (b.includes('MOTOROLA') || b.includes('MOTO')) set.add('MOTOROLA');
       else if (b.includes('HONOR')) set.add('HONOR');
       else if (b.includes('HUAWEI')) set.add('HUAWEI');
@@ -548,20 +557,32 @@ export default function InventoryPage() {
               </div>
 
               {/* Brand Filter */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-                {brands.map((b) => (
-                  <button
-                    key={b}
-                    onClick={() => setSelectedBrand(b)}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
-                      selectedBrand === b
-                        ? 'bg-[#E5C158] text-black'
-                        : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/5'
-                    }`}
-                  >
-                    {b === 'ALL' ? 'Todas las Marcas' : b}
-                  </button>
-                ))}
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+                {brands.map((b) => {
+                  const count = b === 'ALL' ? products.length : brandCounts.get(b) || 0;
+                  return (
+                    <button
+                      key={b}
+                      onClick={() => setSelectedBrand(b)}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all duration-200 flex items-center gap-1.5 ${
+                        selectedBrand === b
+                          ? 'gold-gradient-bg text-black shadow-gold-glow scale-105'
+                          : 'bg-[#10131E] text-gray-300 hover:text-white border border-white/10 hover:border-white/20'
+                      }`}
+                    >
+                      <span>{b === 'ALL' ? 'Todas las Marcas' : b}</span>
+                      <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded-md font-extrabold ${
+                          selectedBrand === b
+                            ? 'bg-black/20 text-black'
+                            : 'bg-white/10 text-[#E5C158]'
+                        }`}
+                      >
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 

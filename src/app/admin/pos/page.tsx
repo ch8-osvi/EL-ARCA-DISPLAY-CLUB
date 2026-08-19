@@ -28,6 +28,12 @@ import {
   printViaBluetooth,
   printViaUsb,
 } from '@/components/PrintTicket';
+import {
+  getBrandCounts,
+  getSortedBrands,
+  matchBrandFilter,
+  sortProductsByPopularity,
+} from '@/lib/brandUtils';
 
 interface CartItem {
   productId: string;
@@ -132,20 +138,25 @@ export default function PosPage() {
     }
   };
 
-  // Brand list for filter
-  const brands = useMemo(() => {
-    const set = new Set<string>();
-    products.forEach((p) => {
-      if (p.marca && p.stock > 0) set.add(p.marca);
-    });
-    return ['ALL', ...Array.from(set).sort()];
+  // Available products with stock > 0
+  const availableProducts = useMemo(() => {
+    return products.filter((p) => p.stock > 0);
   }, [products]);
 
-  // Filtered products (only products with stock > 0)
+  // Brand frequencies (most products first)
+  const brandCounts = useMemo(() => {
+    return getBrandCounts(availableProducts);
+  }, [availableProducts]);
+
+  // Brand list sorted by frequency (majority of models first)
+  const brands = useMemo(() => {
+    return ['ALL', ...getSortedBrands(availableProducts)];
+  }, [availableProducts]);
+
+  // Filtered & Sorted products (sorted by brand popularity then model)
   const filteredProducts = useMemo(() => {
-    return products.filter((p) => {
-      if (p.stock <= 0) return false;
-      if (selectedBrand !== 'ALL' && p.marca.toUpperCase() !== selectedBrand.toUpperCase()) {
+    const filtered = availableProducts.filter((p) => {
+      if (!matchBrandFilter(p.marca, selectedBrand)) {
         return false;
       }
       if (searchTerm.trim() !== '') {
@@ -153,11 +164,14 @@ export default function PosPage() {
         const matchMarca = p.marca.toLowerCase().includes(q);
         const matchModelo = p.modelo.toLowerCase().includes(q);
         const matchCalidad = p.calidad.toLowerCase().includes(q);
-        return matchMarca || matchModelo || matchCalidad;
+        const matchPrecio = p.precio.toString().includes(q);
+        return matchMarca || matchModelo || matchCalidad || matchPrecio;
       }
       return true;
     });
-  }, [products, selectedBrand, searchTerm]);
+
+    return sortProductsByPopularity(filtered, brandCounts);
+  }, [availableProducts, selectedBrand, searchTerm, brandCounts]);
 
   // Cart operations
   const addToCart = (product: Product) => {
@@ -488,20 +502,32 @@ export default function PosPage() {
             </div>
 
             {/* Brand Chips */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-              {brands.map((b) => (
-                <button
-                  key={b}
-                  onClick={() => setSelectedBrand(b)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
-                    selectedBrand === b
-                      ? 'gold-gradient-bg text-black shadow-gold-glow'
-                      : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/5'
-                  }`}
-                >
-                  {b === 'ALL' ? 'Todas las Marcas' : b}
-                </button>
-              ))}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+              {brands.map((b) => {
+                const count = b === 'ALL' ? availableProducts.length : brandCounts.get(b) || 0;
+                return (
+                  <button
+                    key={b}
+                    onClick={() => setSelectedBrand(b)}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all duration-200 flex items-center gap-1.5 ${
+                      selectedBrand === b
+                        ? 'gold-gradient-bg text-black shadow-gold-glow scale-105'
+                        : 'bg-[#10131E] text-gray-300 hover:text-white border border-white/10 hover:border-white/20'
+                    }`}
+                  >
+                    <span>{b === 'ALL' ? 'Todas las Marcas' : b}</span>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.5 rounded-md font-extrabold ${
+                        selectedBrand === b
+                          ? 'bg-black/20 text-black'
+                          : 'bg-white/10 text-[#E5C158]'
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 

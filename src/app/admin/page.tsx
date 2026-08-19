@@ -25,25 +25,11 @@ import {
   History,
   EyeOff,
 } from 'lucide-react';
-
-const getCanonicalBrand = (brand: string): string => {
-  const b = brand.toUpperCase().trim();
-  if (!b) return 'OTROS';
-  if (b.includes('SAMSUNG')) return 'SAMSUNG';
-  if (b.includes('IPHONE') || b.includes('APPLE')) return 'IPHONE';
-  if (b.includes('MOTOROLA')) return 'MOTOROLA';
-  if (b.includes('XIAOMI') || b.includes('REDMI') || b.includes('POCO')) return 'XIAOMI';
-  if (b.includes('HUAWEI') || b.includes('HONOR') || b.includes('NOVA')) return 'HUAWEI / HONOR / NOVA';
-  if (b.includes('INFINIX') || b.includes('TECNO') || b.includes('ITEL')) return 'INFINIX / TECNO / ITEL';
-  if (b.includes('OPPO') || b.includes('REALME') || b.includes('RENO') || b.includes('ONEPLUS') || b.includes('ONE PLUS') || b.includes('NARZO')) return 'OPPO / REALME / RENO / ONEPLUS';
-  if (b.includes('ZTE') || b.includes('NUBIA')) return 'ZTE / NUBIA';
-  if (b.includes('TCL') || b.includes('ALCATEL')) return 'TCL / ALCATEL';
-  if (b.includes('LG')) return 'LG';
-  if (b.includes('VIVO')) return 'VIVO';
-  if (b.includes('BLACKVIEW')) return 'BLACKVIEW';
-  if (b.includes('NOKIA')) return 'NOKIA';
-  return b;
-};
+import {
+  getCanonicalBrand,
+  getBrandCounts,
+  sortProductsByPopularity,
+} from '@/lib/brandUtils';
 
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -500,26 +486,8 @@ export default function AdminPage() {
       );
     }
 
-    // 2. Count Brand Frequencies
-    const brandCounts = new Map<string, number>();
-    products.forEach((p) => {
-      const canonical = getCanonicalBrand(p.marca);
-      brandCounts.set(canonical, (brandCounts.get(canonical) || 0) + 1);
-    });
-
-    // 3. Sort
-    return filtered.sort((a, b) => {
-      const countA = brandCounts.get(getCanonicalBrand(a.marca)) || 0;
-      const countB = brandCounts.get(getCanonicalBrand(b.marca)) || 0;
-
-      if (countA !== countB) {
-        return countB - countA; // Descending count
-      }
-      const brandCompare = a.marca.localeCompare(b.marca);
-      if (brandCompare !== 0) return brandCompare;
-
-      return a.modelo.localeCompare(b.modelo);
-    });
+    const brandCounts = getBrandCounts(products);
+    return sortProductsByPopularity(filtered, brandCounts);
   }, [products, searchTerm]);
 
   // Login Screen Render

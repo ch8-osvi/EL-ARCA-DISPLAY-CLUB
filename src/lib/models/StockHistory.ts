@@ -3,7 +3,7 @@ import mongoose, { Schema, Document, Model } from 'mongoose';
 export interface IStockHistory extends Document {
   productId:   string;
   productName: string;
-  type:        'entrada' | 'salida';
+  type:        'entrada' | 'salida' | 'merma';
   qty:         number;
   stockBefore: number;
   stockAfter:  number;
@@ -15,7 +15,7 @@ const StockHistorySchema = new Schema<IStockHistory>(
   {
     productId:   { type: String, required: true, index: true },
     productName: { type: String, required: true },
-    type:        { type: String, enum: ['entrada', 'salida'], required: true },
+    type:        { type: String, enum: ['entrada', 'salida', 'merma'], required: true },
     qty:         { type: Number, required: true, min: 1 },
     stockBefore: { type: Number, required: true, min: 0 },
     stockAfter:  { type: Number, required: true, min: 0 },

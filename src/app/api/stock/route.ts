@@ -7,14 +7,16 @@ export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/stock
- * - Without params: returns all products (active + hidden) with stock info
- * - With ?productId=xxx: returns stock movement history for that product
+ * - ?productId=xxx: returns stock movement history for that specific product
+ * - ?type=merma: returns all waste / defective / broken product records
+ * - Default: returns all products (active + hidden) with stock info
  */
 export async function GET(req: Request) {
   try {
     await connectToDatabase();
     const { searchParams } = new URL(req.url);
     const productId = searchParams.get('productId');
+    const type = searchParams.get('type');
 
     // Return movement history for a specific product
     if (productId) {
@@ -23,6 +25,14 @@ export async function GET(req: Request) {
         .limit(50)
         .lean();
       return NextResponse.json({ success: true, history });
+    }
+
+    // Return all merma records
+    if (type === 'merma') {
+      const mermas = await StockHistory.find({ type: 'merma' })
+        .sort({ createdAt: -1 })
+        .lean();
+      return NextResponse.json({ success: true, mermas });
     }
 
     // Return all products (for inventory view)
@@ -63,14 +73,15 @@ export async function POST(req: Request) {
 
       const stockBefore = product.stock;
       product.stock = stockBefore + qtyNum;
-      // If it was hidden (agotado), reactivate it
+
+      // Automatically unhide if it was hidden
       if (product.isHidden && product.stock > 0) {
         product.isHidden = false;
       }
       await product.save();
 
-      // Record movement
-      await StockHistory.create({
+      // Record in StockHistory
+      const movement = await StockHistory.create({
         productId: product.id,
         productName: `${product.marca} ${product.modelo} (${product.calidad})`,
         type: 'entrada',
@@ -80,12 +91,17 @@ export async function POST(req: Request) {
         reason: reason || 'Entrada manual de stock',
       });
 
-      return NextResponse.json({ success: true, product });
+      return NextResponse.json({
+        success: true,
+        message: `+${qtyNum} unidades añadidas correctamente`,
+        product,
+        movement,
+      });
     }
 
     return NextResponse.json({ success: false, error: 'Acción no válida' }, { status: 400 });
   } catch (err) {
     console.error('[stock POST]', err);
-    return NextResponse.json({ success: false, error: 'Error actualizando stock' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Error ajustando stock' }, { status: 500 });
   }
 }

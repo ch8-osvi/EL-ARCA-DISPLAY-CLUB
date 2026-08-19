@@ -25,12 +25,13 @@ export interface TicketData {
 }
 
 export interface RefundItem {
-  marca: string;
-  modelo: string;
-  calidad: string;
-  qty: number;
-  refundUSD: number;
-  refundCUP: number;
+  marca:        string;
+  modelo:       string;
+  calidad:      string;
+  qty:          number;
+  refundUSD:    number;
+  refundCUP:    number;
+  destination?: 'stock' | 'merma';
 }
 
 export interface RefundTicketData {
@@ -202,7 +203,8 @@ export function buildRefundEscPosBytes(data: RefundTicketData): Uint8Array {
 
   data.items.forEach((item) => {
     add([0x1b, 0x45, 0x01]);
-    line(`${item.marca} ${item.modelo}`);
+    const destTag = item.destination === 'merma' ? ' [MERMA/BAJA]' : ' [A STOCK]';
+    line(`${item.marca} ${item.modelo}${destTag}`);
     add([0x1b, 0x45, 0x00]);
     const cal = item.calidad.substring(0, 12).padEnd(12, ' ');
     const qtyStr = `x${item.qty}`.padStart(4, ' ');
@@ -219,7 +221,7 @@ export function buildRefundEscPosBytes(data: RefundTicketData): Uint8Array {
 
   divider();
   add([0x1b, 0x61, 0x01]);
-  line('Mercancia reincorporada a stock.');
+  line('Comprobante de Devolucion Emitido');
   line('Firma Cliente / Tecnico');
   line('\n\n___________________________');
   line('\n\n\n\n');
@@ -370,8 +372,17 @@ export function printRefundTicket(data: RefundTicketData) {
     .map(
       (item) => `
       <div style="margin-bottom: 5px; font-size: 11px;">
-        <div style="font-weight: bold;">${item.marca} ${item.modelo}</div>
-        <div style="display: flex; justify-content: space-between; font-size: 10px;">
+        <div style="font-weight: bold;">
+          ${item.marca} ${item.modelo}
+          <span style="font-size: 9px; padding: 1px 4px; border-radius: 4px; ${
+            item.destination === 'merma'
+              ? 'background: #fee2e2; color: #991b1b;'
+              : 'background: #dcfce7; color: #166534;'
+          }">
+            ${item.destination === 'merma' ? 'MERMA / BAJA' : 'A STOCK'}
+          </span>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 10px; margin-top: 2px;">
           <span style="width: 55%; color: #333;">${item.calidad}</span>
           <span style="width: 15%; text-align: center;">x${item.qty}</span>
           <span style="width: 30%; text-align: right; font-weight: bold; color: #b91c1c;">-$${item.refundUSD.toFixed(2)}</span>

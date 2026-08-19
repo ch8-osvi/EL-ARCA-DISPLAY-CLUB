@@ -1,15 +1,16 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
 export interface ISaleRefund {
-  productId:  string;
-  marca:      string;
-  modelo:     string;
-  calidad:    string;
-  qty:        number;
-  refundUSD:  number;
-  refundCUP:  number;
-  reason:     string;
-  createdAt:  Date;
+  productId:   string;
+  marca:       string;
+  modelo:      string;
+  calidad:     string;
+  qty:         number;
+  refundUSD:   number;
+  refundCUP:   number;
+  reason:      string;
+  destination: 'stock' | 'merma';
+  createdAt:   Date;
 }
 
 export interface ISaleItem {
@@ -44,15 +45,16 @@ export interface ISale extends Document {
 
 const SaleRefundSchema = new Schema<ISaleRefund>(
   {
-    productId:  { type: String, required: true },
-    marca:      { type: String, required: true },
-    modelo:     { type: String, required: true },
-    calidad:    { type: String, required: true },
-    qty:        { type: Number, required: true, min: 1 },
-    refundUSD:  { type: Number, required: true, min: 0 },
-    refundCUP:  { type: Number, required: true, min: 0 },
-    reason:     { type: String, required: true },
-    createdAt:  { type: Date, default: Date.now },
+    productId:   { type: String, required: true },
+    marca:       { type: String, required: true },
+    modelo:      { type: String, required: true },
+    calidad:     { type: String, required: true },
+    qty:         { type: Number, required: true, min: 1 },
+    refundUSD:   { type: Number, required: true, min: 0 },
+    refundCUP:   { type: Number, required: true, min: 0 },
+    reason:      { type: String, required: true },
+    destination: { type: String, enum: ['stock', 'merma'], default: 'stock' },
+    createdAt:   { type: Date, default: Date.now },
   },
   { _id: false }
 );

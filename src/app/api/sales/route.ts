@@ -255,41 +255,59 @@ export async function POST(req: Request) {
         totalBatchRefundUSD += itemRefundUSD;
         totalBatchRefundCUP += itemRefundCUP;
 
+        const itemDestination: 'stock' | 'merma' = ret.destination === 'merma' ? 'merma' : 'stock';
+
         const logEntry = {
           productId,
-          marca: item.marca,
-          modelo: item.modelo,
-          calidad: item.calidad,
-          qty: qtyNum,
-          refundUSD: itemRefundUSD,
-          refundCUP: itemRefundCUP,
-          reason: reason.trim(),
-          createdAt: new Date(),
+          marca:       item.marca,
+          modelo:      item.modelo,
+          calidad:     item.calidad,
+          qty:         qtyNum,
+          refundUSD:   itemRefundUSD,
+          refundCUP:   itemRefundCUP,
+          reason:      reason.trim(),
+          destination: itemDestination,
+          createdAt:   new Date(),
         };
 
         sale.refunds.push(logEntry);
         refundLogs.push(logEntry);
 
-        // Restore stock in Product collection
+        // Fetch product
         const product = await Product.findOne({ id: productId });
         if (product) {
           const stockBefore = product.stock;
-          product.stock = stockBefore + qtyNum;
-          if (product.isHidden && product.stock > 0) {
-            product.isHidden = false;
-          }
-          await product.save();
 
-          // Record in StockHistory for complete audit trail
-          await StockHistory.create({
-            productId: product.id,
-            productName: `${product.marca} ${product.modelo} (${product.calidad})`,
-            type: 'entrada',
-            qty: qtyNum,
-            stockBefore,
-            stockAfter: product.stock,
-            reason: `Devolución Orden #${sale.orderNumber}: ${reason.trim()}`,
-          });
+          if (itemDestination === 'stock') {
+            // Reincorporate good units into sellable stock
+            product.stock = stockBefore + qtyNum;
+            if (product.isHidden && product.stock > 0) {
+              product.isHidden = false;
+            }
+            await product.save();
+
+            // Record in StockHistory as 'entrada'
+            await StockHistory.create({
+              productId:   product.id,
+              productName: `${product.marca} ${product.modelo} (${product.calidad})`,
+              type:        'entrada',
+              qty:         qtyNum,
+              stockBefore,
+              stockAfter:  product.stock,
+              reason:      `Devolución Orden #${sale.orderNumber}: ${reason.trim()} [Reintegrado a Stock]`,
+            });
+          } else {
+            // MERMA: Defective / Broken part. Do NOT increase sellable stock!
+            await StockHistory.create({
+              productId:   product.id,
+              productName: `${product.marca} ${product.modelo} (${product.calidad})`,
+              type:        'merma',
+              qty:         qtyNum,
+              stockBefore,
+              stockAfter:  stockBefore,
+              reason:      `Devolución Orden #${sale.orderNumber}: ${reason.trim()} [MERMA / ROTO / DEFECTUOSO - No apto para venta]`,
+            });
+          }
         }
       }
 

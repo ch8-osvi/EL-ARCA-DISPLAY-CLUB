@@ -26,6 +26,7 @@ import {
   Check,
   TrendingDown,
   Layers,
+  AlertOctagon,
 } from 'lucide-react';
 import {
   printTicket,
@@ -49,15 +50,16 @@ interface SaleItem {
 }
 
 interface SaleRefundLog {
-  productId: string;
-  marca:     string;
-  modelo:    string;
-  calidad:   string;
-  qty:       number;
-  refundUSD: number;
-  refundCUP: number;
-  reason:    string;
-  createdAt: string;
+  productId:   string;
+  marca:       string;
+  modelo:      string;
+  calidad:     string;
+  qty:         number;
+  refundUSD:   number;
+  refundCUP:   number;
+  reason:      string;
+  destination: 'stock' | 'merma';
+  createdAt:   string;
 }
 
 interface SaleRecord {
@@ -104,6 +106,7 @@ export default function SalesHistoryPage() {
     open: boolean;
     sale: SaleRecord | null;
     returnQuantities: { [productId: string]: number };
+    returnDestinations: { [productId: string]: 'stock' | 'merma' };
     reason: string;
     printOption: 'bluetooth' | 'usb' | 'system' | 'none';
     loading: boolean;
@@ -111,6 +114,7 @@ export default function SalesHistoryPage() {
     open: false,
     sale: null,
     returnQuantities: {},
+    returnDestinations: {},
     reason: '',
     printOption: 'bluetooth',
     loading: false,
@@ -211,15 +215,18 @@ export default function SalesHistoryPage() {
   // Open Refund Modal
   const handleOpenRefundModal = (sale: SaleRecord) => {
     const initialQuantities: { [productId: string]: number } = {};
+    const initialDestinations: { [productId: string]: 'stock' | 'merma' } = {};
+
     sale.items.forEach((item) => {
-      const available = item.qty - (item.returnedQty || 0);
-      initialQuantities[item.productId] = available > 0 ? 0 : 0;
+      initialQuantities[item.productId] = 0;
+      initialDestinations[item.productId] = 'stock';
     });
 
     setRefundModal({
       open: true,
       sale,
       returnQuantities: initialQuantities,
+      returnDestinations: initialDestinations,
       reason: '',
       printOption: 'bluetooth',
       loading: false,
@@ -238,6 +245,14 @@ export default function SalesHistoryPage() {
     });
   };
 
+  // Set destination for item
+  const handleSetItemDest = (productId: string, dest: 'stock' | 'merma') => {
+    setRefundModal((prev) => ({
+      ...prev,
+      returnDestinations: { ...prev.returnDestinations, [productId]: dest },
+    }));
+  };
+
   // Submit Refund
   const handleConfirmRefund = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -250,7 +265,11 @@ export default function SalesHistoryPage() {
 
     const returnsToSubmit = Object.entries(refundModal.returnQuantities)
       .filter(([_, qty]) => qty > 0)
-      .map(([productId, qty]) => ({ productId, qty }));
+      .map(([productId, qty]) => ({
+        productId,
+        qty,
+        destination: refundModal.returnDestinations[productId] || 'stock',
+      }));
 
     if (returnsToSubmit.length === 0) {
       triggerToast('Selecciona al menos 1 unidad para devolver', true);
@@ -277,7 +296,7 @@ export default function SalesHistoryPage() {
         return;
       }
 
-      triggerToast('¡Devolución completada y stock reincorporado!');
+      triggerToast('¡Devolución procesada con éxito!');
 
       // Print Refund Receipt if requested
       if (refundModal.printOption !== 'none') {
@@ -291,6 +310,7 @@ export default function SalesHistoryPage() {
             qty: log.qty,
             refundUSD: log.refundUSD,
             refundCUP: log.refundCUP,
+            destination: log.destination,
           })),
           reason: refundModal.reason,
           exchangeRate: refundModal.sale.exchangeRate,
@@ -312,6 +332,7 @@ export default function SalesHistoryPage() {
         open: false,
         sale: null,
         returnQuantities: {},
+        returnDestinations: {},
         reason: '',
         printOption: 'bluetooth',
         loading: false,
@@ -351,20 +372,27 @@ export default function SalesHistoryPage() {
 
   // Total refund calculation in modal
   const modalRefundTotals = useMemo(() => {
-    if (!refundModal.sale) return { totalUSD: 0, totalCUP: 0, itemsCount: 0 };
+    if (!refundModal.sale) return { totalUSD: 0, totalCUP: 0, itemsCount: 0, stockCount: 0, mermaCount: 0 };
     let totalUSD = 0;
     let itemsCount = 0;
+    let stockCount = 0;
+    let mermaCount = 0;
 
     refundModal.sale.items.forEach((item) => {
       const qty = refundModal.returnQuantities[item.productId] || 0;
       if (qty > 0) {
         totalUSD += item.precioUSD * qty;
         itemsCount += qty;
+        if ((refundModal.returnDestinations[item.productId] || 'stock') === 'stock') {
+          stockCount += qty;
+        } else {
+          mermaCount += qty;
+        }
       }
     });
 
     const totalCUP = totalUSD * refundModal.sale.exchangeRate;
-    return { totalUSD, totalCUP, itemsCount };
+    return { totalUSD, totalCUP, itemsCount, stockCount, mermaCount };
   }, [refundModal]);
 
   if (!isAuthenticated) {
@@ -410,9 +438,9 @@ export default function SalesHistoryPage() {
       {/* Refund / Return Modal */}
       {refundModal.open && refundModal.sale && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-lg glass-panel rounded-3xl p-6 sm:p-7 border border-rose-500/40 shadow-2xl space-y-5 relative max-h-[90vh] flex flex-col">
+          <div className="w-full max-w-xl glass-panel rounded-3xl p-6 sm:p-7 border border-rose-500/40 shadow-2xl space-y-5 relative max-h-[90vh] flex flex-col">
             <button
-              onClick={() => setRefundModal({ open: false, sale: null, returnQuantities: {}, reason: '', printOption: 'bluetooth', loading: false })}
+              onClick={() => setRefundModal({ open: false, sale: null, returnQuantities: {}, returnDestinations: {}, reason: '', printOption: 'bluetooth', loading: false })}
               className="absolute top-5 right-5 text-gray-400 hover:text-white"
             >
               <X className="w-5 h-5" />
@@ -431,62 +459,100 @@ export default function SalesHistoryPage() {
             <form onSubmit={handleConfirmRefund} className="flex-1 overflow-y-auto space-y-4 pr-1">
               <div className="space-y-2">
                 <label className="text-xs font-semibold text-gray-300 block">
-                  Selecciona la cantidad a devolver por producto:
+                  Selecciona la cantidad y el destino de cada repuesto:
                 </label>
 
                 {refundModal.sale.items.map((item) => {
                   const alreadyReturned = item.returnedQty || 0;
                   const maxAvailable = item.qty - alreadyReturned;
                   const selectedQty = refundModal.returnQuantities[item.productId] || 0;
+                  const currentDest = refundModal.returnDestinations[item.productId] || 'stock';
 
                   return (
                     <div
                       key={item.productId}
-                      className={`p-3 rounded-2xl border transition-all ${
+                      className={`p-3.5 rounded-2xl border transition-all space-y-2.5 ${
                         selectedQty > 0
-                          ? 'bg-rose-950/20 border-rose-500/50'
+                          ? currentDest === 'merma'
+                            ? 'bg-rose-950/30 border-rose-500/60'
+                            : 'bg-emerald-950/20 border-emerald-500/50'
                           : 'bg-[#10131E] border-white/5'
-                      } flex items-center justify-between gap-3`}
+                      }`}
                     >
-                      <div className="min-w-0 flex-1">
-                        <span className="text-[10px] text-[#D4AF37] font-bold uppercase block">
-                          {item.marca}
-                        </span>
-                        <h4 className="text-xs font-bold text-white truncate">{item.modelo}</h4>
-                        <div className="flex items-center gap-2 text-[11px] text-gray-400 mt-0.5">
-                          <span>{item.calidad}</span>
-                          <span>•</span>
-                          <span>Compradas: <strong>{item.qty}</strong></span>
-                          {alreadyReturned > 0 && (
-                            <span className="text-rose-400">(Devueltas: {alreadyReturned})</span>
-                          )}
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <span className="text-[10px] text-[#D4AF37] font-bold uppercase block">
+                            {item.marca}
+                          </span>
+                          <h4 className="text-xs font-bold text-white truncate">{item.modelo}</h4>
+                          <div className="flex items-center gap-2 text-[11px] text-gray-400 mt-0.5">
+                            <span>{item.calidad}</span>
+                            <span>•</span>
+                            <span>Compradas: <strong>{item.qty}</strong></span>
+                            {alreadyReturned > 0 && (
+                              <span className="text-rose-400">(Devueltas: {alreadyReturned})</span>
+                            )}
+                          </div>
                         </div>
+
+                        {/* Qty Controls */}
+                        {maxAvailable <= 0 ? (
+                          <span className="text-[11px] font-bold text-rose-400 px-2.5 py-1 bg-rose-500/10 rounded-lg">
+                            Devuelto Totalmente
+                          </span>
+                        ) : (
+                          <div className="flex items-center gap-1 bg-black/40 border border-white/10 rounded-xl p-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleSetReturnQty(item.productId, -1, maxAvailable)}
+                              className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+                            >
+                              <Minus className="w-3.5 h-3.5" />
+                            </button>
+                            <span className="w-8 text-center text-xs font-extrabold text-white">
+                              {selectedQty}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleSetReturnQty(item.productId, 1, maxAvailable)}
+                              className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
                       </div>
 
-                      {/* Qty Controls */}
-                      {maxAvailable <= 0 ? (
-                        <span className="text-[11px] font-bold text-rose-400 px-2.5 py-1 bg-rose-500/10 rounded-lg">
-                          Devuelto Totalmente
-                        </span>
-                      ) : (
-                        <div className="flex items-center gap-1 bg-black/40 border border-white/10 rounded-xl p-1 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => handleSetReturnQty(item.productId, -1, maxAvailable)}
-                            className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-                          >
-                            <Minus className="w-3.5 h-3.5" />
-                          </button>
-                          <span className="w-8 text-center text-xs font-extrabold text-white">
-                            {selectedQty}
+                      {/* Destination Selector when selectedQty > 0 */}
+                      {selectedQty > 0 && (
+                        <div className="pt-2 border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <span className="text-[11px] font-semibold text-gray-300">
+                            ¿Estado del repuesto devuelto?
                           </span>
-                          <button
-                            type="button"
-                            onClick={() => handleSetReturnQty(item.productId, 1, maxAvailable)}
-                            className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="grid grid-cols-2 gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleSetItemDest(item.productId, 'stock')}
+                              className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1.5 transition-all ${
+                                currentDest === 'stock'
+                                  ? 'bg-emerald-600 text-white shadow-lg'
+                                  : 'bg-white/5 text-gray-400 hover:text-white border border-white/10'
+                              }`}
+                            >
+                              <span>🟢 Reintegrar a Stock</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSetItemDest(item.productId, 'merma')}
+                              className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1.5 transition-all ${
+                                currentDest === 'merma'
+                                  ? 'bg-rose-600 text-white shadow-lg'
+                                  : 'bg-white/5 text-gray-400 hover:text-white border border-white/10'
+                              }`}
+                            >
+                              <span>🔴 Baja / Merma (Roto)</span>
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -504,7 +570,7 @@ export default function SalesHistoryPage() {
                   required
                   value={refundModal.reason}
                   onChange={(e) => setRefundModal((prev) => ({ ...prev, reason: e.target.value }))}
-                  placeholder="Ej. Garantía: Flex con defecto de fábrica / Cliente trajo modelo equivocado..."
+                  placeholder="Ej. Pantalla con flex dañado / Modelo incompatible traído por cliente..."
                   className="w-full px-3 py-2 bg-[#10131E] border border-white/10 rounded-xl text-white placeholder-gray-600 text-xs focus:outline-none focus:border-rose-400 transition-all resize-none"
                 />
               </div>
@@ -558,10 +624,15 @@ export default function SalesHistoryPage() {
               </div>
 
               {/* Refund Summary Box */}
-              <div className="p-3.5 rounded-2xl bg-rose-950/20 border border-rose-500/30 space-y-1.5 text-xs">
+              <div className="p-3.5 rounded-2xl bg-rose-950/20 border border-rose-500/30 space-y-2 text-xs">
                 <div className="flex justify-between text-gray-300">
                   <span>Productos a devolver:</span>
-                  <strong className="text-white">{modalRefundTotals.itemsCount} uds</strong>
+                  <strong className="text-white">
+                    {modalRefundTotals.itemsCount} uds{' '}
+                    <span className="text-[10px] text-gray-400 font-normal">
+                      ({modalRefundTotals.stockCount} a Stock / {modalRefundTotals.mermaCount} a Merma)
+                    </span>
+                  </strong>
                 </div>
                 <div className="flex justify-between text-gray-300">
                   <span>Reembolso Total USD:</span>
@@ -578,7 +649,7 @@ export default function SalesHistoryPage() {
               <div className="pt-2 flex gap-3">
                 <button
                   type="button"
-                  onClick={() => setRefundModal({ open: false, sale: null, returnQuantities: {}, reason: '', printOption: 'bluetooth', loading: false })}
+                  onClick={() => setRefundModal({ open: false, sale: null, returnQuantities: {}, returnDestinations: {}, reason: '', printOption: 'bluetooth', loading: false })}
                   className="flex-1 py-2.5 rounded-xl bg-gray-800 text-gray-300 text-xs font-bold hover:bg-gray-700"
                 >
                   Cancelar
@@ -685,7 +756,7 @@ export default function SalesHistoryPage() {
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Buscar por # de orden (ej. 0819...), cliente, modelo o motivo de devolución..."
+              placeholder="Buscar por # de orden, cliente, modelo, motivo o merma..."
               className="w-full pl-10 pr-4 py-2.5 bg-[#10131E] border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm focus:outline-none focus:border-[#D4AF37] transition-all"
             />
           </div>
@@ -930,7 +1001,7 @@ export default function SalesHistoryPage() {
                         </div>
                       </div>
 
-                      {/* Refund Audit Logs (If Any) */}
+                      {/* Refund Audit Logs */}
                       {(sale.refunds || []).length > 0 && (
                         <div className="p-3 rounded-xl bg-rose-950/20 border border-rose-500/30 space-y-2">
                           <h5 className="text-xs font-bold text-rose-300 flex items-center gap-1.5">
@@ -941,13 +1012,24 @@ export default function SalesHistoryPage() {
                             {sale.refunds?.map((refLog, rIdx) => (
                               <div
                                 key={rIdx}
-                                className="text-xs p-2 rounded-lg bg-black/30 border border-rose-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-1"
+                                className="text-xs p-2.5 rounded-xl bg-black/40 border border-rose-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
                               >
                                 <div>
-                                  <span className="font-bold text-white">
-                                    {refLog.marca} {refLog.modelo} ({refLog.calidad}) — {refLog.qty} ud(s)
-                                  </span>
-                                  <span className="text-gray-400 block text-[11px]">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-bold text-white">
+                                      {refLog.marca} {refLog.modelo} ({refLog.calidad}) — {refLog.qty} ud(s)
+                                    </span>
+                                    <span
+                                      className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded ${
+                                        refLog.destination === 'merma'
+                                          ? 'bg-rose-500/30 text-rose-300 border border-rose-500/40'
+                                          : 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/40'
+                                      }`}
+                                    >
+                                      {refLog.destination === 'merma' ? '🔴 ENVIADO A MERMA' : '🟢 REINTEGRADO A STOCK'}
+                                    </span>
+                                  </div>
+                                  <span className="text-gray-400 block text-[11px] mt-0.5">
                                     <strong>Motivo:</strong> {refLog.reason}
                                   </span>
                                 </div>

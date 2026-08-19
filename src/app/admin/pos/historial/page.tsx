@@ -167,7 +167,10 @@ export default function SalesHistoryPage() {
         setSales((prev) =>
           prev.map((s) => (s._id === saleId ? { ...s, paid: !s.paid } : s))
         );
-        triggerToast('Estado de pago actualizado');
+        fetchSales();
+        triggerToast(
+          data.sale.paid ? '¡Orden marcada como PAGADA con éxito!' : 'Orden marcada como PENDIENTE'
+        );
       }
     } catch {
       triggerToast('Error al actualizar pago', true);
@@ -859,13 +862,14 @@ export default function SalesHistoryPage() {
                           </span>
                           <button
                             onClick={() => handleTogglePaid(sale._id)}
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-all ${
+                            className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full border transition-all cursor-pointer flex items-center gap-1 hover:scale-105 active:scale-95 ${
                               sale.paid
-                                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                                : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25'
+                                : 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30 animate-pulse'
                             }`}
+                            title="Haz clic para cambiar entre Pagado / Pendiente"
                           >
-                            {sale.paid ? '✓ Pagado' : '○ Pendiente'}
+                            <span>{sale.paid ? '✓ Pagado' : '⏳ Pendiente (Clic para Cobrar)'}</span>
                           </button>
 
                           {sale.status === 'REFUNDED' && (

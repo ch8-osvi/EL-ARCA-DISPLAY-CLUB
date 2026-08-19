@@ -18,53 +18,103 @@ import {
   User,
   Bluetooth,
   Usb,
+  RotateCcw,
+  X,
+  AlertCircle,
+  Plus,
+  Minus,
+  Check,
+  TrendingDown,
+  Layers,
 } from 'lucide-react';
 import {
   printTicket,
   printViaBluetooth,
   printViaUsb,
+  printRefundTicket,
+  printRefundViaBluetooth,
+  printRefundViaUsb,
+  RefundTicketData,
 } from '@/components/PrintTicket';
 
 interface SaleItem {
-  productId: string;
-  marca: string;
-  modelo: string;
-  calidad: string;
-  qty: number;
-  precioUSD: number;
+  productId:   string;
+  marca:       string;
+  modelo:      string;
+  calidad:     string;
+  qty:         number;
+  returnedQty?:number;
+  precioUSD:   number;
   subtotalUSD: number;
 }
 
-interface SaleRecord {
-  _id: string;
-  orderNumber: string;
-  clientName: string;
-  items: SaleItem[];
-  currency: 'USD' | 'CUP';
-  exchangeRate: number;
-  subtotalUSD: number;
-  totalUSD: number;
-  totalCUP: number;
-  paid: boolean;
-  notes: string;
+interface SaleRefundLog {
+  productId: string;
+  marca:     string;
+  modelo:    string;
+  calidad:   string;
+  qty:       number;
+  refundUSD: number;
+  refundCUP: number;
+  reason:    string;
   createdAt: string;
+}
+
+interface SaleRecord {
+  _id:              string;
+  orderNumber:      string;
+  clientName:       string;
+  items:            SaleItem[];
+  currency:         'USD' | 'CUP';
+  exchangeRate:     number;
+  subtotalUSD:      number;
+  totalUSD:         number;
+  totalCUP:         number;
+  paid:             boolean;
+  notes:            string;
+  status?:          'COMPLETED' | 'PARTIALLY_REFUNDED' | 'REFUNDED';
+  totalRefundedUSD?:number;
+  totalRefundedCUP?:number;
+  refunds?:         SaleRefundLog[];
+  createdAt:        string;
 }
 
 export default function SalesHistoryPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [sales, setSales] = useState<SaleRecord[]>([]);
   const [daily, setDaily] = useState<any>({
-    todayTotalUSD: 0,
-    todayTotalCUP: 0,
-    todayPaidUSD: 0,
-    todayPaidCUP: 0,
-    count: 0,
+    todayTotalUSD:   0,
+    todayTotalCUP:   0,
+    todayRefundsUSD: 0,
+    todayRefundsCUP: 0,
+    todayNetUSD:     0,
+    todayNetCUP:     0,
+    todayPaidUSD:    0,
+    todayPaidCUP:    0,
+    count:           0,
   });
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterPaid, setFilterPaid] = useState<'ALL' | 'PAID' | 'PENDING'>('ALL');
+  const [filterPaid, setFilterPaid] = useState<'ALL' | 'PAID' | 'PENDING' | 'REFUNDED'>('ALL');
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<{ text: string; isError?: boolean } | null>(null);
+
+  // Refund Modal State
+  const [refundModal, setRefundModal] = useState<{
+    open: boolean;
+    sale: SaleRecord | null;
+    returnQuantities: { [productId: string]: number };
+    reason: string;
+    printOption: 'bluetooth' | 'usb' | 'system' | 'none';
+    loading: boolean;
+  }>({
+    open: false,
+    sale: null,
+    returnQuantities: {},
+    reason: '',
+    printOption: 'bluetooth',
+    loading: false,
+  });
 
   const triggerToast = (text: string, isError = false) => {
     setToastMessage({ text, isError });
@@ -89,7 +139,7 @@ export default function SalesHistoryPage() {
       }
     } catch (err) {
       console.error('Error loading sales:', err);
-      triggerToast('Error cargando historial');
+      triggerToast('Error cargando historial', true);
     } finally {
       setLoading(false);
     }
@@ -116,23 +166,23 @@ export default function SalesHistoryPage() {
         triggerToast('Estado de pago actualizado');
       }
     } catch {
-      triggerToast('Error al actualizar pago');
+      triggerToast('Error al actualizar pago', true);
     }
   };
 
   const handleReprint = async (sale: SaleRecord, mode: 'bluetooth' | 'usb' | 'system' = 'bluetooth') => {
     const ticketData = {
-      orderNumber: sale.orderNumber,
-      clientName: sale.clientName,
-      items: sale.items,
-      currency: sale.currency,
+      orderNumber:  sale.orderNumber,
+      clientName:   sale.clientName,
+      items:        sale.items,
+      currency:     sale.currency,
       exchangeRate: sale.exchangeRate,
-      subtotalUSD: sale.subtotalUSD,
-      totalUSD: sale.totalUSD,
-      totalCUP: sale.totalCUP,
-      paid: sale.paid,
-      notes: sale.notes,
-      createdAt: sale.createdAt,
+      subtotalUSD:  sale.subtotalUSD,
+      totalUSD:     sale.totalUSD,
+      totalCUP:     sale.totalCUP,
+      paid:         sale.paid,
+      notes:        sale.notes,
+      createdAt:    sale.createdAt,
     };
 
     if (mode === 'bluetooth') {
@@ -158,10 +208,129 @@ export default function SalesHistoryPage() {
     }
   };
 
+  // Open Refund Modal
+  const handleOpenRefundModal = (sale: SaleRecord) => {
+    const initialQuantities: { [productId: string]: number } = {};
+    sale.items.forEach((item) => {
+      const available = item.qty - (item.returnedQty || 0);
+      initialQuantities[item.productId] = available > 0 ? 0 : 0;
+    });
+
+    setRefundModal({
+      open: true,
+      sale,
+      returnQuantities: initialQuantities,
+      reason: '',
+      printOption: 'bluetooth',
+      loading: false,
+    });
+  };
+
+  // Adjust return quantity in modal
+  const handleSetReturnQty = (productId: string, delta: number, maxAllowed: number) => {
+    setRefundModal((prev) => {
+      const current = prev.returnQuantities[productId] || 0;
+      const next = Math.max(0, Math.min(maxAllowed, current + delta));
+      return {
+        ...prev,
+        returnQuantities: { ...prev.returnQuantities, [productId]: next },
+      };
+    });
+  };
+
+  // Submit Refund
+  const handleConfirmRefund = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!refundModal.sale) return;
+
+    if (!refundModal.reason.trim()) {
+      triggerToast('Debes ingresar el motivo de la devolución', true);
+      return;
+    }
+
+    const returnsToSubmit = Object.entries(refundModal.returnQuantities)
+      .filter(([_, qty]) => qty > 0)
+      .map(([productId, qty]) => ({ productId, qty }));
+
+    if (returnsToSubmit.length === 0) {
+      triggerToast('Selecciona al menos 1 unidad para devolver', true);
+      return;
+    }
+
+    setRefundModal((prev) => ({ ...prev, loading: true }));
+    try {
+      const res = await fetch('/api/sales', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'refund',
+          saleId: refundModal.sale._id,
+          returns: returnsToSubmit,
+          reason: refundModal.reason,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        triggerToast(data.error || 'Error procesando devolución', true);
+        setRefundModal((prev) => ({ ...prev, loading: false }));
+        return;
+      }
+
+      triggerToast('¡Devolución completada y stock reincorporado!');
+
+      // Print Refund Receipt if requested
+      if (refundModal.printOption !== 'none') {
+        const refundTicketData: RefundTicketData = {
+          orderNumber: refundModal.sale.orderNumber,
+          clientName: refundModal.sale.clientName,
+          items: data.refundLogs.map((log: any) => ({
+            marca: log.marca,
+            modelo: log.modelo,
+            calidad: log.calidad,
+            qty: log.qty,
+            refundUSD: log.refundUSD,
+            refundCUP: log.refundCUP,
+          })),
+          reason: refundModal.reason,
+          exchangeRate: refundModal.sale.exchangeRate,
+          totalRefundUSD: data.totalRefundUSD,
+          totalRefundCUP: data.totalRefundCUP,
+          createdAt: new Date(),
+        };
+
+        if (refundModal.printOption === 'bluetooth') {
+          printRefundViaBluetooth(refundTicketData);
+        } else if (refundModal.printOption === 'usb') {
+          printRefundViaUsb(refundTicketData);
+        } else {
+          printRefundTicket(refundTicketData);
+        }
+      }
+
+      setRefundModal({
+        open: false,
+        sale: null,
+        returnQuantities: {},
+        reason: '',
+        printOption: 'bluetooth',
+        loading: false,
+      });
+
+      fetchSales();
+    } catch (err) {
+      console.error('Error submitting refund:', err);
+      triggerToast('Error de conexión al procesar devolución', true);
+      setRefundModal((prev) => ({ ...prev, loading: false }));
+    }
+  };
+
+  // Filtered Sales
   const filteredSales = useMemo(() => {
     return sales.filter((s) => {
       if (filterPaid === 'PAID' && !s.paid) return false;
       if (filterPaid === 'PENDING' && s.paid) return false;
+      if (filterPaid === 'REFUNDED' && s.status !== 'REFUNDED' && s.status !== 'PARTIALLY_REFUNDED') return false;
 
       if (searchTerm.trim() !== '') {
         const q = searchTerm.toLowerCase().trim();
@@ -173,11 +342,30 @@ export default function SalesHistoryPage() {
             i.marca.toLowerCase().includes(q) ||
             i.calidad.toLowerCase().includes(q)
         );
-        return matchOrder || matchClient || matchItems;
+        const matchReason = (s.refunds || []).some((r) => r.reason.toLowerCase().includes(q));
+        return matchOrder || matchClient || matchItems || matchReason;
       }
       return true;
     });
   }, [sales, filterPaid, searchTerm]);
+
+  // Total refund calculation in modal
+  const modalRefundTotals = useMemo(() => {
+    if (!refundModal.sale) return { totalUSD: 0, totalCUP: 0, itemsCount: 0 };
+    let totalUSD = 0;
+    let itemsCount = 0;
+
+    refundModal.sale.items.forEach((item) => {
+      const qty = refundModal.returnQuantities[item.productId] || 0;
+      if (qty > 0) {
+        totalUSD += item.precioUSD * qty;
+        itemsCount += qty;
+      }
+    });
+
+    const totalCUP = totalUSD * refundModal.sale.exchangeRate;
+    return { totalUSD, totalCUP, itemsCount };
+  }, [refundModal]);
 
   if (!isAuthenticated) {
     return (
@@ -201,7 +389,7 @@ export default function SalesHistoryPage() {
 
   return (
     <div className="min-h-screen bg-[#090A0F] text-white flex flex-col">
-      {/* Toast */}
+      {/* Toast Notification */}
       {toastMessage && (
         <div
           className={`fixed bottom-6 right-6 z-[100] glass-panel px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-bounce border ${
@@ -216,6 +404,195 @@ export default function SalesHistoryPage() {
             <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
           )}
           <span className="text-xs font-bold">{toastMessage.text}</span>
+        </div>
+      )}
+
+      {/* Refund / Return Modal */}
+      {refundModal.open && refundModal.sale && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-lg glass-panel rounded-3xl p-6 sm:p-7 border border-rose-500/40 shadow-2xl space-y-5 relative max-h-[90vh] flex flex-col">
+            <button
+              onClick={() => setRefundModal({ open: false, sale: null, returnQuantities: {}, reason: '', printOption: 'bluetooth', loading: false })}
+              className="absolute top-5 right-5 text-gray-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="space-y-1">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center border border-rose-500/30">
+                <RotateCcw className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-bold text-white">Devolución / Reembolso de Productos</h3>
+              <p className="text-xs text-gray-400">
+                Orden <strong className="text-[#E5C158]">#{refundModal.sale.orderNumber}</strong> — Cliente: {refundModal.sale.clientName || 'Consumidor Final'}
+              </p>
+            </div>
+
+            <form onSubmit={handleConfirmRefund} className="flex-1 overflow-y-auto space-y-4 pr-1">
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-gray-300 block">
+                  Selecciona la cantidad a devolver por producto:
+                </label>
+
+                {refundModal.sale.items.map((item) => {
+                  const alreadyReturned = item.returnedQty || 0;
+                  const maxAvailable = item.qty - alreadyReturned;
+                  const selectedQty = refundModal.returnQuantities[item.productId] || 0;
+
+                  return (
+                    <div
+                      key={item.productId}
+                      className={`p-3 rounded-2xl border transition-all ${
+                        selectedQty > 0
+                          ? 'bg-rose-950/20 border-rose-500/50'
+                          : 'bg-[#10131E] border-white/5'
+                      } flex items-center justify-between gap-3`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <span className="text-[10px] text-[#D4AF37] font-bold uppercase block">
+                          {item.marca}
+                        </span>
+                        <h4 className="text-xs font-bold text-white truncate">{item.modelo}</h4>
+                        <div className="flex items-center gap-2 text-[11px] text-gray-400 mt-0.5">
+                          <span>{item.calidad}</span>
+                          <span>•</span>
+                          <span>Compradas: <strong>{item.qty}</strong></span>
+                          {alreadyReturned > 0 && (
+                            <span className="text-rose-400">(Devueltas: {alreadyReturned})</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Qty Controls */}
+                      {maxAvailable <= 0 ? (
+                        <span className="text-[11px] font-bold text-rose-400 px-2.5 py-1 bg-rose-500/10 rounded-lg">
+                          Devuelto Totalmente
+                        </span>
+                      ) : (
+                        <div className="flex items-center gap-1 bg-black/40 border border-white/10 rounded-xl p-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleSetReturnQty(item.productId, -1, maxAvailable)}
+                            className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+                          >
+                            <Minus className="w-3.5 h-3.5" />
+                          </button>
+                          <span className="w-8 text-center text-xs font-extrabold text-white">
+                            {selectedQty}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleSetReturnQty(item.productId, 1, maxAvailable)}
+                            className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Reason for Refund (Mandatory) */}
+              <div>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">
+                  Motivo de la Devolución / Reembolso <span className="text-rose-400">*</span>
+                </label>
+                <textarea
+                  rows={2}
+                  required
+                  value={refundModal.reason}
+                  onChange={(e) => setRefundModal((prev) => ({ ...prev, reason: e.target.value }))}
+                  placeholder="Ej. Garantía: Flex con defecto de fábrica / Cliente trajo modelo equivocado..."
+                  className="w-full px-3 py-2 bg-[#10131E] border border-white/10 rounded-xl text-white placeholder-gray-600 text-xs focus:outline-none focus:border-rose-400 transition-all resize-none"
+                />
+              </div>
+
+              {/* Print Receipt Option */}
+              <div>
+                <label className="text-[11px] font-semibold text-gray-400 block mb-1">
+                  Comprobante de Devolución
+                </label>
+                <div className="grid grid-cols-4 gap-1 bg-[#10131E] p-1 rounded-xl border border-white/10 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setRefundModal((prev) => ({ ...prev, printOption: 'bluetooth' }))}
+                    className={`py-1 px-1 rounded-lg font-bold flex items-center justify-center gap-1 transition-all ${
+                      refundModal.printOption === 'bluetooth' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    <Bluetooth className="w-3 h-3" />
+                    <span>Bluetooth</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRefundModal((prev) => ({ ...prev, printOption: 'usb' }))}
+                    className={`py-1 px-1 rounded-lg font-bold flex items-center justify-center gap-1 transition-all ${
+                      refundModal.printOption === 'usb' ? 'bg-emerald-600 text-white' : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    <Usb className="w-3 h-3" />
+                    <span>USB</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRefundModal((prev) => ({ ...prev, printOption: 'system' }))}
+                    className={`py-1 px-1 rounded-lg font-bold flex items-center justify-center gap-1 transition-all ${
+                      refundModal.printOption === 'system' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    <Printer className="w-3 h-3" />
+                    <span>Sistema</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRefundModal((prev) => ({ ...prev, printOption: 'none' }))}
+                    className={`py-1 px-1 rounded-lg font-bold flex items-center justify-center gap-1 transition-all ${
+                      refundModal.printOption === 'none' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    <span>Sin Ticket</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Refund Summary Box */}
+              <div className="p-3.5 rounded-2xl bg-rose-950/20 border border-rose-500/30 space-y-1.5 text-xs">
+                <div className="flex justify-between text-gray-300">
+                  <span>Productos a devolver:</span>
+                  <strong className="text-white">{modalRefundTotals.itemsCount} uds</strong>
+                </div>
+                <div className="flex justify-between text-gray-300">
+                  <span>Reembolso Total USD:</span>
+                  <strong className="text-rose-400 text-sm font-extrabold">-${modalRefundTotals.totalUSD.toFixed(2)} USD</strong>
+                </div>
+                <div className="flex justify-between text-gray-400 text-[11px]">
+                  <span>Equivalente en CUP:</span>
+                  <span className="font-semibold text-rose-300">
+                    -{modalRefundTotals.totalCUP.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CUP
+                  </span>
+                </div>
+              </div>
+
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setRefundModal({ open: false, sale: null, returnQuantities: {}, reason: '', printOption: 'bluetooth', loading: false })}
+                  className="flex-1 py-2.5 rounded-xl bg-gray-800 text-gray-300 text-xs font-bold hover:bg-gray-700"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={refundModal.loading || modalRefundTotals.itemsCount === 0}
+                  className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-extrabold shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {refundModal.loading ? 'Procesando...' : 'Confirmar Devolución'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
@@ -239,36 +616,42 @@ export default function SalesHistoryPage() {
       </header>
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        {/* Daily Cash Summary Banner */}
+        {/* Daily Cash & Refund Summary Banner */}
         <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="glass-card rounded-2xl p-5 border border-emerald-500/30 relative overflow-hidden">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                Recaudado Hoy (USD)
+                Neto en Caja Hoy (USD)
               </span>
               <DollarSign className="w-4 h-4 text-emerald-400" />
             </div>
             <div className="text-2xl font-extrabold text-white mt-2">
-              ${daily.todayTotalUSD.toFixed(2)}
+              ${(daily.todayNetUSD !== undefined ? daily.todayNetUSD : daily.todayTotalUSD).toFixed(2)}
             </div>
-            <span className="text-[11px] text-gray-400">
-              Pagado: ${daily.todayPaidUSD.toFixed(2)} USD
-            </span>
+            <div className="text-[11px] text-gray-400 mt-1 flex justify-between">
+              <span>Ventas: ${daily.todayTotalUSD.toFixed(2)}</span>
+              {daily.todayRefundsUSD > 0 && (
+                <span className="text-rose-400 font-semibold">Dev: -${daily.todayRefundsUSD.toFixed(2)}</span>
+              )}
+            </div>
           </div>
 
           <div className="glass-card rounded-2xl p-5 border border-[#D4AF37]/30 relative overflow-hidden">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-[#E5C158]">
-                Recaudado Hoy (CUP)
+                Neto en Caja Hoy (CUP)
               </span>
               <Banknote className="w-4 h-4 text-[#D4AF37]" />
             </div>
             <div className="text-2xl font-extrabold text-white mt-2">
-              {daily.todayTotalCUP.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} CUP
+              {(daily.todayNetCUP !== undefined ? daily.todayNetCUP : daily.todayTotalCUP).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} CUP
             </div>
-            <span className="text-[11px] text-gray-400">
-              Pagado: {daily.todayPaidCUP.toLocaleString()} CUP
-            </span>
+            <div className="text-[11px] text-gray-400 mt-1 flex justify-between">
+              <span>Ventas: {daily.todayTotalCUP.toLocaleString()} CUP</span>
+              {daily.todayRefundsCUP > 0 && (
+                <span className="text-rose-400 font-semibold">Dev: -{daily.todayRefundsCUP.toLocaleString()} CUP</span>
+              )}
+            </div>
           </div>
 
           <div className="glass-card rounded-2xl p-5 border border-blue-500/30">
@@ -302,15 +685,15 @@ export default function SalesHistoryPage() {
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Buscar por # de orden (ej. 0817...), cliente o modelo..."
+              placeholder="Buscar por # de orden (ej. 0819...), cliente, modelo o motivo de devolución..."
               className="w-full pl-10 pr-4 py-2.5 bg-[#10131E] border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm focus:outline-none focus:border-[#D4AF37] transition-all"
             />
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1">
             <button
               onClick={() => setFilterPaid('ALL')}
-              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+              className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
                 filterPaid === 'ALL'
                   ? 'gold-gradient-bg text-black'
                   : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
@@ -320,7 +703,7 @@ export default function SalesHistoryPage() {
             </button>
             <button
               onClick={() => setFilterPaid('PAID')}
-              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+              className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
                 filterPaid === 'PAID'
                   ? 'bg-emerald-600 text-white'
                   : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
@@ -330,13 +713,23 @@ export default function SalesHistoryPage() {
             </button>
             <button
               onClick={() => setFilterPaid('PENDING')}
-              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+              className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
                 filterPaid === 'PENDING'
                   ? 'bg-amber-600 text-white'
                   : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
               }`}
             >
               Pendientes
+            </button>
+            <button
+              onClick={() => setFilterPaid('REFUNDED')}
+              className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                filterPaid === 'REFUNDED'
+                  ? 'bg-rose-600 text-white'
+                  : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
+              }`}
+            >
+              Con Devolución
             </button>
           </div>
         </div>
@@ -367,10 +760,20 @@ export default function SalesHistoryPage() {
                 minute: '2-digit',
               });
 
+              const totalItemsPurchased = sale.items.reduce((acc, i) => acc + i.qty, 0);
+              const totalItemsReturned = sale.items.reduce((acc, i) => acc + (i.returnedQty || 0), 0);
+              const canRefund = totalItemsReturned < totalItemsPurchased;
+
               return (
                 <div
                   key={sale._id}
-                  className="glass-card rounded-2xl p-4 sm:p-5 border border-white/10 hover:border-white/20 transition-all space-y-4"
+                  className={`glass-card rounded-2xl p-4 sm:p-5 border transition-all space-y-4 ${
+                    sale.status === 'REFUNDED'
+                      ? 'border-rose-500/40 bg-rose-950/10'
+                      : sale.status === 'PARTIALLY_REFUNDED'
+                      ? 'border-amber-500/30'
+                      : 'border-white/10 hover:border-white/20'
+                  }`}
                 >
                   {/* Summary Bar */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -379,7 +782,7 @@ export default function SalesHistoryPage() {
                         #{sale.orderNumber.slice(-4)}
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-extrabold text-sm text-white tracking-wide">
                             Orden #{sale.orderNumber}
                           </span>
@@ -393,7 +796,20 @@ export default function SalesHistoryPage() {
                           >
                             {sale.paid ? '✓ Pagado' : '○ Pendiente'}
                           </button>
+
+                          {sale.status === 'REFUNDED' && (
+                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                              Reembolsado Total
+                            </span>
+                          )}
+
+                          {sale.status === 'PARTIALLY_REFUNDED' && (
+                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                              Devolución Parcial ({totalItemsReturned}/{totalItemsPurchased})
+                            </span>
+                          )}
                         </div>
+
                         <div className="flex items-center gap-3 text-xs text-gray-400 mt-0.5">
                           <span className="flex items-center gap-1">
                             <Clock className="w-3 h-3" /> {dateFormatted}
@@ -408,17 +824,35 @@ export default function SalesHistoryPage() {
                     </div>
 
                     {/* Right summary and actions */}
-                    <div className="flex items-center justify-between sm:justify-end gap-4 border-t sm:border-t-0 pt-2 sm:pt-0 border-white/5">
+                    <div className="flex items-center justify-between sm:justify-end gap-3 border-t sm:border-t-0 pt-2 sm:pt-0 border-white/5 flex-wrap">
                       <div className="text-left sm:text-right">
                         <span className="text-base font-extrabold text-[#F3E0A9] block">
                           ${sale.totalUSD.toFixed(2)} USD
                         </span>
-                        <span className="text-[11px] font-semibold text-emerald-400">
+                        <span className="text-[11px] font-semibold text-emerald-400 block">
                           {sale.totalCUP.toLocaleString()} CUP (Tasa {sale.exchangeRate})
                         </span>
+                        {(sale.totalRefundedUSD || 0) > 0 && (
+                          <span className="text-[10px] font-bold text-rose-400 block">
+                            Reembolsado: -${sale.totalRefundedUSD?.toFixed(2)} USD
+                          </span>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-1.5">
+                        {/* Refund Action Button */}
+                        {canRefund && (
+                          <button
+                            onClick={() => handleOpenRefundModal(sale)}
+                            className="px-2.5 py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 text-xs font-bold flex items-center gap-1 transition-all"
+                            title="Hacer Devolución / Reembolso"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 text-rose-400" />
+                            <span className="hidden md:inline">Devolver</span>
+                          </button>
+                        )}
+
+                        {/* Print Ticket Buttons */}
                         <button
                           onClick={() => handleReprint(sale, 'bluetooth')}
                           className="px-2.5 py-2 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 text-xs font-bold flex items-center gap-1 transition-all"
@@ -451,40 +885,89 @@ export default function SalesHistoryPage() {
                     </div>
                   </div>
 
-                  {/* Expanded Item Breakdown */}
+                  {/* Expanded Item Breakdown & Refund History */}
                   {isExpanded && (
-                    <div className="pt-4 border-t border-white/10 space-y-3">
-                      <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                        Productos en esta orden ({sale.items.length}):
-                      </h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                        {sale.items.map((item, idx) => (
-                          <div
-                            key={idx}
-                            className="p-2.5 rounded-xl bg-[#10131E] border border-white/5 flex items-center justify-between text-xs"
-                          >
-                            <div>
-                              <span className="text-[10px] text-[#D4AF37] font-bold uppercase block">
-                                {item.marca}
-                              </span>
-                              <span className="font-bold text-white block">{item.modelo}</span>
-                              <span className="text-[10px] text-gray-400">{item.calidad}</span>
-                            </div>
-                            <div className="text-right">
-                              <span className="text-[11px] font-bold text-gray-300 block">
-                                x{item.qty} (${item.precioUSD} c/u)
-                              </span>
-                              <span className="font-extrabold text-[#F3E0A9]">
-                                ${item.subtotalUSD.toFixed(2)} USD
-                              </span>
-                            </div>
-                          </div>
-                        ))}
+                    <div className="pt-4 border-t border-white/10 space-y-4">
+                      <div>
+                        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
+                          Productos en esta orden ({sale.items.length}):
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                          {sale.items.map((item, idx) => {
+                            const returned = item.returnedQty || 0;
+                            return (
+                              <div
+                                key={idx}
+                                className={`p-2.5 rounded-xl border flex items-center justify-between text-xs ${
+                                  returned > 0
+                                    ? 'bg-rose-950/20 border-rose-500/30'
+                                    : 'bg-[#10131E] border-white/5'
+                                }`}
+                              >
+                                <div>
+                                  <span className="text-[10px] text-[#D4AF37] font-bold uppercase block">
+                                    {item.marca}
+                                  </span>
+                                  <span className="font-bold text-white block">{item.modelo}</span>
+                                  <span className="text-[10px] text-gray-400">{item.calidad}</span>
+                                </div>
+                                <div className="text-right">
+                                  <span className="text-[11px] font-bold text-gray-300 block">
+                                    x{item.qty} (${item.precioUSD} c/u)
+                                  </span>
+                                  <span className="font-extrabold text-[#F3E0A9]">
+                                    ${item.subtotalUSD.toFixed(2)} USD
+                                  </span>
+                                  {returned > 0 && (
+                                    <span className="text-[10px] font-bold text-rose-400 block mt-0.5">
+                                      Devuelto: {returned} uds
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
+
+                      {/* Refund Audit Logs (If Any) */}
+                      {(sale.refunds || []).length > 0 && (
+                        <div className="p-3 rounded-xl bg-rose-950/20 border border-rose-500/30 space-y-2">
+                          <h5 className="text-xs font-bold text-rose-300 flex items-center gap-1.5">
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            Registro de Devoluciones Realizadas:
+                          </h5>
+                          <div className="space-y-1.5">
+                            {sale.refunds?.map((refLog, rIdx) => (
+                              <div
+                                key={rIdx}
+                                className="text-xs p-2 rounded-lg bg-black/30 border border-rose-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-1"
+                              >
+                                <div>
+                                  <span className="font-bold text-white">
+                                    {refLog.marca} {refLog.modelo} ({refLog.calidad}) — {refLog.qty} ud(s)
+                                  </span>
+                                  <span className="text-gray-400 block text-[11px]">
+                                    <strong>Motivo:</strong> {refLog.reason}
+                                  </span>
+                                </div>
+                                <div className="text-left sm:text-right shrink-0">
+                                  <span className="text-rose-400 font-extrabold block">
+                                    -${refLog.refundUSD.toFixed(2)} USD (-{refLog.refundCUP.toLocaleString()} CUP)
+                                  </span>
+                                  <span className="text-[10px] text-gray-500">
+                                    {new Date(refLog.createdAt).toLocaleString('es-CU')}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                       {sale.notes && (
                         <div className="p-2.5 rounded-xl bg-white/5 border border-white/5 text-xs text-gray-300">
-                          <strong className="text-gray-400">Notas: </strong>
+                          <strong className="text-gray-400">Notas Iniciales: </strong>
                           {sale.notes}
                         </div>
                       )}

@@ -24,6 +24,26 @@ export interface TicketData {
   createdAt: string | Date;
 }
 
+export interface RefundItem {
+  marca: string;
+  modelo: string;
+  calidad: string;
+  qty: number;
+  refundUSD: number;
+  refundCUP: number;
+}
+
+export interface RefundTicketData {
+  orderNumber: string;
+  clientName?: string;
+  items: RefundItem[];
+  reason: string;
+  exchangeRate: number;
+  totalRefundUSD: number;
+  totalRefundCUP: number;
+  createdAt: string | Date;
+}
+
 /** Known standard Bluetooth Thermal Printer Service UUIDs */
 const PRINTER_SERVICES = [
   '000018f0-0000-1000-8000-00805f9b34fb',
@@ -46,7 +66,6 @@ export function buildEscPosBytes(data: TicketData, copies = 1): Uint8Array {
 
   const add = (arr: number[]) => bytes.push(...arr);
   const text = (str: string) => {
-    // Sanitize non-ASCII chars for standard thermal printer code pages
     const sanitized = str
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
@@ -69,10 +88,7 @@ export function buildEscPosBytes(data: TicketData, copies = 1): Uint8Array {
   });
 
   for (let c = 0; c < copies; c++) {
-    // Initialize printer
     add([0x1b, 0x40]); // ESC @
-
-    // Header (Centered, Double Height + Bold)
     add([0x1b, 0x61, 0x01]); // Align Center
     add([0x1b, 0x45, 0x01]); // Bold ON
     add([0x1d, 0x21, 0x11]); // Double width & height
@@ -84,7 +100,6 @@ export function buildEscPosBytes(data: TicketData, copies = 1): Uint8Array {
     line('WhatsApp: +53 5865-9856');
     divider();
 
-    // Order Info (Left Aligned)
     add([0x1b, 0x61, 0x00]); // Align Left
     line(`ORDEN:   #${data.orderNumber}`);
     line(`FECHA:   ${dateFormatted}`);
@@ -92,15 +107,13 @@ export function buildEscPosBytes(data: TicketData, copies = 1): Uint8Array {
     line(`ESTADO:  ${data.paid ? 'PAGADO [OK]' : 'PENDIENTE'}`);
     divider();
 
-    // Table Header
     line('ARTICULO          CANT     TOTAL');
     divider();
 
-    // Items
     data.items.forEach((item) => {
-      add([0x1b, 0x45, 0x01]); // Bold on
+      add([0x1b, 0x45, 0x01]);
       line(`${item.marca} ${item.modelo}`);
-      add([0x1b, 0x45, 0x00]); // Bold off
+      add([0x1b, 0x45, 0x00]);
 
       const cal = item.calidad.substring(0, 12).padEnd(12, ' ');
       const qtyStr = `x${item.qty}`.padStart(4, ' ');
@@ -110,14 +123,13 @@ export function buildEscPosBytes(data: TicketData, copies = 1): Uint8Array {
 
     divider();
 
-    // Totals & Currency
     line(`TASA DE CAMBIO: 1 USD = ${data.exchangeRate} CUP`);
-    add([0x1b, 0x45, 0x01]); // Bold ON
-    add([0x1d, 0x21, 0x01]); // Double height
+    add([0x1b, 0x45, 0x01]);
+    add([0x1d, 0x21, 0x01]);
     line(`TOTAL USD: $${data.totalUSD.toFixed(2)} USD`);
     line(`TOTAL CUP: ${data.totalCUP.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CUP`);
-    add([0x1d, 0x21, 0x00]); // Normal
-    add([0x1b, 0x45, 0x00]); // Bold OFF
+    add([0x1d, 0x21, 0x00]);
+    add([0x1b, 0x45, 0x00]);
 
     if (data.notes) {
       divider();
@@ -125,48 +137,119 @@ export function buildEscPosBytes(data: TicketData, copies = 1): Uint8Array {
     }
 
     divider();
-
-    // Footer
-    add([0x1b, 0x61, 0x01]); // Center
+    add([0x1b, 0x61, 0x01]);
     line('Gracias por su preferencia!');
     line('Revise su mercancia al recibir.');
     line('*** EL ARCA DISPLAY CLUB ***');
-
-    // Feed lines & cut
     line('\n\n\n\n');
-    add([0x1d, 0x56, 0x41, 0x10]); // GS V A (Cut paper with feed)
+    add([0x1d, 0x56, 0x41, 0x10]);
   }
 
   return new Uint8Array(bytes);
 }
 
 /**
- * Connects directly to Bluetooth thermal printer via Web Bluetooth API (prompts pairing dialog)
+ * Builds raw ESC/POS byte sequence for Refund Receipt
  */
-export async function printViaBluetooth(data: TicketData, copies = 1): Promise<{ success: boolean; error?: string }> {
+export function buildRefundEscPosBytes(data: RefundTicketData): Uint8Array {
+  const encoder = new TextEncoder();
+  const bytes: number[] = [];
+
+  const add = (arr: number[]) => bytes.push(...arr);
+  const text = (str: string) => {
+    const sanitized = str
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^\x20-\x7E\n\r]/g, ' ');
+    const encoded = encoder.encode(sanitized);
+    for (let i = 0; i < encoded.length; i++) {
+      bytes.push(encoded[i]);
+    }
+  };
+
+  const line = (str: string) => text(str + '\n');
+  const divider = () => line('--------------------------------');
+
+  const dateFormatted = new Date(data.createdAt).toLocaleString('es-CU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  add([0x1b, 0x40]);
+  add([0x1b, 0x61, 0x01]);
+  add([0x1b, 0x45, 0x01]);
+  add([0x1d, 0x21, 0x11]);
+  line('COMPROBANTE');
+  line('DE DEVOLUCION');
+  add([0x1d, 0x21, 0x00]);
+  add([0x1b, 0x45, 0x00]);
+  line('EL ARCA DISPLAY CLUB');
+  line('WhatsApp: +53 5865-9856');
+  divider();
+
+  add([0x1b, 0x61, 0x00]);
+  line(`ORDEN REF: #${data.orderNumber}`);
+  line(`FECHA DEV: ${dateFormatted}`);
+  line(`CLIENTE:   ${data.clientName || 'Consumidor Final'}`);
+  line(`MOTIVO:    ${data.reason}`);
+  divider();
+
+  line('REPUESTO DEVUELTO  CANT  REEMBOLSO');
+  divider();
+
+  data.items.forEach((item) => {
+    add([0x1b, 0x45, 0x01]);
+    line(`${item.marca} ${item.modelo}`);
+    add([0x1b, 0x45, 0x00]);
+    const cal = item.calidad.substring(0, 12).padEnd(12, ' ');
+    const qtyStr = `x${item.qty}`.padStart(4, ' ');
+    const refUSD = `$${item.refundUSD.toFixed(2)}`.padStart(12, ' ');
+    line(`${cal}  ${qtyStr}  ${refUSD}`);
+  });
+
+  divider();
+
+  add([0x1b, 0x45, 0x01]);
+  line(`REEMBOLSO USD: $${data.totalRefundUSD.toFixed(2)} USD`);
+  line(`REEMBOLSO CUP: ${data.totalRefundCUP.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CUP`);
+  add([0x1b, 0x45, 0x00]);
+
+  divider();
+  add([0x1b, 0x61, 0x01]);
+  line('Mercancia reincorporada a stock.');
+  line('Firma Cliente / Tecnico');
+  line('\n\n___________________________');
+  line('\n\n\n\n');
+  add([0x1d, 0x56, 0x41, 0x10]);
+
+  return new Uint8Array(bytes);
+}
+
+/**
+ * Generic helper to send ESC/POS bytes via Bluetooth
+ */
+async function sendBytesViaBluetooth(rawBytes: Uint8Array): Promise<{ success: boolean; error?: string }> {
   if (typeof navigator === 'undefined' || !(navigator as any).bluetooth) {
     return {
       success: false,
-      error: 'Web Bluetooth no está soportado en este navegador. Usa Chrome o Edge sobre HTTPS.',
+      error: 'Web Bluetooth no soportado en este navegador. Usa Chrome o Edge sobre HTTPS.',
     };
   }
 
   try {
-    const rawBytes = buildEscPosBytes(data, copies);
-
-    // Request Bluetooth device with pairing prompt modal
     const device = await (navigator as any).bluetooth.requestDevice({
       acceptAllDevices: true,
       optionalServices: PRINTER_SERVICES,
     });
 
     if (!device || !device.gatt) {
-      return { success: false, error: 'No se seleccionó ningún dispositivo Bluetooth.' };
+      return { success: false, error: 'No se seleccionó dispositivo Bluetooth.' };
     }
 
     const server = await device.gatt.connect();
-
-    // Search for writable characteristic among services
     let targetChar: any = null;
 
     for (const serviceUuid of PRINTER_SERVICES) {
@@ -181,12 +264,9 @@ export async function printViaBluetooth(data: TicketData, copies = 1): Promise<{
           }
         }
         if (targetChar) break;
-      } catch {
-        // Continue searching other services
-      }
+      } catch {}
     }
 
-    // Fallback: search all available services if known UUIDs failed
     if (!targetChar) {
       try {
         const services = await server.getPrimaryServices();
@@ -200,9 +280,7 @@ export async function printViaBluetooth(data: TicketData, copies = 1): Promise<{
           }
           if (targetChar) break;
         }
-      } catch {
-        // Fallback error handled below
-      }
+      } catch {}
     }
 
     if (!targetChar) {
@@ -212,7 +290,6 @@ export async function printViaBluetooth(data: TicketData, copies = 1): Promise<{
       };
     }
 
-    // Send chunks (max 512 bytes per BLE characteristic packet)
     const CHUNK_SIZE = 128;
     for (let i = 0; i < rawBytes.length; i += CHUNK_SIZE) {
       const chunk = rawBytes.slice(i, i + CHUNK_SIZE);
@@ -221,7 +298,6 @@ export async function printViaBluetooth(data: TicketData, copies = 1): Promise<{
       } else {
         await targetChar.writeValue(chunk);
       }
-      // Small pause to prevent buffer overflow on mini printers
       await new Promise((r) => setTimeout(r, 40));
     }
 
@@ -230,45 +306,144 @@ export async function printViaBluetooth(data: TicketData, copies = 1): Promise<{
     if (err.name === 'NotFoundError') {
       return { success: false, error: 'Selección de impresora cancelada.' };
     }
-    console.error('Bluetooth print error:', err);
-    return { success: false, error: err.message || 'Error al conectar e imprimir por Bluetooth.' };
+    console.error('Bluetooth error:', err);
+    return { success: false, error: err.message || 'Error al imprimir por Bluetooth.' };
   }
 }
 
 /**
- * Connects directly via USB / Serial cable (Web Serial API)
+ * Generic helper to send ESC/POS bytes via USB/Serial
  */
-export async function printViaUsb(data: TicketData, copies = 1): Promise<{ success: boolean; error?: string }> {
+async function sendBytesViaUsb(rawBytes: Uint8Array): Promise<{ success: boolean; error?: string }> {
   if (typeof navigator === 'undefined' || !(navigator as any).serial) {
     return {
       success: false,
-      error: 'Web Serial / USB no está soportado en este navegador. Usa Chrome o Edge.',
+      error: 'Web Serial / USB no soportado en este navegador. Usa Chrome o Edge.',
     };
   }
 
   try {
-    const rawBytes = buildEscPosBytes(data, copies);
     const port = await (navigator as any).serial.requestPort();
     await port.open({ baudRate: 9600 });
-
     const writer = port.writable.getWriter();
     await writer.write(rawBytes);
     writer.releaseLock();
     await port.close();
-
     return { success: true };
   } catch (err: any) {
     if (err.name === 'NotFoundError') {
       return { success: false, error: 'Selección de puerto USB cancelada.' };
     }
-    console.error('USB print error:', err);
-    return { success: false, error: err.message || 'Error al imprimir por cable USB/Serial.' };
+    console.error('USB error:', err);
+    return { success: false, error: err.message || 'Error al imprimir por USB.' };
   }
 }
 
-/**
- * Fallback browser system print (opens lightweight print dialog)
- */
+export async function printViaBluetooth(data: TicketData, copies = 1) {
+  const rawBytes = buildEscPosBytes(data, copies);
+  return sendBytesViaBluetooth(rawBytes);
+}
+
+export async function printViaUsb(data: TicketData, copies = 1) {
+  const rawBytes = buildEscPosBytes(data, copies);
+  return sendBytesViaUsb(rawBytes);
+}
+
+export async function printRefundViaBluetooth(data: RefundTicketData) {
+  const rawBytes = buildRefundEscPosBytes(data);
+  return sendBytesViaBluetooth(rawBytes);
+}
+
+export async function printRefundViaUsb(data: RefundTicketData) {
+  const rawBytes = buildRefundEscPosBytes(data);
+  return sendBytesViaUsb(rawBytes);
+}
+
+export function printRefundTicket(data: RefundTicketData) {
+  const printWindow = window.open('', '_blank', 'width=380,height=600');
+  if (!printWindow) {
+    alert('Permita las ventanas emergentes para imprimir el comprobante.');
+    return;
+  }
+
+  const itemsHtml = data.items
+    .map(
+      (item) => `
+      <div style="margin-bottom: 5px; font-size: 11px;">
+        <div style="font-weight: bold;">${item.marca} ${item.modelo}</div>
+        <div style="display: flex; justify-content: space-between; font-size: 10px;">
+          <span style="width: 55%; color: #333;">${item.calidad}</span>
+          <span style="width: 15%; text-align: center;">x${item.qty}</span>
+          <span style="width: 30%; text-align: right; font-weight: bold; color: #b91c1c;">-$${item.refundUSD.toFixed(2)}</span>
+        </div>
+      </div>
+    `
+    )
+    .join('');
+
+  const dateFormatted = new Date(data.createdAt).toLocaleString('es-CU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Comprobante Devolución #${data.orderNumber}</title>
+        <meta charset="utf-8" />
+        <style>
+          @page { size: auto; margin: 0mm; }
+          body { margin: 0; padding: 8px; background: #fff; font-family: 'Courier New', Courier, monospace; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div style="width: 58mm; max-width: 100%; margin: 0 auto; text-align: left;">
+          <div style="text-align: center; margin-bottom: 8px;">
+            <div style="font-size: 14px; font-weight: bold;">COMPROBANTE DE DEVOLUCIÓN</div>
+            <div style="font-size: 11px; margin-top: 2px;">EL ARCA DISPLAY CLUB</div>
+            <div style="font-size: 10px;">WhatsApp: +53 5865-9856</div>
+            <div style="border-bottom: 1px dashed #000; margin: 6px 0;"></div>
+          </div>
+          <div style="font-size: 11px; margin-bottom: 6px;">
+            <div><strong>ORDEN REF:</strong> #${data.orderNumber}</div>
+            <div><strong>FECHA:</strong> ${dateFormatted}</div>
+            <div><strong>CLIENTE:</strong> ${data.clientName || 'Consumidor Final'}</div>
+            <div><strong>MOTIVO:</strong> ${data.reason}</div>
+            <div style="border-bottom: 1px dashed #000; margin: 6px 0;"></div>
+          </div>
+          <div style="font-weight: bold; font-size: 10px; margin-bottom: 4px; display: flex; justify-content: space-between;">
+            <span>ARTÍCULO</span><span>CANT</span><span>REEMBOLSO</span>
+          </div>
+          <div style="border-bottom: 1px solid #000; margin-bottom: 4px;"></div>
+          ${itemsHtml}
+          <div style="border-bottom: 1px dashed #000; margin: 6px 0;"></div>
+          <div style="font-size: 11px; line-height: 1.4;">
+            <div><strong>TOTAL REEMBOLSADO USD:</strong> $${data.totalRefundUSD.toFixed(2)} USD</div>
+            <div><strong>TOTAL REEMBOLSADO CUP:</strong> ${data.totalRefundCUP.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CUP</div>
+          </div>
+          <div style="border-bottom: 1px dashed #000; margin: 6px 0;"></div>
+          <div style="text-align: center; font-size: 9px; margin-top: 12px;">
+            <div>Mercancía reincorporada al inventario.</div>
+            <div style="margin-top: 20px;">___________________________</div>
+            <div>Firma Cliente / Técnico</div>
+          </div>
+        </div>
+        <script>
+          window.onload = function() {
+            window.print();
+            setTimeout(function() { window.close(); }, 500);
+          };
+        </script>
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+}
+
 export function printTicket(data: TicketData, copies = 1) {
   const printWindow = window.open('', '_blank', 'width=380,height=600');
   if (!printWindow) {
@@ -372,15 +547,8 @@ export function printTicket(data: TicketData, copies = 1) {
         <title>Ticket #${data.orderNumber}</title>
         <meta charset="utf-8" />
         <style>
-          @page {
-            size: auto;
-            margin: 0mm;
-          }
-          body {
-            margin: 0;
-            padding: 8px;
-            background: #fff;
-          }
+          @page { size: auto; margin: 0mm; }
+          body { margin: 0; padding: 8px; background: #fff; }
         </style>
       </head>
       <body>
@@ -388,9 +556,7 @@ export function printTicket(data: TicketData, copies = 1) {
         <script>
           window.onload = function() {
             window.print();
-            setTimeout(function() {
-              window.close();
-            }, 500);
+            setTimeout(function() { window.close(); }, 500);
           };
         </script>
       </body>
@@ -399,9 +565,6 @@ export function printTicket(data: TicketData, copies = 1) {
   printWindow.document.close();
 }
 
-/**
- * Lightweight React preview container for debugging
- */
 export const TicketContent: React.FC<TicketData> = ({
   orderNumber,
   clientName,

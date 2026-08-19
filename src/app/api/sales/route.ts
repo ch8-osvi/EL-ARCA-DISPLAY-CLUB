@@ -20,7 +20,7 @@ function generateOrderNumber(totalItems: number): string {
 
 /**
  * GET /api/sales
- * Returns all sales sorted newest first, plus daily summary metrics.
+ * Returns all sales sorted newest first, plus daily summary metrics (gross, refunds, net).
  */
 export async function GET() {
   try {
@@ -33,19 +33,28 @@ export async function GET() {
     today.setHours(0, 0, 0, 0);
     const todaySales = sales.filter((s) => new Date(s.createdAt) >= today);
 
-    const todayTotalUSD  = todaySales.reduce((acc, s) => acc + s.totalUSD, 0);
-    const todayTotalCUP  = todaySales.reduce((acc, s) => acc + s.totalCUP, 0);
-    const todayPaidSales = todaySales.filter((s) => s.paid);
-    const todayPaidUSD   = todayPaidSales.reduce((acc, s) => acc + s.totalUSD, 0);
-    const todayPaidCUP   = todayPaidSales.reduce((acc, s) => acc + s.totalCUP, 0);
+    const todayTotalUSD   = todaySales.reduce((acc, s) => acc + s.totalUSD, 0);
+    const todayTotalCUP   = todaySales.reduce((acc, s) => acc + s.totalCUP, 0);
+    const todayRefundsUSD = todaySales.reduce((acc, s) => acc + (s.totalRefundedUSD || 0), 0);
+    const todayRefundsCUP = todaySales.reduce((acc, s) => acc + (s.totalRefundedCUP || 0), 0);
+    const todayNetUSD     = parseFloat((todayTotalUSD - todayRefundsUSD).toFixed(2));
+    const todayNetCUP     = parseFloat((todayTotalCUP - todayRefundsCUP).toFixed(2));
+
+    const todayPaidSales  = todaySales.filter((s) => s.paid);
+    const todayPaidUSD    = todayPaidSales.reduce((acc, s) => acc + s.totalUSD, 0);
+    const todayPaidCUP    = todayPaidSales.reduce((acc, s) => acc + s.totalCUP, 0);
 
     return NextResponse.json({
       success: true,
       sales,
       daily: {
-        count:        todaySales.length,
+        count:           todaySales.length,
         todayTotalUSD,
         todayTotalCUP,
+        todayRefundsUSD,
+        todayRefundsCUP,
+        todayNetUSD,
+        todayNetCUP,
         todayPaidUSD,
         todayPaidCUP,
       },
@@ -61,6 +70,7 @@ export async function GET() {
  * Actions:
  *  - create: registers a sale, deducts stock, records movements
  *  - toggle-paid: toggles paid status on an existing sale
+ *  - refund: processes partial or total return, restores stock, logs reason & returns audit
  */
 export async function POST(req: Request) {
   try {
@@ -132,11 +142,12 @@ export async function POST(req: Request) {
         const subtotalUSD = parseFloat((item.precioUSD * qty).toFixed(2));
         processedItems.push({
           productId,
-          marca:      product.marca,
-          modelo:     product.modelo,
-          calidad:    product.calidad,
+          marca:       product.marca,
+          modelo:      product.modelo,
+          calidad:     product.calidad,
           qty,
-          precioUSD:  item.precioUSD,
+          returnedQty: 0,
+          precioUSD:   item.precioUSD,
           subtotalUSD,
         });
       }
@@ -169,9 +180,143 @@ export async function POST(req: Request) {
         totalCUP,
         paid:  paid !== undefined ? paid : true,
         notes: notes || '',
+        status: 'COMPLETED',
+        totalRefundedUSD: 0,
+        totalRefundedCUP: 0,
+        refunds: [],
       });
 
       return NextResponse.json({ success: true, sale });
+    }
+
+    // --------------------------------------------------------
+    // ACTION: REFUND / RETURN ITEM(S)
+    // --------------------------------------------------------
+    if (action === 'refund') {
+      const { saleId, returns, reason } = body;
+
+      if (!saleId || !Array.isArray(returns) || returns.length === 0) {
+        return NextResponse.json(
+          { success: false, error: 'saleId y lista de devoluciones son requeridos' },
+          { status: 400 }
+        );
+      }
+      if (!reason || !reason.trim()) {
+        return NextResponse.json(
+          { success: false, error: 'Debes indicar el motivo de la devolución' },
+          { status: 400 }
+        );
+      }
+
+      const sale = await Sale.findById(saleId);
+      if (!sale) {
+        return NextResponse.json(
+          { success: false, error: 'Venta no encontrada' },
+          { status: 404 }
+        );
+      }
+
+      let totalBatchRefundUSD = 0;
+      let totalBatchRefundCUP = 0;
+      const refundLogs: any[] = [];
+
+      for (const ret of returns) {
+        const { productId, qty } = ret;
+        const qtyNum = parseInt(qty, 10);
+        if (!productId || !qtyNum || isNaN(qtyNum) || qtyNum < 1) continue;
+
+        const item = sale.items.find((i) => i.productId === productId);
+        if (!item) {
+          return NextResponse.json(
+            { success: false, error: `El producto con ID ${productId} no está en esta orden` },
+            { status: 400 }
+          );
+        }
+
+        const currentlyReturned = item.returnedQty || 0;
+        const availableToReturn = item.qty - currentlyReturned;
+
+        if (qtyNum > availableToReturn) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: `No puedes devolver ${qtyNum} unidades de ${item.marca} ${item.modelo}. Máximo disponible para devolución: ${availableToReturn}`,
+            },
+            { status: 400 }
+          );
+        }
+
+        // Update item returned quantity
+        item.returnedQty = currentlyReturned + qtyNum;
+
+        const itemRefundUSD = parseFloat((item.precioUSD * qtyNum).toFixed(2));
+        const itemRefundCUP = parseFloat((itemRefundUSD * sale.exchangeRate).toFixed(2));
+
+        totalBatchRefundUSD += itemRefundUSD;
+        totalBatchRefundCUP += itemRefundCUP;
+
+        const logEntry = {
+          productId,
+          marca: item.marca,
+          modelo: item.modelo,
+          calidad: item.calidad,
+          qty: qtyNum,
+          refundUSD: itemRefundUSD,
+          refundCUP: itemRefundCUP,
+          reason: reason.trim(),
+          createdAt: new Date(),
+        };
+
+        sale.refunds.push(logEntry);
+        refundLogs.push(logEntry);
+
+        // Restore stock in Product collection
+        const product = await Product.findOne({ id: productId });
+        if (product) {
+          const stockBefore = product.stock;
+          product.stock = stockBefore + qtyNum;
+          if (product.isHidden && product.stock > 0) {
+            product.isHidden = false;
+          }
+          await product.save();
+
+          // Record in StockHistory for complete audit trail
+          await StockHistory.create({
+            productId: product.id,
+            productName: `${product.marca} ${product.modelo} (${product.calidad})`,
+            type: 'entrada',
+            qty: qtyNum,
+            stockBefore,
+            stockAfter: product.stock,
+            reason: `Devolución Orden #${sale.orderNumber}: ${reason.trim()}`,
+          });
+        }
+      }
+
+      // Update sale refunded totals
+      sale.totalRefundedUSD = parseFloat(((sale.totalRefundedUSD || 0) + totalBatchRefundUSD).toFixed(2));
+      sale.totalRefundedCUP = parseFloat(((sale.totalRefundedCUP || 0) + totalBatchRefundCUP).toFixed(2));
+
+      // Calculate status
+      const totalPurchased = sale.items.reduce((acc, i) => acc + i.qty, 0);
+      const totalReturned  = sale.items.reduce((acc, i) => acc + (i.returnedQty || 0), 0);
+
+      if (totalReturned >= totalPurchased) {
+        sale.status = 'REFUNDED';
+      } else if (totalReturned > 0) {
+        sale.status = 'PARTIALLY_REFUNDED';
+      }
+
+      await sale.save();
+
+      return NextResponse.json({
+        success: true,
+        message: 'Devolución procesada y stock reintegrado con éxito',
+        sale,
+        refundLogs,
+        totalRefundUSD: totalBatchRefundUSD,
+        totalRefundCUP: totalBatchRefundCUP,
+      });
     }
 
     // --------------------------------------------------------
@@ -200,6 +345,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, error: 'Acción no válida' }, { status: 400 });
   } catch (err) {
     console.error('[sales POST]', err);
-    return NextResponse.json({ success: false, error: 'Error procesando venta' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Error procesando solicitud de venta' }, { status: 500 });
   }
 }

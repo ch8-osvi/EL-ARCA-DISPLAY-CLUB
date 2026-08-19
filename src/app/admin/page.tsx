@@ -22,6 +22,8 @@ import {
   Download,
   ShoppingCart,
   Boxes,
+  History,
+  EyeOff,
 } from 'lucide-react';
 
 const getCanonicalBrand = (brand: string): string => {
@@ -647,6 +649,7 @@ export default function AdminPage() {
 
         {/* Stats Metrics & POS Shortcuts */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Card 1: POS Facturación */}
           <Link
             href="/admin/pos"
             className="glass-card rounded-2xl p-5 border border-[#D4AF37]/40 hover:border-[#D4AF37] hover:bg-[#D4AF37]/10 transition-all duration-200 cursor-pointer group flex flex-col justify-between"
@@ -657,7 +660,7 @@ export default function AdminPage() {
               </span>
               <ShoppingCart className="w-5 h-5 text-[#D4AF37] group-hover:scale-110 transition-transform" />
             </div>
-            <div className="mt-2">
+            <div className="mt-3">
               <span className="text-xl font-extrabold text-white block">
                 Facturación & Caja
               </span>
@@ -667,48 +670,67 @@ export default function AdminPage() {
             </div>
           </Link>
 
-          <div className="glass-card rounded-2xl p-5 border border-white/10 flex flex-col justify-between">
-            <span className="text-xs font-semibold text-gray-400 block uppercase">
-              Total Repuestos Activos
-            </span>
-            <span className="text-3xl font-extrabold text-white mt-1 block">
-              {products.length}
-            </span>
-          </div>
-
+          {/* Card 2: Historial de Ventas */}
           <Link
-            href="/admin/pos/inventario"
-            className="glass-card rounded-2xl p-5 border border-white/10 hover:border-white/20 hover:bg-white/5 transition-all flex flex-col justify-between group"
+            href="/admin/pos/historial"
+            className="glass-card rounded-2xl p-5 border border-blue-500/30 hover:border-blue-500/60 hover:bg-blue-500/10 transition-all duration-200 cursor-pointer group flex flex-col justify-between"
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-gray-400 block uppercase">
-                Control de Inventario
+              <span className="text-xs font-bold text-blue-400 uppercase">
+                Historial & Caja
               </span>
-              <Boxes className="w-4 h-4 text-gray-400 group-hover:text-white" />
+              <History className="w-5 h-5 text-blue-400 group-hover:scale-110 transition-transform" />
             </div>
-            <div className="mt-2">
-              <span className="text-2xl font-extrabold text-[#D4AF37] block">
-                Stock en Vivo
+            <div className="mt-3">
+              <span className="text-xl font-extrabold text-white block">
+                Ventas Realizadas
               </span>
-              <span className="text-[11px] text-gray-400 group-hover:text-white transition-colors block">
-                Ajustar / Ver Entradas →
+              <span className="text-[11px] text-blue-300 font-semibold mt-0.5 block">
+                Cuadre & Reimpresión →
               </span>
             </div>
           </Link>
 
+          {/* Card 3: Control de Inventario */}
+          <Link
+            href="/admin/pos/inventario"
+            className="glass-card rounded-2xl p-5 border border-emerald-500/30 hover:border-emerald-500/60 hover:bg-emerald-500/10 transition-all duration-200 cursor-pointer group flex flex-col justify-between"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-emerald-400 uppercase">
+                Control de Inventario
+              </span>
+              <Boxes className="w-5 h-5 text-emerald-400 group-hover:scale-110 transition-transform" />
+            </div>
+            <div className="mt-3">
+              <span className="text-xl font-extrabold text-white block">
+                Stock & Entradas
+              </span>
+              <span className="text-[11px] text-emerald-300 font-semibold mt-0.5 block">
+                Ajustar / Ver Auditoría →
+              </span>
+            </div>
+          </Link>
+
+          {/* Card 4: Productos Ocultos */}
           <Link
             href="/admin/ocultos"
-            className="glass-card rounded-2xl p-5 border border-rose-500/20 hover:border-rose-500/40 hover:bg-rose-500/5 transition-all duration-200 cursor-pointer group flex flex-col justify-between"
+            className="glass-card rounded-2xl p-5 border border-rose-500/30 hover:border-rose-500/60 hover:bg-rose-500/10 transition-all duration-200 cursor-pointer group flex flex-col justify-between"
           >
-            <span className="text-xs font-semibold text-gray-400 block uppercase">
-              Productos Ocultos
-            </span>
-            <div className="mt-1">
-              <span className="text-3xl font-extrabold text-rose-400 block">
-                {deletedCount}
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-rose-400 uppercase">
+                Productos Ocultos
               </span>
-              <span className="text-[10px] text-rose-400/60 group-hover:text-rose-400 transition-colors mt-0.5 block font-semibold">
-                Ver todos / Restaurar →
+              <EyeOff className="w-5 h-5 text-rose-400 group-hover:scale-110 transition-transform" />
+            </div>
+            <div className="mt-3">
+              <div className="flex items-baseline gap-2">
+                <span className="text-xl font-extrabold text-white block">
+                  Agotados ({deletedCount})
+                </span>
+              </div>
+              <span className="text-[11px] text-rose-300 font-semibold mt-0.5 block">
+                Ver todos / Reactivar →
               </span>
             </div>
           </Link>

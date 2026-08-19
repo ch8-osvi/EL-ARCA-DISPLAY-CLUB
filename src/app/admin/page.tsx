@@ -2,10 +2,10 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
-import Navbar from '../../components/Navbar';
-import AdminProductCard from '../../components/AdminProductCard';
-import seedProducts from '../../data/products_seed.json';
-import { Product } from '../../lib/types';
+import Navbar from '@/components/Navbar';
+import AdminProductCard from '@/components/AdminProductCard';
+import seedProducts from '@/data/products_seed.json';
+import { Product } from '@/lib/types';
 import * as XLSXStyle from 'xlsx-js-style';
 import {
   Lock,

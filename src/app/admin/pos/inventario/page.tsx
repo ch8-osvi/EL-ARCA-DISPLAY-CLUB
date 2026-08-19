@@ -20,7 +20,7 @@ import {
   Clock,
   Layers,
 } from 'lucide-react';
-import { Product } from '../../../../lib/types';
+import { Product } from '@/lib/types';
 
 interface ProductWithHidden extends Product {
   isHidden?: boolean;

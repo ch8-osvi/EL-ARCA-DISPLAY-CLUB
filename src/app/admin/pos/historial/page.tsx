@@ -20,7 +20,7 @@ import {
   FileText,
   User,
 } from 'lucide-react';
-import { TicketContent, printTicket } from '../../../../components/PrintTicket';
+import { TicketContent, printTicket } from '@/components/PrintTicket';
 
 interface SaleItem {
   productId: string;

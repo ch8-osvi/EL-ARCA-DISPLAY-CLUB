@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import connectToDatabase from '../../../lib/mongoose';
-import { Product } from '../../../lib/models/Product';
-import seedProducts from '../../../data/products_seed.json';
+import connectToDatabase from '@/lib/mongoose';
+import { Product } from '@/lib/models/Product';
+import seedProducts from '@/data/products_seed.json';
 
 export const dynamic = 'force-dynamic'; // Evita que Next.js guarde la respuesta en caché
 

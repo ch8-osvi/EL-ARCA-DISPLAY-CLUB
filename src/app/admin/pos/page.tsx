@@ -24,8 +24,8 @@ import {
   Layers,
   FileText,
 } from 'lucide-react';
-import { Product } from '../../../lib/types';
-import { TicketContent, printTicket } from '../../../components/PrintTicket';
+import { Product } from '@/lib/types';
+import { TicketContent, printTicket } from '@/components/PrintTicket';
 
 interface CartItem {
   productId: string;

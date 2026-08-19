@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import connectToDatabase from '../../../../lib/mongoose';
-import { Product } from '../../../../lib/models/Product';
+import connectToDatabase from '@/lib/mongoose';
+import { Product } from '@/lib/models/Product';
 
 export const dynamic = 'force-dynamic';
 

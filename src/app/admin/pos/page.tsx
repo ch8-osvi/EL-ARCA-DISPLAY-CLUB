@@ -23,9 +23,16 @@ import {
   Sparkles,
   Layers,
   FileText,
+  Bluetooth,
+  Usb,
 } from 'lucide-react';
 import { Product } from '@/lib/types';
-import { TicketContent, printTicket } from '@/components/PrintTicket';
+import {
+  TicketContent,
+  printTicket,
+  printViaBluetooth,
+  printViaUsb,
+} from '@/components/PrintTicket';
 
 interface CartItem {
   productId: string;
@@ -54,6 +61,7 @@ export default function PosPage() {
   const [isPaid, setIsPaid] = useState(true);
   const [notes, setNotes] = useState('');
   const [copies, setCopies] = useState<number>(1);
+  const [printMode, setPrintMode] = useState<'bluetooth' | 'usb' | 'system'>('bluetooth');
 
   // Status & Modal states
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -232,6 +240,45 @@ export default function PosPage() {
     return cart.reduce((acc, item) => acc + item.qty, 0);
   }, [cart]);
 
+  // Print helper supporting Bluetooth, USB and System
+  const executePrintTicket = async (orderData: any) => {
+    const ticketData = {
+      orderNumber: orderData.orderNumber,
+      clientName: orderData.clientName,
+      items: orderData.items,
+      currency: orderData.currency,
+      exchangeRate: orderData.exchangeRate,
+      subtotalUSD: orderData.subtotalUSD,
+      totalUSD: orderData.totalUSD,
+      totalCUP: orderData.totalCUP,
+      paid: orderData.paid,
+      notes: orderData.notes,
+      createdAt: orderData.createdAt,
+    };
+
+    if (printMode === 'bluetooth') {
+      triggerToast('Buscando impresora Bluetooth...');
+      const res = await printViaBluetooth(ticketData, copies);
+      if (res.success) {
+        triggerToast('¡Ticket impreso por Bluetooth exitosamente!');
+      } else {
+        triggerToast(res.error || 'Error en Bluetooth, usando ventana de impresión...', true);
+        printTicket(ticketData, copies);
+      }
+    } else if (printMode === 'usb') {
+      triggerToast('Conectando a puerto USB/Serial...');
+      const res = await printViaUsb(ticketData, copies);
+      if (res.success) {
+        triggerToast('¡Ticket impreso por USB exitosamente!');
+      } else {
+        triggerToast(res.error || 'Error en USB, usando ventana de impresión...', true);
+        printTicket(ticketData, copies);
+      }
+    } else {
+      printTicket(ticketData, copies);
+    }
+  };
+
   // Submit Order
   const handleCheckout = async (autoPrint = false) => {
     if (cart.length === 0) {
@@ -274,23 +321,8 @@ export default function PosPage() {
       // Print ticket if requested
       if (autoPrint) {
         setTimeout(() => {
-          printTicket(
-            {
-              orderNumber: orderData.orderNumber,
-              clientName: orderData.clientName,
-              items: orderData.items,
-              currency: orderData.currency,
-              exchangeRate: orderData.exchangeRate,
-              subtotalUSD: orderData.subtotalUSD,
-              totalUSD: orderData.totalUSD,
-              totalCUP: orderData.totalCUP,
-              paid: orderData.paid,
-              notes: orderData.notes,
-              createdAt: orderData.createdAt,
-            },
-            copies
-          );
-        }, 300);
+          executePrintTicket(orderData);
+        }, 200);
       }
 
       // Reset cart
@@ -712,6 +744,54 @@ export default function PosPage() {
                   placeholder="Ej. Garantía 7 días, entrega a domicilio..."
                   className="w-full px-3 py-2 bg-[#10131E] border border-white/10 rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-[#D4AF37] transition-all"
                 />
+              </div>
+
+              {/* Printer Mode Selector */}
+              <div>
+                <label className="text-[11px] font-semibold text-gray-400 block mb-1">
+                  Impresora Térmica
+                </label>
+                <div className="grid grid-cols-3 gap-1 bg-[#10131E] p-1 rounded-xl border border-white/10 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setPrintMode('bluetooth')}
+                    className={`py-1.5 px-2 rounded-lg font-bold flex items-center justify-center gap-1 transition-all ${
+                      printMode === 'bluetooth'
+                        ? 'bg-blue-600 text-white shadow-md'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                    title="Conectar por Bluetooth (ESC/POS)"
+                  >
+                    <Bluetooth className="w-3.5 h-3.5" />
+                    <span>Bluetooth</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPrintMode('usb')}
+                    className={`py-1.5 px-2 rounded-lg font-bold flex items-center justify-center gap-1 transition-all ${
+                      printMode === 'usb'
+                        ? 'bg-emerald-600 text-white shadow-md'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                    title="Conectar por cable USB / Serial"
+                  >
+                    <Usb className="w-3.5 h-3.5" />
+                    <span>USB</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPrintMode('system')}
+                    className={`py-1.5 px-2 rounded-lg font-bold flex items-center justify-center gap-1 transition-all ${
+                      printMode === 'system'
+                        ? 'bg-purple-600 text-white shadow-md'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                    title="Imprimir usando ventana de navegador"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>Sistema</span>
+                  </button>
+                </div>
               </div>
 
               {/* Ticket copies selector */}

@@ -19,8 +19,15 @@ import {
   ShieldAlert,
   FileText,
   User,
+  Bluetooth,
+  Usb,
 } from 'lucide-react';
-import { TicketContent, printTicket } from '@/components/PrintTicket';
+import {
+  TicketContent,
+  printTicket,
+  printViaBluetooth,
+  printViaUsb,
+} from '@/components/PrintTicket';
 
 interface SaleItem {
   productId: string;
@@ -117,8 +124,8 @@ export default function SalesHistoryPage() {
     }
   };
 
-  const handleReprint = (sale: SaleRecord) => {
-    printTicket({
+  const handleReprint = async (sale: SaleRecord, mode: 'bluetooth' | 'usb' | 'system' = 'bluetooth') => {
+    const ticketData = {
       orderNumber: sale.orderNumber,
       clientName: sale.clientName,
       items: sale.items,
@@ -130,7 +137,29 @@ export default function SalesHistoryPage() {
       paid: sale.paid,
       notes: sale.notes,
       createdAt: sale.createdAt,
-    });
+    };
+
+    if (mode === 'bluetooth') {
+      triggerToast('Buscando impresora Bluetooth...');
+      const res = await printViaBluetooth(ticketData, 1);
+      if (res.success) {
+        triggerToast('¡Ticket reimpreso por Bluetooth!');
+      } else {
+        triggerToast(res.error || 'Error Bluetooth, usando ventana de impresión', true);
+        printTicket(ticketData, 1);
+      }
+    } else if (mode === 'usb') {
+      triggerToast('Conectando a puerto USB...');
+      const res = await printViaUsb(ticketData, 1);
+      if (res.success) {
+        triggerToast('¡Ticket reimpreso por USB!');
+      } else {
+        triggerToast(res.error || 'Error USB, usando ventana de impresión', true);
+        printTicket(ticketData, 1);
+      }
+    } else {
+      printTicket(ticketData, 1);
+    }
   };
 
   const filteredSales = useMemo(() => {
@@ -385,12 +414,21 @@ export default function SalesHistoryPage() {
 
                       <div className="flex items-center gap-1.5">
                         <button
-                          onClick={() => handleReprint(sale)}
-                          className="px-3 py-2 rounded-xl bg-[#10131E] hover:bg-white/10 text-gray-300 hover:text-white border border-white/10 text-xs font-bold flex items-center gap-1.5 transition-all"
-                          title="Reimprimir Ticket Térmico"
+                          onClick={() => handleReprint(sale, 'bluetooth')}
+                          className="px-2.5 py-2 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 text-xs font-bold flex items-center gap-1 transition-all"
+                          title="Imprimir directo por Bluetooth"
+                        >
+                          <Bluetooth className="w-3.5 h-3.5 text-blue-400" />
+                          <span className="hidden sm:inline">Bluetooth</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleReprint(sale, 'system')}
+                          className="px-2.5 py-2 rounded-xl bg-[#10131E] hover:bg-white/10 text-gray-300 hover:text-white border border-white/10 text-xs font-bold flex items-center gap-1 transition-all"
+                          title="Imprimir vía navegador / PDF"
                         >
                           <Printer className="w-3.5 h-3.5 text-[#D4AF37]" />
-                          <span className="hidden sm:inline">Ticket</span>
+                          <span className="hidden sm:inline">Sistema</span>
                         </button>
 
                         <button

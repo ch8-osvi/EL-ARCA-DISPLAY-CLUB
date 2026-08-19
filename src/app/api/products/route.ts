@@ -60,7 +60,13 @@ export async function POST(request: Request) {
     // ACTION: UNHIDE (Restore a hidden product)
     // -----------------------------------------
     if (action === 'unhide' && id) {
-      await Product.findOneAndUpdate({ id }, { isHidden: false });
+      const stockVal = Number(body.stock);
+      const newStock = !isNaN(stockVal) && stockVal > 0 ? stockVal : 1;
+
+      await Product.findOneAndUpdate(
+        { id },
+        { isHidden: false, stock: newStock }
+      );
 
       const activeProducts = await Product.find({ isHidden: false }).sort({ createdAt: -1 }).lean();
       const deletedCount = await Product.countDocuments({ isHidden: true });

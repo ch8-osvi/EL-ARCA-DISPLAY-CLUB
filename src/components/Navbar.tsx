@@ -92,10 +92,22 @@ export default function Navbar({
           {/* Admin Navigation / Actions */}
           {isAdmin ? (
             <div className="flex items-center gap-1.5 sm:gap-2">
+              <Link
+                href="/admin/pos"
+                className="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl gold-gradient-bg text-black font-extrabold text-xs shadow-gold-glow flex items-center gap-1.5 hover:scale-105 transition-all"
+              >
+                <span>POS Ventas</span>
+              </Link>
+              <Link
+                href="/admin/ocultos"
+                className="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-[#10131E] hover:bg-white/10 text-gray-300 hover:text-white border border-white/10 text-xs font-semibold transition-all"
+              >
+                <span>Ocultos</span>
+              </Link>
               <button
                 id="btn-logout"
                 onClick={onLogout}
-                className="px-3 py-1.5 sm:py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-semibold transition-all duration-200"
+                className="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-semibold transition-all duration-200"
               >
                 Salir
               </button>

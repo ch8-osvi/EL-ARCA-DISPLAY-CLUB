@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import Link from 'next/link';
 import Navbar from '../../components/Navbar';
 import AdminProductCard from '../../components/AdminProductCard';
 import seedProducts from '../../data/products_seed.json';
@@ -19,6 +20,8 @@ import {
   FileSpreadsheet,
   Upload,
   Download,
+  ShoppingCart,
+  Boxes,
 } from 'lucide-react';
 
 const getCanonicalBrand = (brand: string): string => {
@@ -642,9 +645,29 @@ export default function AdminPage() {
           </div>
         </section>
 
-        {/* Stats Metrics */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="glass-card rounded-2xl p-5 border border-white/10">
+        {/* Stats Metrics & POS Shortcuts */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Link
+            href="/admin/pos"
+            className="glass-card rounded-2xl p-5 border border-[#D4AF37]/40 hover:border-[#D4AF37] hover:bg-[#D4AF37]/10 transition-all duration-200 cursor-pointer group flex flex-col justify-between"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-[#E5C158] uppercase">
+                Punto de Venta POS
+              </span>
+              <ShoppingCart className="w-5 h-5 text-[#D4AF37] group-hover:scale-110 transition-transform" />
+            </div>
+            <div className="mt-2">
+              <span className="text-xl font-extrabold text-white block">
+                Facturación & Caja
+              </span>
+              <span className="text-[11px] text-[#E5C158] font-semibold mt-0.5 block">
+                Abrir Terminal de Ventas →
+              </span>
+            </div>
+          </Link>
+
+          <div className="glass-card rounded-2xl p-5 border border-white/10 flex flex-col justify-between">
             <span className="text-xs font-semibold text-gray-400 block uppercase">
               Total Repuestos Activos
             </span>
@@ -653,29 +676,42 @@ export default function AdminPage() {
             </span>
           </div>
 
-          <div className="glass-card rounded-2xl p-5 border border-white/10">
-            <span className="text-xs font-semibold text-gray-400 block uppercase">
-              Semilla Inicial Excel
-            </span>
-            <span className="text-3xl font-extrabold text-[#D4AF37] mt-1 block">
-              163
-            </span>
-          </div>
+          <Link
+            href="/admin/pos/inventario"
+            className="glass-card rounded-2xl p-5 border border-white/10 hover:border-white/20 hover:bg-white/5 transition-all flex flex-col justify-between group"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-gray-400 block uppercase">
+                Control de Inventario
+              </span>
+              <Boxes className="w-4 h-4 text-gray-400 group-hover:text-white" />
+            </div>
+            <div className="mt-2">
+              <span className="text-2xl font-extrabold text-[#D4AF37] block">
+                Stock en Vivo
+              </span>
+              <span className="text-[11px] text-gray-400 group-hover:text-white transition-colors block">
+                Ajustar / Ver Entradas →
+              </span>
+            </div>
+          </Link>
 
-          <a
+          <Link
             href="/admin/ocultos"
-            className="glass-card rounded-2xl p-5 border border-rose-500/20 hover:border-rose-500/40 hover:bg-rose-500/5 transition-all duration-200 cursor-pointer group"
+            className="glass-card rounded-2xl p-5 border border-rose-500/20 hover:border-rose-500/40 hover:bg-rose-500/5 transition-all duration-200 cursor-pointer group flex flex-col justify-between"
           >
             <span className="text-xs font-semibold text-gray-400 block uppercase">
-              Productos Ocultos / Eliminados
+              Productos Ocultos
             </span>
-            <span className="text-3xl font-extrabold text-rose-400 mt-1 block">
-              {deletedCount}
-            </span>
-            <span className="text-[10px] text-rose-400/60 group-hover:text-rose-400 transition-colors mt-1 block font-semibold">
-              Ver todos →
-            </span>
-          </a>
+            <div className="mt-1">
+              <span className="text-3xl font-extrabold text-rose-400 block">
+                {deletedCount}
+              </span>
+              <span className="text-[10px] text-rose-400/60 group-hover:text-rose-400 transition-colors mt-0.5 block font-semibold">
+                Ver todos / Restaurar →
+              </span>
+            </div>
+          </Link>
         </div>
 
         {/* Search filter for Admin */}

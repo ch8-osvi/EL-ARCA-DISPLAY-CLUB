@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, EyeOff, RotateCcw, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, EyeOff, RotateCcw, ShieldAlert, X, Plus, CheckCircle2 } from 'lucide-react';
 
 interface HiddenProduct {
   _id?: string;
@@ -20,6 +20,14 @@ export default function OcultosPage() {
   const [loading, setLoading] = useState(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // Restore Modal State
+  const [restoreModal, setRestoreModal] = useState<{
+    open: boolean;
+    product: HiddenProduct | null;
+  }>({ open: false, product: null });
+  const [restoreStock, setRestoreStock] = useState('1');
+  const [restoreLoading, setRestoreLoading] = useState(false);
 
   const triggerToast = (msg: string) => {
     setToastMessage(msg);
@@ -52,19 +60,44 @@ export default function OcultosPage() {
     if (isAuthenticated) fetchHidden();
   }, [isAuthenticated]);
 
-  const handleRestore = async (id: string) => {
+  const handleOpenRestore = (product: HiddenProduct) => {
+    setRestoreModal({ open: true, product });
+    setRestoreStock(product.stock > 0 ? product.stock.toString() : '1');
+  };
+
+  const handleConfirmRestore = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!restoreModal.product) return;
+
+    const stockNum = parseInt(restoreStock, 10);
+    if (!stockNum || isNaN(stockNum) || stockNum < 1) {
+      triggerToast('Por favor ingresa un stock válido mayor a 0');
+      return;
+    }
+
+    setRestoreLoading(true);
     try {
       const res = await fetch('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'unhide', id }),
+        body: JSON.stringify({
+          action: 'unhide',
+          id: restoreModal.product.id,
+          stock: stockNum,
+        }),
       });
+
       if (res.ok) {
-        setHiddenProducts((prev) => prev.filter((p) => p.id !== id));
-        triggerToast('Producto restaurado al catálogo activo');
+        setHiddenProducts((prev) => prev.filter((p) => p.id !== restoreModal.product?.id));
+        triggerToast(`Producto reactivado con ${stockNum} uds en catálogo`);
+        setRestoreModal({ open: false, product: null });
+      } else {
+        triggerToast('Error al restaurar producto');
       }
     } catch {
-      triggerToast('Error al restaurar el producto');
+      triggerToast('Error de conexión');
+    } finally {
+      setRestoreLoading(false);
     }
   };
 
@@ -91,7 +124,69 @@ export default function OcultosPage() {
       {/* Toast */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 glass-panel border border-[#D4AF37]/40 bg-[#121522] px-5 py-3.5 rounded-2xl shadow-gold-glow flex items-center gap-3 animate-bounce">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
           <span className="text-xs font-bold text-white">{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Restore Stock Selection Modal */}
+      {restoreModal.open && restoreModal.product && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md glass-panel rounded-3xl p-6 sm:p-8 border border-emerald-500/40 shadow-2xl space-y-5 relative">
+            <button
+              onClick={() => setRestoreModal({ open: false, product: null })}
+              className="absolute top-5 right-5 text-gray-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="space-y-1">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+                <RotateCcw className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-bold text-white">Reactivar Producto en Catálogo</h3>
+              <p className="text-xs text-gray-400">
+                <strong className="text-[#E5C158]">{restoreModal.product.marca} {restoreModal.product.modelo}</strong> ({restoreModal.product.calidad})
+              </p>
+            </div>
+
+            <form onSubmit={handleConfirmRestore} className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">
+                  Cantidad de Stock para Reactivar <span className="text-emerald-400">*</span>
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={restoreStock}
+                  onChange={(e) => setRestoreStock(e.target.value)}
+                  className="w-full px-4 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-sm focus:border-emerald-400 focus:outline-none"
+                  required
+                  autoFocus
+                />
+                <span className="text-[10px] text-gray-400 mt-1 block">
+                  El producto volverá a ser visible para los clientes con este inventario inicial.
+                </span>
+              </div>
+
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setRestoreModal({ open: false, product: null })}
+                  className="flex-1 py-2.5 rounded-xl bg-gray-800 text-gray-300 text-xs font-bold hover:bg-gray-700"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={restoreLoading}
+                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold shadow-lg flex items-center justify-center gap-2"
+                >
+                  {restoreLoading ? 'Restaurando...' : 'Reactivar en Catálogo'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
@@ -122,8 +217,8 @@ export default function OcultosPage() {
               Productos Ocultos / Eliminados
             </h1>
             <p className="text-sm text-gray-400 max-w-xl">
-              Estos productos fueron eliminados del catálogo público usando el Borrado Lógico. 
-              Puedes restaurarlos al catálogo activo o eliminarlos de forma permanente.
+              Estos productos fueron ocultados automáticamente por stock 0 o borrado manual. 
+              Puedes reactivarlos asignando la cantidad de stock inicial.
             </p>
           </div>
         </section>
@@ -179,7 +274,7 @@ export default function OcultosPage() {
                 {/* Actions */}
                 <div className="flex gap-2">
                   <button
-                    onClick={() => handleRestore(product.id)}
+                    onClick={() => handleOpenRestore(product)}
                     className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition-all hover:scale-105"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />

@@ -33,30 +33,41 @@ export async function GET() {
     today.setHours(0, 0, 0, 0);
     const todaySales = sales.filter((s) => new Date(s.createdAt) >= today);
 
-    const todayTotalUSD   = todaySales.reduce((acc, s) => acc + s.totalUSD, 0);
-    const todayTotalCUP   = todaySales.reduce((acc, s) => acc + s.totalCUP, 0);
-    const todayRefundsUSD = todaySales.reduce((acc, s) => acc + (s.totalRefundedUSD || 0), 0);
-    const todayRefundsCUP = todaySales.reduce((acc, s) => acc + (s.totalRefundedCUP || 0), 0);
-    const todayNetUSD     = parseFloat((todayTotalUSD - todayRefundsUSD).toFixed(2));
-    const todayNetCUP     = parseFloat((todayTotalCUP - todayRefundsCUP).toFixed(2));
+    // USD CASH DRAWER (Transactions paid in USD)
+    const todayUSDSales     = todaySales.filter((s) => (s.currency || 'USD') === 'USD');
+    const todayPaidUSDSales = todayUSDSales.filter((s) => s.paid);
+    const todayGrossUSD     = todayPaidUSDSales.reduce((acc, s) => acc + s.totalUSD, 0);
+    const todayRefundsUSD   = todayUSDSales.reduce((acc, s) => acc + (s.totalRefundedUSD || 0), 0);
+    const todayNetUSD       = parseFloat((todayGrossUSD - todayRefundsUSD).toFixed(2));
+    const todayPendingUSD   = todayUSDSales.filter((s) => !s.paid).reduce((acc, s) => acc + s.totalUSD, 0);
 
-    const todayPaidSales  = todaySales.filter((s) => s.paid);
-    const todayPaidUSD    = todayPaidSales.reduce((acc, s) => acc + s.totalUSD, 0);
-    const todayPaidCUP    = todayPaidSales.reduce((acc, s) => acc + s.totalCUP, 0);
+    // CUP CASH DRAWER (Transactions paid in CUP)
+    const todayCUPSales     = todaySales.filter((s) => s.currency === 'CUP');
+    const todayPaidCUPSales = todayCUPSales.filter((s) => s.paid);
+    const todayGrossCUP     = todayPaidCUPSales.reduce((acc, s) => acc + s.totalCUP, 0);
+    const todayRefundsCUP   = todayCUPSales.reduce((acc, s) => acc + (s.totalRefundedCUP || 0), 0);
+    const todayNetCUP       = parseFloat((todayGrossCUP - todayRefundsCUP).toFixed(2));
+    const todayPendingCUP   = todayCUPSales.filter((s) => !s.paid).reduce((acc, s) => acc + s.totalCUP, 0);
 
     return NextResponse.json({
       success: true,
       sales,
       daily: {
         count:           todaySales.length,
-        todayTotalUSD,
-        todayTotalCUP,
+        usdCount:        todayUSDSales.length,
+        cupCount:        todayCUPSales.length,
+
+        // USD Drawer
+        todayGrossUSD,
         todayRefundsUSD,
-        todayRefundsCUP,
         todayNetUSD,
+        todayPendingUSD,
+
+        // CUP Drawer
+        todayGrossCUP,
+        todayRefundsCUP,
         todayNetCUP,
-        todayPaidUSD,
-        todayPaidCUP,
+        todayPendingCUP,
       },
     });
   } catch (err) {

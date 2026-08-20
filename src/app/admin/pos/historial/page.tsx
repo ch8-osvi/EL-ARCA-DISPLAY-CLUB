@@ -692,42 +692,69 @@ export default function SalesHistoryPage() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {/* Daily Cash & Refund Summary Banner */}
         <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="glass-card rounded-2xl p-5 border border-emerald-500/30 relative overflow-hidden">
+          {/* USD Cash Drawer */}
+          <div className="glass-card rounded-2xl p-5 border border-emerald-500/40 relative overflow-hidden bg-emerald-950/10">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                Neto en Caja Hoy (USD)
+                Caja USD Hoy (Efectivo)
               </span>
               <DollarSign className="w-4 h-4 text-emerald-400" />
             </div>
             <div className="text-2xl font-extrabold text-white mt-2">
-              ${(daily.todayNetUSD !== undefined ? daily.todayNetUSD : daily.todayTotalUSD).toFixed(2)}
+              ${(daily.todayNetUSD !== undefined ? daily.todayNetUSD : 0).toFixed(2)} USD
             </div>
-            <div className="text-[11px] text-gray-400 mt-1 flex justify-between">
-              <span>Ventas: ${daily.todayTotalUSD.toFixed(2)}</span>
+            <div className="text-[11px] text-gray-400 mt-1 space-y-0.5">
+              <div className="flex justify-between">
+                <span>Ventas cobradas:</span>
+                <strong className="text-emerald-300">${(daily.todayGrossUSD || 0).toFixed(2)}</strong>
+              </div>
               {daily.todayRefundsUSD > 0 && (
-                <span className="text-rose-400 font-semibold">Dev: -${daily.todayRefundsUSD.toFixed(2)}</span>
+                <div className="flex justify-between text-rose-400 font-semibold">
+                  <span>Devoluciones:</span>
+                  <span>-${daily.todayRefundsUSD.toFixed(2)}</span>
+                </div>
               )}
+              <div className="flex justify-between text-gray-500 text-[10px] pt-1 border-t border-white/5">
+                <span>{daily.usdCount || 0} órdenes en USD</span>
+                {daily.todayPendingUSD > 0 && (
+                  <span className="text-amber-400 font-semibold">Pendiente: ${daily.todayPendingUSD.toFixed(2)}</span>
+                )}
+              </div>
             </div>
           </div>
 
-          <div className="glass-card rounded-2xl p-5 border border-[#D4AF37]/30 relative overflow-hidden">
+          {/* CUP Cash Drawer */}
+          <div className="glass-card rounded-2xl p-5 border border-[#D4AF37]/40 relative overflow-hidden bg-[#121626]">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-[#E5C158]">
-                Neto en Caja Hoy (CUP)
+                Caja CUP Hoy (Efectivo)
               </span>
               <Banknote className="w-4 h-4 text-[#D4AF37]" />
             </div>
             <div className="text-2xl font-extrabold text-white mt-2">
-              {(daily.todayNetCUP !== undefined ? daily.todayNetCUP : daily.todayTotalCUP).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} CUP
+              {(daily.todayNetCUP !== undefined ? daily.todayNetCUP : 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} CUP
             </div>
-            <div className="text-[11px] text-gray-400 mt-1 flex justify-between">
-              <span>Ventas: {daily.todayTotalCUP.toLocaleString()} CUP</span>
+            <div className="text-[11px] text-gray-400 mt-1 space-y-0.5">
+              <div className="flex justify-between">
+                <span>Ventas cobradas:</span>
+                <strong className="text-[#F3E0A9]">{(daily.todayGrossCUP || 0).toLocaleString()} CUP</strong>
+              </div>
               {daily.todayRefundsCUP > 0 && (
-                <span className="text-rose-400 font-semibold">Dev: -{daily.todayRefundsCUP.toLocaleString()} CUP</span>
+                <div className="flex justify-between text-rose-400 font-semibold">
+                  <span>Devoluciones:</span>
+                  <span>-{(daily.todayRefundsCUP || 0).toLocaleString()} CUP</span>
+                </div>
               )}
+              <div className="flex justify-between text-gray-500 text-[10px] pt-1 border-t border-white/5">
+                <span>{daily.cupCount || 0} órdenes en CUP</span>
+                {daily.todayPendingCUP > 0 && (
+                  <span className="text-amber-400 font-semibold">Pendiente: {(daily.todayPendingCUP || 0).toLocaleString()} CUP</span>
+                )}
+              </div>
             </div>
           </div>
 
+          {/* Orders Count Today */}
           <div className="glass-card rounded-2xl p-5 border border-blue-500/30">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-blue-400">
@@ -735,10 +762,15 @@ export default function SalesHistoryPage() {
               </span>
               <Calendar className="w-4 h-4 text-blue-400" />
             </div>
-            <div className="text-2xl font-extrabold text-white mt-2">{daily.count}</div>
-            <span className="text-[11px] text-gray-400">Ventas registradas hoy</span>
+            <div className="text-2xl font-extrabold text-white mt-2">{daily.count || 0}</div>
+            <div className="text-[11px] text-gray-400 mt-1 flex justify-between">
+              <span>{daily.usdCount || 0} en USD</span>
+              <span>•</span>
+              <span>{daily.cupCount || 0} en CUP</span>
+            </div>
           </div>
 
+          {/* Historic Total */}
           <div className="glass-card rounded-2xl p-5 border border-white/10">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-gray-400">
@@ -860,6 +892,17 @@ export default function SalesHistoryPage() {
                           <span className="font-extrabold text-sm text-white tracking-wide">
                             Orden #{sale.orderNumber}
                           </span>
+                          {/* Currency Badge */}
+                          <span
+                            className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
+                              (sale.currency || 'USD') === 'USD'
+                                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                : 'bg-[#E5C158]/15 text-[#E5C158] border-[#D4AF37]/30'
+                            }`}
+                          >
+                            {(sale.currency || 'USD') === 'USD' ? '💵 Pago USD' : '🇨🇺 Pago CUP'}
+                          </span>
+
                           <button
                             onClick={() => handleTogglePaid(sale._id)}
                             className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full border transition-all cursor-pointer flex items-center gap-1 hover:scale-105 active:scale-95 ${
@@ -901,16 +944,34 @@ export default function SalesHistoryPage() {
                     {/* Right summary and actions */}
                     <div className="flex items-center justify-between sm:justify-end gap-3 border-t sm:border-t-0 pt-2 sm:pt-0 border-white/5 flex-wrap">
                       <div className="text-left sm:text-right">
-                        <span className="text-base font-extrabold text-[#F3E0A9] block">
-                          ${sale.totalUSD.toFixed(2)} USD
-                        </span>
-                        <span className="text-[11px] font-semibold text-emerald-400 block">
-                          {sale.totalCUP.toLocaleString()} CUP (Tasa {sale.exchangeRate})
-                        </span>
-                        {(sale.totalRefundedUSD || 0) > 0 && (
-                          <span className="text-[10px] font-bold text-rose-400 block">
-                            Reembolsado: -${sale.totalRefundedUSD?.toFixed(2)} USD
-                          </span>
+                        {(sale.currency || 'USD') === 'USD' ? (
+                          <>
+                            <span className="text-base font-extrabold text-[#F3E0A9] block">
+                              ${sale.totalUSD.toFixed(2)} USD
+                            </span>
+                            <span className="text-[11px] font-semibold text-gray-400 block">
+                              ≈ {sale.totalCUP.toLocaleString()} CUP (Tasa {sale.exchangeRate})
+                            </span>
+                            {(sale.totalRefundedUSD || 0) > 0 && (
+                              <span className="text-[10px] font-bold text-rose-400 block">
+                                Reembolsado: -${sale.totalRefundedUSD?.toFixed(2)} USD
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-base font-extrabold text-[#E5C158] block">
+                              {sale.totalCUP.toLocaleString()} CUP
+                            </span>
+                            <span className="text-[11px] font-semibold text-gray-400 block">
+                              ≈ ${sale.totalUSD.toFixed(2)} USD (Tasa {sale.exchangeRate})
+                            </span>
+                            {(sale.totalRefundedCUP || 0) > 0 && (
+                              <span className="text-[10px] font-bold text-rose-400 block">
+                                Reembolsado: -{sale.totalRefundedCUP?.toLocaleString()} CUP
+                              </span>
+                            )}
+                          </>
                         )}
                       </div>
 

@@ -546,7 +546,7 @@ export default function PosPage() {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 h-[520px] sm:h-[540px] lg:h-[560px] max-h-[580px] overflow-y-auto pr-2 pb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 content-start auto-rows-max h-[520px] sm:h-[540px] lg:h-[560px] max-h-[580px] overflow-y-auto pr-2 pb-4">
               {filteredProducts.map((prod) => {
                 const inCart = cart.find((c) => c.productId === prod.id);
                 const availableAfterCart = prod.stock - (inCart ? inCart.qty : 0);
@@ -554,7 +554,7 @@ export default function PosPage() {
                 return (
                   <div
                     key={prod.id}
-                    className={`glass-card rounded-2xl p-4 border transition-all duration-200 flex flex-col justify-between ${
+                    className={`glass-card rounded-2xl p-4 border transition-all duration-200 flex flex-col justify-between min-h-[125px] ${
                       inCart
                         ? 'border-[#D4AF37]/50 bg-[#121626]'
                         : 'border-white/10 hover:border-white/20'

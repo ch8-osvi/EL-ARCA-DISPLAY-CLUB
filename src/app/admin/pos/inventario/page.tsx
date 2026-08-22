@@ -227,18 +227,6 @@ export default function InventoryPage() {
   const totalMermaUnits = useMemo(() => {
     return mermas.reduce((acc, m) => acc + m.qty, 0);
   }, [mermas]);
-      else if (b.includes('MOTOROLA') || b.includes('MOTO')) set.add('MOTOROLA');
-      else if (b.includes('HONOR')) set.add('HONOR');
-      else if (b.includes('HUAWEI')) set.add('HUAWEI');
-      else if (b.includes('REALME')) set.add('REALME');
-      else if (b.includes('OPPO')) set.add('OPPO');
-      else if (b.includes('ZTE')) set.add('ZTE');
-      else if (b.includes('ONEPLUS')) set.add('ONEPLUS');
-      else if (b.includes('ALCATEL') || b.includes('BLU') || b.includes('TCL') || b.includes('VIVO'))
-        set.add('OTROS');
-    });
-    return ['ALL', ...Array.from(set)];
-  }, [products]);
 
   if (!isAuthenticated) {
     return (

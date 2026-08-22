@@ -546,7 +546,7 @@ export default function PosPage() {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 h-[720px] sm:h-[760px] lg:h-[820px] max-h-[860px] overflow-y-auto pr-2 pb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 h-[520px] sm:h-[540px] lg:h-[560px] max-h-[580px] overflow-y-auto pr-2 pb-4">
               {filteredProducts.map((prod) => {
                 const inCart = cart.find((c) => c.productId === prod.id);
                 const availableAfterCart = prod.stock - (inCart ? inCart.qty : 0);

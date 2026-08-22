@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import { Outfit } from 'next/font/google';
+import { Analytics } from '@vercel/analytics/react';
+import VisitorTracker from '@/components/VisitorTracker';
 import './globals.css';
 
 const outfit = Outfit({
@@ -33,8 +35,11 @@ export default function RootLayout({
   return (
     <html lang="es" className={`${outfit.variable} dark`}>
       <body className="bg-[#090A0F] text-white antialiased selection:bg-[#D4AF37] selection:text-black">
+        <VisitorTracker />
         {children}
+        <Analytics />
       </body>
     </html>
   );
 }
+

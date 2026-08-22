@@ -487,9 +487,9 @@ export default function PosPage() {
       {/* Main 2-Column POS Layout */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column: Product Selection & Catalog (7 Cols) */}
-        <section className="lg:col-span-7 space-y-4">
+        <section className="lg:col-span-7 flex flex-col space-y-4">
           {/* Search & Brand Filter */}
-          <div className="glass-panel rounded-2xl p-4 border border-white/10 space-y-3">
+          <div className="glass-panel rounded-2xl p-4 border border-white/10 space-y-3 shrink-0">
             <div className="relative">
               <Search className="w-4 h-4 text-[#D4AF37] absolute left-3.5 top-3.5" />
               <input
@@ -546,7 +546,7 @@ export default function PosPage() {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[calc(100vh-280px)] overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[calc(100vh-170px)] lg:max-h-[calc(100vh-175px)] xl:max-h-[820px] overflow-y-auto pr-1.5 pb-10">
               {filteredProducts.map((prod) => {
                 const inCart = cart.find((c) => c.productId === prod.id);
                 const availableAfterCart = prod.stock - (inCart ? inCart.qty : 0);

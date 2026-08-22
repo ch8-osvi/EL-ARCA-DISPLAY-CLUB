@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectToDatabase } from '@/lib/mongodb';
+import connectToDatabase from '@/lib/mongoose';
 import { Visit } from '@/lib/models/Visit';
 
 export const dynamic = 'force-dynamic';

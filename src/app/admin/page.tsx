@@ -393,136 +393,131 @@ export default function AdminPage() {
         if (!sheetName) sheetName = wb.SheetNames[0];
 
         const sheet = wb.Sheets[sheetName];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const rawData: any[] = XLSXStyle.utils.sheet_to_json(sheet, { header: 1 });
 
-        if (!rawData || rawData.length === 0) {
+        // --- Strategy: read with header:1 (raw arrays) so we see EVERY row including brand headers ---
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const rawRows: any[][] = XLSXStyle.utils.sheet_to_json(sheet, { header: 1, defval: null });
+
+        if (!rawRows || rawRows.length === 0) {
           triggerToast('El archivo Excel está vacío o no contiene hojas válidas.', 5000);
           setIsProcessingExcel(false);
           return;
         }
 
+        // Helper: safe string clean (collapses whitespace/newlines)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const cleanStr = (val: any): string =>
+          val != null ? String(val).replace(/\n/g, ' ').replace(/\s+/g, ' ').trim() : '';
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const toNum = (val: any): number => {
+          if (typeof val === 'number') return val;
+          if (typeof val === 'string') return parseFloat(val.replace(/[^0-9.]/g, '')) || 0;
+          return 0;
+        };
+
+        // -----------------------------------------------------------------
+        // Step 1: Find which row is the header row (has MARCA/MODELO/PRECIO)
+        // and resolve column indices by NAME so we're independent of position.
+        // -----------------------------------------------------------------
+        let colMarca = 0;
+        let colModelo = 1;
+        let colCalidad = 2;
+        let colPrecio = 3;
+        let colStock = 6; // Column G default (UNIDADES)
+        let headerRowIdx = -1;
+
+        for (let r = 0; r < Math.min(10, rawRows.length); r++) {
+          const row = rawRows[r];
+          if (!row || !Array.isArray(row)) continue;
+          let foundHeader = false;
+          row.forEach((cell, idx) => {
+            const s = cleanStr(cell).toUpperCase();
+            if (s === 'MARCA') { colMarca = idx; foundHeader = true; }
+            else if (s === 'MODELO') { colModelo = idx; foundHeader = true; }
+            else if (s === 'CALIDAD') { colCalidad = idx; }
+            // "PRECIO \nUSD" or "PRECIO USD" or just "PRECIO"
+            else if (s.startsWith('PRECIO') || (s.includes('USD') && !s.includes('UNIDAD'))) { colPrecio = idx; }
+            // "UNIDADES" or "STOCK" or "CANTIDAD"
+            else if (s.includes('UNIDAD') || s.includes('STOCK') || s.includes('CANT')) { colStock = idx; }
+          });
+          if (foundHeader) { headerRowIdx = r; break; }
+        }
+
+        // -----------------------------------------------------------------
+        // Step 2: Iterate ALL raw rows, skip the header row, parse products.
+        // Brand section headers (e.g. row with MODELO="SAMSUNG" and no price)
+        // are used to fill in the currentBrand for rows that lack MARCA.
+        // -----------------------------------------------------------------
         const parsedProducts: Product[] = [];
         let currentBrand = 'VARIOS';
         let skippedNoPriceCount = 0;
         let zeroStockCount = 0;
         let withStockCount = 0;
 
-        // Helper text cleanup
-        const cleanStr = (val: any) =>
-          val ? String(val).replace(/\n/g, ' ').trim() : '';
+        // Canonical brand names that can appear as section headers
+        const BRAND_KEYWORDS = [
+          'SAMSUNG', 'IPHONE', 'XIAOMI', 'REDMI', 'POCO',
+          'MOTOROLA', 'HUAWEI', 'HONOR', 'INFINIX', 'TECNO', 'ITEL',
+          'OPPO', 'REALME', 'NARZO', 'RENO', 'ZTE', 'NUBIA',
+          'TCL', 'ALCATEL', 'LG', 'VIVO', 'BLACKVIEW', 'NOKIA',
+        ];
 
-        // Detect column positions dynamically from header row if present
-        let colMarca = 0;
-        let colModelo = 1;
-        let colCalidad = 2;
-        let colPrecio = 3;
-        let colStock = 6; // Column G default
+        for (let i = 0; i < rawRows.length; i++) {
+          if (i === headerRowIdx) continue; // skip header row itself
 
-        for (let r = 0; r < Math.min(5, rawData.length); r++) {
-          const row = rawData[r];
-          if (!row || !Array.isArray(row)) continue;
-          row.forEach((cell: any, idx: number) => {
-            const str = cleanStr(cell).toUpperCase();
-            if (str.includes('MARCA')) colMarca = idx;
-            else if (str.includes('MODELO')) colModelo = idx;
-            else if (str.includes('CALIDAD')) colCalidad = idx;
-            else if (str.includes('PRECIO') || str.includes('USD') || str.includes('$')) colPrecio = idx;
-            else if (
-              str.includes('UNIDAD') ||
-              str.includes('STOCK') ||
-              str.includes('CANT') ||
-              str.includes('UDS')
-            )
-              colStock = idx;
-          });
-        }
-
-        for (let i = 0; i < rawData.length; i++) {
-          const row = rawData[i];
+          const row = rawRows[i];
           if (!row || row.length === 0) continue;
 
-          const rawMarca = cleanStr(row[colMarca]);
-          const rawModelo = cleanStr(row[colModelo]);
+          const rawMarca   = cleanStr(row[colMarca]);
+          const rawModelo  = cleanStr(row[colModelo]);
           const rawCalidad = cleanStr(row[colCalidad]);
-          const rawPrecio = row[colPrecio];
-          const rawStock =
-            row[colStock] !== undefined ? row[colStock] : (row[6] !== undefined ? row[6] : undefined);
+          const rawPrecio  = row[colPrecio];
+          // Stock can be null when defval:null — that means blank cell
+          const rawStock   = row[colStock];
 
-          // If row is a brand section header (e.g. SAMSUNG, IPHONE)
-          if (rawMarca && !rawModelo && (rawPrecio === undefined || rawPrecio === null || rawPrecio === '')) {
-            currentBrand = rawMarca.toUpperCase();
-            continue;
-          }
+          // Completely empty row → skip
+          if (!rawMarca && !rawModelo) continue;
 
-          if (!rawModelo) continue;
-          const upperModelo = rawModelo.toUpperCase();
-          if (upperModelo === 'MODELO' || upperModelo.includes('MODELO / REPUESTO')) continue;
+          // Detect brand-section header rows:
+          // These have no price AND the modelo (or marca) contains only a brand name.
+          const noPriceCell = (rawPrecio === null || rawPrecio === undefined || rawPrecio === '');
+          const upperMod = rawModelo.toUpperCase();
+          const upperMarca = rawMarca.toUpperCase();
 
-          // Check if row is a section header like "SAMSUNG" in modelo column with no price
-          const canonicalBrands = [
-            'SAMSUNG',
-            'IPHONE',
-            'XIAOMI',
-            'MOTOROLA',
-            'HUAWEI',
-            'HONOR',
-            'INFINIX',
-            'TECNO',
-            'OPPO',
-            'REALME',
-            'ZTE',
-            'TCL',
-            'LG',
-            'VIVO',
-            'BLACKVIEW',
-            'NOKIA',
-            'OTROS',
-          ];
-          if (
-            canonicalBrands.some((b) => upperModelo === b || upperModelo.includes(b)) &&
-            (rawPrecio === undefined || rawPrecio === null || rawPrecio === '')
-          ) {
-            currentBrand = upperModelo;
-            continue;
-          }
+          // Row is a brand header if: no price AND (modelo is a known brand keyword, or marca is set but modelo is empty)
+          if (noPriceCell) {
+            const isBrandHeader =
+              (!rawModelo && rawMarca) ||
+              BRAND_KEYWORDS.some(b => upperMod === b || (upperMod.length < 40 && upperMod.includes(b) && !rawCalidad));
 
-          // Parse Price
-          let priceNum = 0;
-          if (typeof rawPrecio === 'number') {
-            priceNum = rawPrecio;
-          } else if (typeof rawPrecio === 'string') {
-            priceNum = parseFloat(rawPrecio.replace(/[^0-9.]/g, '')) || 0;
-          }
-
-          // If price is missing or 0 -> skip and track!
-          if (priceNum <= 0) {
-            skippedNoPriceCount++;
-            continue;
-          }
-
-          // Parse Stock from Column G (or detected stock column)
-          let stockNum = 0;
-          let hasExplicitStock = false;
-
-          if (rawStock !== undefined && rawStock !== null && String(rawStock).trim() !== '') {
-            if (typeof rawStock === 'number') {
-              stockNum = Math.max(0, Math.floor(rawStock));
-              hasExplicitStock = true;
-            } else if (typeof rawStock === 'string') {
-              const cleaned = String(rawStock).replace(/[^0-9]/g, '');
-              if (cleaned !== '') {
-                stockNum = Math.max(0, parseInt(cleaned, 10));
-                hasExplicitStock = true;
-              }
+            if (isBrandHeader) {
+              currentBrand = (rawMarca || rawModelo).toUpperCase();
+              continue;
             }
           }
 
-          if (!hasExplicitStock || stockNum === 0) {
-            stockNum = 0;
-            zeroStockCount++;
-          } else {
+          // Skip the repeated header row (MODELO/MARCA text as values)
+          if (upperMod === 'MODELO' || upperMarca === 'MARCA') continue;
+
+          // ------ PRICE ------
+          const priceNum = toNum(rawPrecio);
+          if (priceNum <= 0) {
+            if (rawModelo) skippedNoPriceCount++; // only count real product rows
+            continue;
+          }
+
+          // ------ STOCK ------
+          let stockNum = 0;
+          if (rawStock !== null && rawStock !== undefined && String(rawStock).trim() !== '') {
+            const s = toNum(rawStock);
+            stockNum = Math.max(0, Math.floor(s));
+          }
+
+          if (stockNum > 0) {
             withStockCount++;
+          } else {
+            zeroStockCount++;
           }
 
           const finalBrand = (rawMarca || currentBrand || 'VARIOS').toUpperCase();

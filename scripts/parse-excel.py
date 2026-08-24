@@ -71,4 +71,4 @@ os.makedirs('src/data', exist_ok=True)
 with open('src/data/products_seed.json', 'w', encoding='utf-8') as f:
     json.dump(products, f, ensure_ascii=False, indent=2)
 
-print(f"✓ Éxito: {len(products)} repuestos actualizados en src/data/products_seed.json desde {excel_path}")
+print(f"[OK] Exito: {len(products)} repuestos actualizados en src/data/products_seed.json desde {excel_path}")

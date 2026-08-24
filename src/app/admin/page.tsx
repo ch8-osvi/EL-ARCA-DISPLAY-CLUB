@@ -16,6 +16,7 @@ import {
   PlusCircle,
   Search,
   CheckCircle2,
+  AlertTriangle,
   X,
   FileSpreadsheet,
   Upload,
@@ -49,11 +50,13 @@ export default function AdminPage() {
   const [newCalidadSelect, setNewCalidadSelect] = useState('ORIGINAL C/M');
   const [newCalidadCustom, setNewCalidadCustom] = useState('');
   const [newPrecio, setNewPrecio] = useState('');
+  const [newStock, setNewStock] = useState('1');
 
   // Excel Upload modal state
   const [showExcelModal, setShowExcelModal] = useState(false);
   const [isProcessingExcel, setIsProcessingExcel] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Check login session
   useEffect(() => {
@@ -123,12 +126,13 @@ export default function AdminPage() {
     sessionStorage.removeItem('el_arca_admin_auth');
   };
 
-  // Trigger Toast Notification
-  const triggerToast = (msg: string) => {
+  // Trigger Toast Notification with custom duration
+  const triggerToast = (msg: string, durationMs = 5000) => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
     setToastMessage(msg);
-    setTimeout(() => {
+    toastTimeoutRef.current = setTimeout(() => {
       setToastMessage(null);
-    }, 4500);
+    }, durationMs);
   };
 
   // Delete product globally & locally
@@ -212,7 +216,7 @@ export default function AdminPage() {
       modelo: modeloTrimmed,
       calidad: finalCalidad,
       precio: parseFloat(newPrecio) || 0,
-      stock: 1,
+      stock: Math.max(0, parseInt(newStock, 10) || 0),
     };
 
     const updated = [newProd, ...products];
@@ -235,6 +239,7 @@ export default function AdminPage() {
     setNewCalidadSelect('ORIGINAL C/M');
     setNewCalidadCustom('');
     setNewPrecio('');
+    setNewStock('1');
     setShowAddModal(false);
   };
 
@@ -342,7 +347,7 @@ export default function AdminPage() {
         ws[`D${row + 1}`] = { v: p.precio, t: 'n', s: PRICE_DATA };
         ws[`E${row + 1}`] = { v: '', t: 's', s: DATA };
         ws[`F${row + 1}`] = { v: '', t: 's', s: DATA };
-        ws[`G${row + 1}`] = { v: p.stock, t: 'n', s: DATA };
+        ws[`G${row + 1}`] = { v: Number(p.stock) || 0, t: 'n', s: DATA };
         row++;
       });
     });
@@ -392,28 +397,97 @@ export default function AdminPage() {
         const rawData: any[] = XLSXStyle.utils.sheet_to_json(sheet, { header: 1 });
 
         if (!rawData || rawData.length === 0) {
-          alert('El archivo Excel está vacío o no contiene hojas válidas.');
+          triggerToast('El archivo Excel está vacío o no contiene hojas válidas.', 5000);
           setIsProcessingExcel(false);
           return;
         }
 
         const parsedProducts: Product[] = [];
+        let currentBrand = 'VARIOS';
+        let skippedNoPriceCount = 0;
+        let zeroStockCount = 0;
+        let withStockCount = 0;
 
         // Helper text cleanup
         const cleanStr = (val: any) =>
           val ? String(val).replace(/\n/g, ' ').trim() : '';
 
+        // Detect column positions dynamically from header row if present
+        let colMarca = 0;
+        let colModelo = 1;
+        let colCalidad = 2;
+        let colPrecio = 3;
+        let colStock = 6; // Column G default
+
+        for (let r = 0; r < Math.min(5, rawData.length); r++) {
+          const row = rawData[r];
+          if (!row || !Array.isArray(row)) continue;
+          row.forEach((cell: any, idx: number) => {
+            const str = cleanStr(cell).toUpperCase();
+            if (str.includes('MARCA')) colMarca = idx;
+            else if (str.includes('MODELO')) colModelo = idx;
+            else if (str.includes('CALIDAD')) colCalidad = idx;
+            else if (str.includes('PRECIO') || str.includes('USD') || str.includes('$')) colPrecio = idx;
+            else if (
+              str.includes('UNIDAD') ||
+              str.includes('STOCK') ||
+              str.includes('CANT') ||
+              str.includes('UDS')
+            )
+              colStock = idx;
+          });
+        }
+
         for (let i = 0; i < rawData.length; i++) {
           const row = rawData[i];
           if (!row || row.length === 0) continue;
 
-          const rawMarca = cleanStr(row[0]);
-          const rawModelo = cleanStr(row[1]);
-          const rawCalidad = cleanStr(row[2]);
-          const rawPrecio = row[3];
+          const rawMarca = cleanStr(row[colMarca]);
+          const rawModelo = cleanStr(row[colModelo]);
+          const rawCalidad = cleanStr(row[colCalidad]);
+          const rawPrecio = row[colPrecio];
+          const rawStock =
+            row[colStock] !== undefined ? row[colStock] : (row[6] !== undefined ? row[6] : undefined);
 
-          if (!rawModelo || rawModelo.toUpperCase() === 'MODELO') continue;
+          // If row is a brand section header (e.g. SAMSUNG, IPHONE)
+          if (rawMarca && !rawModelo && (rawPrecio === undefined || rawPrecio === null || rawPrecio === '')) {
+            currentBrand = rawMarca.toUpperCase();
+            continue;
+          }
 
+          if (!rawModelo) continue;
+          const upperModelo = rawModelo.toUpperCase();
+          if (upperModelo === 'MODELO' || upperModelo.includes('MODELO / REPUESTO')) continue;
+
+          // Check if row is a section header like "SAMSUNG" in modelo column with no price
+          const canonicalBrands = [
+            'SAMSUNG',
+            'IPHONE',
+            'XIAOMI',
+            'MOTOROLA',
+            'HUAWEI',
+            'HONOR',
+            'INFINIX',
+            'TECNO',
+            'OPPO',
+            'REALME',
+            'ZTE',
+            'TCL',
+            'LG',
+            'VIVO',
+            'BLACKVIEW',
+            'NOKIA',
+            'OTROS',
+          ];
+          if (
+            canonicalBrands.some((b) => upperModelo === b || upperModelo.includes(b)) &&
+            (rawPrecio === undefined || rawPrecio === null || rawPrecio === '')
+          ) {
+            currentBrand = upperModelo;
+            continue;
+          }
+
+          // Parse Price
           let priceNum = 0;
           if (typeof rawPrecio === 'number') {
             priceNum = rawPrecio;
@@ -421,21 +495,52 @@ export default function AdminPage() {
             priceNum = parseFloat(rawPrecio.replace(/[^0-9.]/g, '')) || 0;
           }
 
-          if (priceNum <= 0) continue;
+          // If price is missing or 0 -> skip and track!
+          if (priceNum <= 0) {
+            skippedNoPriceCount++;
+            continue;
+          }
+
+          // Parse Stock from Column G (or detected stock column)
+          let stockNum = 0;
+          let hasExplicitStock = false;
+
+          if (rawStock !== undefined && rawStock !== null && String(rawStock).trim() !== '') {
+            if (typeof rawStock === 'number') {
+              stockNum = Math.max(0, Math.floor(rawStock));
+              hasExplicitStock = true;
+            } else if (typeof rawStock === 'string') {
+              const cleaned = String(rawStock).replace(/[^0-9]/g, '');
+              if (cleaned !== '') {
+                stockNum = Math.max(0, parseInt(cleaned, 10));
+                hasExplicitStock = true;
+              }
+            }
+          }
+
+          if (!hasExplicitStock || stockNum === 0) {
+            stockNum = 0;
+            zeroStockCount++;
+          } else {
+            withStockCount++;
+          }
+
+          const finalBrand = (rawMarca || currentBrand || 'VARIOS').toUpperCase();
 
           parsedProducts.push({
             id: `display-excel-${String(parsedProducts.length + 1).padStart(3, '0')}`,
-            marca: (rawMarca || 'VARIOS').toUpperCase(),
+            marca: finalBrand,
             modelo: rawModelo,
             calidad: (rawCalidad || 'ORIGINAL').toUpperCase(),
             precio: priceNum,
-            stock: 1,
+            stock: stockNum,
           });
         }
 
         if (parsedProducts.length === 0) {
-          alert(
-            'No se detectaron repuestos válidos en la hoja. Asegúrate de incluir las columnas: MARCA, MODELO, CALIDAD, PRECIO.'
+          triggerToast(
+            '⚠️ No se detectaron repuestos válidos en la hoja. Asegúrate de incluir las columnas: MARCA, MODELO, CALIDAD, PRECIO.',
+            6000
           );
           setIsProcessingExcel(false);
           return;
@@ -457,15 +562,18 @@ export default function AdminPage() {
           console.warn('Sync server call failed, saved locally');
         }
 
-        triggerToast(
-          `¡Éxito! Catálogo actualizado con ${parsedProducts.length} modelos desde tu nuevo Excel`
-        );
+        let summaryMsg = `✅ ¡Catálogo importado con ${parsedProducts.length} productos! (${withStockCount} con stock disponible, ${zeroStockCount} con stock 0).`;
+        if (skippedNoPriceCount > 0) {
+          summaryMsg += `\n⚠️ Se omitieron ${skippedNoPriceCount} filas por no tener precio.`;
+        }
+        triggerToast(summaryMsg, 8000);
         setShowExcelModal(false);
       } catch (err) {
         console.error('Error procesando Excel:', err);
-        alert('Error al leer el archivo Excel. Revisa el formato e intenta nuevamente.');
+        triggerToast('❌ Error al leer el archivo Excel. Revisa el formato e intenta nuevamente.', 6000);
       } finally {
         setIsProcessingExcel(false);
+        e.target.value = '';
       }
     };
 
@@ -850,7 +958,7 @@ export default function AdminPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-gray-300 block mb-1">
                     Calidad del Display
@@ -858,17 +966,19 @@ export default function AdminPage() {
                   <select
                     value={newCalidadSelect}
                     onChange={(e) => setNewCalidadSelect(e.target.value)}
-                    className="w-full px-4 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-sm focus:border-[#D4AF37] focus:outline-none cursor-pointer"
+                    className="w-full px-3 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-xs focus:border-[#D4AF37] focus:outline-none cursor-pointer"
                   >
                     <option value="ORIGINAL C/M">ORIGINAL C/M (Con Marco)</option>
                     <option value="INCELL C/M">INCELL C/M (Con Marco)</option>
                     <option value="OLED C/M">OLED C/M (Con Marco)</option>
-                    <option value="ORIGINAL">ORIGINAL (Sin Marco)</option>
-                    <option value="INCELL">INCELL (Sin Marco)</option>
-                    <option value="OLED">OLED (Sin Marco)</option>
-                    <option value="OLED MECHANIC">OLED MECHANIC</option>
+                    <option value="ORIGINAL">ORIGINAL S/M (Sin Marco)</option>
+                    <option value="INCELL">INCELL S/M (Sin Marco)</option>
+                    <option value="OLED">OLED S/M (Sin Marco)</option>
+                    <option value="OLED SOFT">OLED SOFT (Gama Alta)</option>
+                    <option value="AMOLED C/M">AMOLED C/M</option>
+                    <option value="MECHANIC">MECHANIC (Especial)</option>
                     <option value="AAA">AAA</option>
-                    <option value="CUSTOM">-- Escribir Calidad Personalizada --</option>
+                    <option value="CUSTOM">-- Personalizada --</option>
                   </select>
                 </div>
 
@@ -882,7 +992,22 @@ export default function AdminPage() {
                     value={newPrecio}
                     onChange={(e) => setNewPrecio(e.target.value)}
                     placeholder="ej. 18.00"
-                    className="w-full px-4 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-sm focus:border-[#D4AF37] focus:outline-none"
+                    className="w-full px-3 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-xs focus:border-[#D4AF37] focus:outline-none"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-emerald-400 block mb-1">
+                    Stock Inicial
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={newStock}
+                    onChange={(e) => setNewStock(e.target.value)}
+                    placeholder="ej. 5"
+                    className="w-full px-3 py-3 bg-[#10131E] border border-emerald-500/30 rounded-xl text-white text-xs focus:border-emerald-400 focus:outline-none font-bold"
                     required
                   />
                 </div>
@@ -928,18 +1053,30 @@ export default function AdminPage() {
       {/* Toast Notification Banner - Always on top (z-[100]) */}
       {toastMessage && (
         <div
-          className={`fixed bottom-6 right-6 z-[100] glass-panel px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-bounce border ${
-            toastMessage.toLowerCase().includes('error')
-              ? 'border-rose-500/60 bg-[#1A1118] text-rose-300 shadow-rose-950/50'
+          className={`fixed bottom-6 right-6 z-[100] glass-panel px-5 py-4 rounded-2xl shadow-2xl flex items-start gap-3 border max-w-lg transition-all duration-300 ${
+            toastMessage.toLowerCase().includes('error') || toastMessage.includes('❌')
+              ? 'border-rose-500/60 bg-[#1A1118] text-rose-200 shadow-rose-950/50'
+              : toastMessage.includes('⚠️')
+              ? 'border-amber-500/60 bg-[#1A1512] text-amber-200 shadow-amber-950/50'
               : 'border-[#D4AF37]/40 bg-[#121522] text-white shadow-gold-glow'
           }`}
         >
-          {toastMessage.toLowerCase().includes('error') ? (
-            <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />
+          {toastMessage.toLowerCase().includes('error') || toastMessage.includes('❌') ? (
+            <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+          ) : toastMessage.includes('⚠️') ? (
+            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
           ) : (
-            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
           )}
-          <span className="text-xs font-bold">{toastMessage}</span>
+          <div className="text-xs font-semibold leading-relaxed whitespace-pre-line flex-1">
+            {toastMessage}
+          </div>
+          <button
+            onClick={() => setToastMessage(null)}
+            className="text-gray-400 hover:text-white shrink-0 -mr-1"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
     </div>

@@ -53,9 +53,9 @@ for idx, row in df.iterrows():
         continue
         
     try:
-        stock_val = int(unidades) if not pd.isna(unidades) else 1
+        stock_val = max(0, int(unidades)) if not pd.isna(unidades) else 0
     except:
-        stock_val = 1
+        stock_val = 0
         
     products.append({
         'id': f'display-{len(products)+1:03d}',

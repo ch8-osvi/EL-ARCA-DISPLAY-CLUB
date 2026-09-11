@@ -145,6 +145,43 @@ export async function POST(request: Request) {
     }
 
     // -----------------------------------------
+    // ACTION: UPDATE (Edit existing display)
+    // -----------------------------------------
+    if (action === 'update' && id) {
+      const updateData: Record<string, any> = {};
+      if (body.precio !== undefined) updateData.precio = Math.max(0, Number(body.precio));
+      if (body.stock !== undefined) updateData.stock = Math.max(0, Number(body.stock));
+      if (body.calidad) updateData.calidad = String(body.calidad).toUpperCase().trim();
+      if (body.modelo) updateData.modelo = String(body.modelo).trim();
+      if (body.marca) updateData.marca = String(body.marca).toUpperCase().trim();
+
+      const updatedDoc = await Product.findOneAndUpdate(
+        { id },
+        { $set: updateData },
+        { new: true }
+      );
+
+      if (!updatedDoc) {
+        return NextResponse.json(
+          { success: false, error: 'Display no encontrado para actualizar' },
+          { status: 404 }
+        );
+      }
+
+      const activeProducts = await Product.find({ isHidden: false }).sort({ createdAt: -1 }).lean();
+      const deletedCount = await Product.countDocuments({ isHidden: true });
+
+      return NextResponse.json({
+        success: true,
+        message: `Display ${updatedDoc.modelo} actualizado correctamente en la base de datos`,
+        product: updatedDoc,
+        count: activeProducts.length,
+        deletedCount,
+        products: activeProducts,
+      });
+    }
+
+    // -----------------------------------------
     // ACTION: SYNC (Upload new Excel)
     // -----------------------------------------
     if (action === 'sync' && Array.isArray(initialList)) {

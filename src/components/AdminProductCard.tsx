@@ -2,14 +2,15 @@
 
 import React, { useState } from 'react';
 import { Product } from '@/lib/types';
-import { Trash2, Smartphone, Tag } from 'lucide-react';
+import { Trash2, Smartphone, Tag, Pencil } from 'lucide-react';
 
 interface AdminProductCardProps {
   product: Product;
   onDelete: (id: string) => void;
+  onEdit?: (product: Product) => void;
 }
 
-export default function AdminProductCard({ product, onDelete }: AdminProductCardProps) {
+export default function AdminProductCard({ product, onDelete, onEdit }: AdminProductCardProps) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -59,7 +60,7 @@ export default function AdminProductCard({ product, onDelete }: AdminProductCard
           </span>
         </div>
 
-        <div className="pt-3 border-t border-white/5 flex items-center justify-between gap-3">
+        <div className="pt-3 border-t border-white/5 flex items-center justify-between gap-2">
           <div>
             <span className="text-[10px] uppercase font-semibold text-gray-400 block tracking-wider">
               Precio
@@ -72,34 +73,48 @@ export default function AdminProductCard({ product, onDelete }: AdminProductCard
             </div>
           </div>
 
-        {/* Delete Trigger */}
-        {!showConfirm ? (
-          <button
-            id={`btn-delete-trigger-${product.id}`}
-            onClick={() => setShowConfirm(true)}
-            className="px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-bold flex items-center gap-1.5 transition-all duration-200"
-            title="Eliminar de catálogo"
-          >
-            <Trash2 className="w-4 h-4" />
-            <span>Eliminar</span>
-          </button>
-        ) : (
           <div className="flex items-center gap-1.5">
-            <button
-              id={`btn-delete-confirm-${product.id}`}
-              onClick={handleDeleteClick}
-              className="px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md transition-all duration-150"
-            >
-              Sí, Borrar
-            </button>
-            <button
-              onClick={() => setShowConfirm(false)}
-              className="px-2 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-medium transition-all duration-150"
-            >
-              No
-            </button>
+            {onEdit && (
+              <button
+                id={`btn-edit-trigger-${product.id}`}
+                onClick={() => onEdit(product)}
+                className="px-2.5 py-2 rounded-xl bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#E5C158] border border-[#D4AF37]/30 text-xs font-bold flex items-center gap-1.5 transition-all duration-200"
+                title="Editar precio y detalles del display"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                <span>Editar</span>
+              </button>
+            )}
+
+            {/* Delete Trigger */}
+            {!showConfirm ? (
+              <button
+                id={`btn-delete-trigger-${product.id}`}
+                onClick={() => setShowConfirm(true)}
+                className="px-2.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-bold flex items-center gap-1.5 transition-all duration-200"
+                title="Eliminar de catálogo"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Eliminar</span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-1">
+                <button
+                  id={`btn-delete-confirm-${product.id}`}
+                  onClick={handleDeleteClick}
+                  className="px-2 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold shadow-md transition-all duration-150 whitespace-nowrap"
+                >
+                  Sí, Borrar
+                </button>
+                <button
+                  onClick={() => setShowConfirm(false)}
+                  className="px-2 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-[11px] font-medium transition-all duration-150"
+                >
+                  No
+                </button>
+              </div>
+            )}
           </div>
-        )}
         </div>
       </div>
     </div>

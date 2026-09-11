@@ -97,6 +97,7 @@ export default function SalesHistoryPage() {
     todayPaidCUP:    0,
     count:           0,
   });
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterPaid, setFilterPaid] = useState<'ALL' | 'PAID' | 'PENDING' | 'REFUNDED'>('ALL');
   const [filterDate, setFilterDate] = useState<'ALL' | 'TODAY' | 'YESTERDAY' | 'WEEK' | 'MONTH'>('ALL');

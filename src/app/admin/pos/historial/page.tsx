@@ -24,9 +24,11 @@ import {
   Plus,
   Minus,
   Check,
-  TrendingDown,
   Layers,
   AlertOctagon,
+  Filter,
+  ArrowUpDown,
+  Tag,
 } from 'lucide-react';
 import {
   printTicket,
@@ -95,9 +97,12 @@ export default function SalesHistoryPage() {
     todayPaidCUP:    0,
     count:           0,
   });
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterPaid, setFilterPaid] = useState<'ALL' | 'PAID' | 'PENDING' | 'REFUNDED'>('ALL');
+  const [filterDate, setFilterDate] = useState<'ALL' | 'TODAY' | 'YESTERDAY' | 'WEEK' | 'MONTH'>('ALL');
+  const [filterCurrency, setFilterCurrency] = useState<'ALL' | 'USD' | 'CUP'>('ALL');
+  const [filterBrand, setFilterBrand] = useState('ALL');
+  const [sortBy, setSortBy] = useState<'RECENT' | 'OLDEST' | 'AMOUNT_DESC' | 'AMOUNT_ASC'>('RECENT');
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<{ text: string; isError?: boolean } | null>(null);
 
@@ -349,13 +354,54 @@ export default function SalesHistoryPage() {
     }
   };
 
-  // Filtered Sales
+  // Dynamically extract brands from all sale items
+  const availableBrands = useMemo(() => {
+    const brandSet = new Set<string>();
+    sales.forEach((s) => {
+      s.items.forEach((item) => {
+        if (item.marca) {
+          brandSet.add(item.marca.toUpperCase().trim());
+        }
+      });
+    });
+    return ['ALL', ...Array.from(brandSet).sort()];
+  }, [sales]);
+
+  // Filtered & Sorted Sales
   const filteredSales = useMemo(() => {
-    return sales.filter((s) => {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const yesterdayStart = todayStart - 24 * 60 * 60 * 1000;
+    const weekStart = todayStart - 7 * 24 * 60 * 60 * 1000;
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+    const filtered = sales.filter((s) => {
+      // Status filter
       if (filterPaid === 'PAID' && !s.paid) return false;
       if (filterPaid === 'PENDING' && s.paid) return false;
       if (filterPaid === 'REFUNDED' && s.status !== 'REFUNDED' && s.status !== 'PARTIALLY_REFUNDED') return false;
 
+      // Currency filter
+      if (filterCurrency !== 'ALL' && s.currency !== filterCurrency) return false;
+
+      // Date filter
+      if (filterDate !== 'ALL') {
+        const saleTime = new Date(s.createdAt).getTime();
+        if (filterDate === 'TODAY' && saleTime < todayStart) return false;
+        if (filterDate === 'YESTERDAY' && (saleTime < yesterdayStart || saleTime >= todayStart)) return false;
+        if (filterDate === 'WEEK' && saleTime < weekStart) return false;
+        if (filterDate === 'MONTH' && saleTime < monthStart) return false;
+      }
+
+      // Brand filter
+      if (filterBrand !== 'ALL') {
+        const hasBrand = s.items.some(
+          (i) => (i.marca || '').toUpperCase().trim() === filterBrand
+        );
+        if (!hasBrand) return false;
+      }
+
+      // Search term
       if (searchTerm.trim() !== '') {
         const q = searchTerm.toLowerCase().trim();
         const matchOrder = s.orderNumber.toLowerCase().includes(q);
@@ -371,7 +417,46 @@ export default function SalesHistoryPage() {
       }
       return true;
     });
-  }, [sales, filterPaid, searchTerm]);
+
+    // Sorting
+    return [...filtered].sort((a, b) => {
+      if (sortBy === 'OLDEST') {
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      }
+      if (sortBy === 'AMOUNT_DESC') {
+        return b.totalUSD - a.totalUSD;
+      }
+      if (sortBy === 'AMOUNT_ASC') {
+        return a.totalUSD - b.totalUSD;
+      }
+      // RECENT (default)
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  }, [sales, filterPaid, filterCurrency, filterDate, filterBrand, searchTerm, sortBy]);
+
+  // Sum of filtered sales for the summary banner
+  const filteredSummary = useMemo(() => {
+    let totalUSD = 0;
+    let totalCUP = 0;
+    let paidUSD = 0;
+    let paidCUP = 0;
+    let pendingUSD = 0;
+    let pendingCUP = 0;
+
+    filteredSales.forEach((s) => {
+      if (s.currency === 'CUP') {
+        totalCUP += s.totalCUP;
+        if (s.paid) paidCUP += s.totalCUP;
+        else pendingCUP += s.totalCUP;
+      } else {
+        totalUSD += s.totalUSD;
+        if (s.paid) paidUSD += s.totalUSD;
+        else pendingUSD += s.totalUSD;
+      }
+    });
+
+    return { totalUSD, totalCUP, paidUSD, paidCUP, pendingUSD, pendingCUP };
+  }, [filteredSales]);
 
   // Total refund calculation in modal
   const modalRefundTotals = useMemo(() => {
@@ -783,60 +868,232 @@ export default function SalesHistoryPage() {
           </div>
         </section>
 
-        {/* Filters & Search */}
-        <div className="flex flex-col sm:flex-row items-center gap-3">
-          <div className="relative flex-1 w-full">
-            <Search className="w-4 h-4 text-[#D4AF37] absolute left-3.5 top-3.5" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Buscar por # de orden, cliente, modelo, motivo o merma..."
-              className="w-full pl-10 pr-4 py-2.5 bg-[#10131E] border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm focus:outline-none focus:border-[#D4AF37] transition-all"
-            />
+        {/* Search and Advanced Filter Control Center */}
+        <div className="glass-card rounded-3xl p-5 border border-white/10 space-y-4">
+          {/* Row 1: Search & Status Filters */}
+          <div className="flex flex-col lg:flex-row items-center gap-3">
+            <div className="relative flex-1 w-full">
+              <Search className="w-4 h-4 text-[#D4AF37] absolute left-3.5 top-3.5" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Buscar por # de orden, cliente, modelo, motivo o merma..."
+                className="w-full pl-10 pr-4 py-2.5 bg-[#10131E] border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm focus:outline-none focus:border-[#D4AF37] transition-all"
+              />
+            </div>
+
+            {/* Status Pills */}
+            <div className="flex items-center gap-1.5 w-full lg:w-auto overflow-x-auto pb-1 scrollbar-none">
+              <button
+                onClick={() => setFilterPaid('ALL')}
+                className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                  filterPaid === 'ALL'
+                    ? 'gold-gradient-bg text-black shadow-gold-glow'
+                    : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
+                }`}
+              >
+                Todos
+              </button>
+              <button
+                onClick={() => setFilterPaid('PAID')}
+                className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                  filterPaid === 'PAID'
+                    ? 'bg-emerald-600 text-white shadow-lg'
+                    : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
+                }`}
+              >
+                Pagados
+              </button>
+              <button
+                onClick={() => setFilterPaid('PENDING')}
+                className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                  filterPaid === 'PENDING'
+                    ? 'bg-amber-600 text-white shadow-lg'
+                    : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
+                }`}
+              >
+                Pendientes
+              </button>
+              <button
+                onClick={() => setFilterPaid('REFUNDED')}
+                className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                  filterPaid === 'REFUNDED'
+                    ? 'bg-rose-600 text-white shadow-lg'
+                    : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
+                }`}
+              >
+                Con Devolución
+              </button>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1">
-            <button
-              onClick={() => setFilterPaid('ALL')}
-              className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-                filterPaid === 'ALL'
-                  ? 'gold-gradient-bg text-black'
-                  : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
-              }`}
-            >
-              Todos
-            </button>
-            <button
-              onClick={() => setFilterPaid('PAID')}
-              className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-                filterPaid === 'PAID'
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
-              }`}
-            >
-              Pagados
-            </button>
-            <button
-              onClick={() => setFilterPaid('PENDING')}
-              className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-                filterPaid === 'PENDING'
-                  ? 'bg-amber-600 text-white'
-                  : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
-              }`}
-            >
-              Pendientes
-            </button>
-            <button
-              onClick={() => setFilterPaid('REFUNDED')}
-              className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-                filterPaid === 'REFUNDED'
-                  ? 'bg-rose-600 text-white'
-                  : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
-              }`}
-            >
-              Con Devolución
-            </button>
+          {/* Row 2: Date Period, Currency & Sort */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-white/5">
+            {/* Period Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+              <span className="text-[11px] font-bold text-gray-400 flex items-center gap-1 mr-1">
+                <Calendar className="w-3.5 h-3.5 text-[#D4AF37]" />
+                Período:
+              </span>
+              <button
+                onClick={() => setFilterDate('ALL')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                  filterDate === 'ALL'
+                    ? 'bg-[#E5C158]/20 text-[#F3E0A9] border border-[#D4AF37]/40 font-bold'
+                    : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
+                }`}
+              >
+                Todo
+              </button>
+              <button
+                onClick={() => setFilterDate('TODAY')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                  filterDate === 'TODAY'
+                    ? 'bg-[#E5C158]/20 text-[#F3E0A9] border border-[#D4AF37]/40 font-bold'
+                    : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
+                }`}
+              >
+                Hoy
+              </button>
+              <button
+                onClick={() => setFilterDate('YESTERDAY')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                  filterDate === 'YESTERDAY'
+                    ? 'bg-[#E5C158]/20 text-[#F3E0A9] border border-[#D4AF37]/40 font-bold'
+                    : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
+                }`}
+              >
+                Ayer
+              </button>
+              <button
+                onClick={() => setFilterDate('WEEK')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                  filterDate === 'WEEK'
+                    ? 'bg-[#E5C158]/20 text-[#F3E0A9] border border-[#D4AF37]/40 font-bold'
+                    : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
+                }`}
+              >
+                7 Días
+              </button>
+              <button
+                onClick={() => setFilterDate('MONTH')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                  filterDate === 'MONTH'
+                    ? 'bg-[#E5C158]/20 text-[#F3E0A9] border border-[#D4AF37]/40 font-bold'
+                    : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
+                }`}
+              >
+                Este Mes
+              </button>
+            </div>
+
+            {/* Currency & Sort Controls */}
+            <div className="flex items-center gap-3 ml-auto flex-wrap">
+              {/* Currency Selector */}
+              <div className="flex items-center gap-1 bg-[#10131E] border border-white/10 rounded-xl p-1">
+                <span className="text-[11px] font-bold text-gray-400 px-1.5">Moneda:</span>
+                <button
+                  onClick={() => setFilterCurrency('ALL')}
+                  className={`px-2 py-1 rounded-lg text-xs font-bold transition-all ${
+                    filterCurrency === 'ALL'
+                      ? 'gold-gradient-bg text-black'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Todas
+                </button>
+                <button
+                  onClick={() => setFilterCurrency('USD')}
+                  className={`px-2 py-1 rounded-lg text-xs font-bold transition-all ${
+                    filterCurrency === 'USD'
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  USD ($)
+                </button>
+                <button
+                  onClick={() => setFilterCurrency('CUP')}
+                  className={`px-2 py-1 rounded-lg text-xs font-bold transition-all ${
+                    filterCurrency === 'CUP'
+                      ? 'bg-[#D4AF37] text-black'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  CUP
+                </button>
+              </div>
+
+              {/* Sort Selector */}
+              <div className="flex items-center gap-1.5 bg-[#10131E] border border-white/10 rounded-xl px-2.5 py-1.5">
+                <ArrowUpDown className="w-3.5 h-3.5 text-[#D4AF37]" />
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as any)}
+                  className="bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer"
+                >
+                  <option value="RECENT" className="bg-[#10131E]">Más recientes</option>
+                  <option value="OLDEST" className="bg-[#10131E]">Más antiguas</option>
+                  <option value="AMOUNT_DESC" className="bg-[#10131E]">Mayor monto</option>
+                  <option value="AMOUNT_ASC" className="bg-[#10131E]">Menor monto</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Row 3: Brand Filter Chips if multiple brands exist */}
+          {availableBrands.length > 2 && (
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-2 border-t border-white/5 scrollbar-none">
+              <span className="text-[11px] font-bold text-gray-400 flex items-center gap-1 mr-1 shrink-0">
+                <Tag className="w-3.5 h-3.5 text-blue-400" />
+                Marca:
+              </span>
+              {availableBrands.map((brand) => (
+                <button
+                  key={brand}
+                  onClick={() => setFilterBrand(brand)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition-all ${
+                    filterBrand === brand
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
+                  }`}
+                >
+                  {brand === 'ALL' ? 'Todas las Marcas' : brand}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Row 4: Summary Bar of Filtered Results */}
+          <div className="pt-2 flex flex-wrap items-center justify-between gap-2 text-xs border-t border-white/5 text-gray-400">
+            <div>
+              Mostrando <strong className="text-white">{filteredSales.length}</strong> de{' '}
+              <strong className="text-gray-300">{sales.length}</strong> ventas registradas
+            </div>
+            <div className="flex items-center gap-3">
+              {filteredSummary.totalUSD > 0 && (
+                <span>
+                  Total USD:{' '}
+                  <strong className="text-emerald-400 font-extrabold">
+                    ${filteredSummary.totalUSD.toFixed(2)}
+                  </strong>
+                  {filteredSummary.pendingUSD > 0 && (
+                    <span className="text-amber-400 ml-1 font-semibold">
+                      (Pend: ${filteredSummary.pendingUSD.toFixed(2)})
+                    </span>
+                  )}
+                </span>
+              )}
+              {filteredSummary.totalCUP > 0 && (
+                <span>
+                  Total CUP:{' '}
+                  <strong className="text-[#E5C158] font-extrabold">
+                    {filteredSummary.totalCUP.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </strong>
+                </span>
+              )}
+            </div>
           </div>
         </div>
 

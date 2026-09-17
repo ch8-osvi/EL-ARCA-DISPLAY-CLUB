@@ -168,37 +168,168 @@ export default function AIAssistantPage() {
     ]);
   };
 
-  // Helper to render basic markdown-like bold and linebreaks
+  // Helper to render markdown cleanly without raw symbols (no ###, no raw table syntax, clean bullets)
   const renderMessageContent = (content: string) => {
     const lines = content.split('\n');
-    return lines.map((line, i) => {
-      // Process bold **text**
-      const parts = line.split(/(\*\*.*?\*\*)/g);
-      const formattedParts = parts.map((part, pIdx) => {
-        if (part.startsWith('**') && part.endsWith('**')) {
+    const elements: React.ReactNode[] = [];
+    let i = 0;
+
+    const formatInline = (text: string) => {
+      // 1. Inline code `code`
+      const codeParts = text.split(/(`.*?`)/g);
+      return codeParts.map((cPart, cIdx) => {
+        if (cPart.startsWith('`') && cPart.endsWith('`') && cPart.length > 2) {
           return (
-            <strong key={pIdx} className="text-[#F3E0A9] font-extrabold">
-              {part.slice(2, -2)}
-            </strong>
+            <code
+              key={`c-${cIdx}`}
+              className="px-1.5 py-0.5 mx-0.5 rounded bg-[#1A1E2E] text-amber-300 font-mono text-[11px] border border-amber-500/20"
+            >
+              {cPart.slice(1, -1)}
+            </code>
           );
         }
-        return part;
-      });
 
-      return (
-        <React.Fragment key={i}>
-          {line.startsWith('* ') ? (
-            <div className="flex items-start gap-2 pl-2 my-0.5">
-              <span className="text-[#D4AF37]">•</span>
-              <span>{formattedParts}</span>
+        // 2. Bold **text**
+        const boldParts = cPart.split(/(\*\*.*?\*\*)/g);
+        return boldParts.map((bPart, bIdx) => {
+          if (bPart.startsWith('**') && bPart.endsWith('**') && bPart.length > 4) {
+            return (
+              <strong key={`b-${cIdx}-${bIdx}`} className="text-[#F3E0A9] font-bold">
+                {bPart.slice(2, -2)}
+              </strong>
+            );
+          }
+
+          // 3. Italic *text*
+          const italicParts = bPart.split(/(\*.*?\*)/g);
+          return italicParts.map((iPart, iIdx) => {
+            if (iPart.startsWith('*') && iPart.endsWith('*') && iPart.length > 2 && !iPart.startsWith('**')) {
+              return (
+                <em key={`i-${cIdx}-${bIdx}-${iIdx}`} className="text-gray-300 italic">
+                  {iPart.slice(1, -1)}
+                </em>
+              );
+            }
+            return iPart;
+          });
+        });
+      });
+    };
+
+    while (i < lines.length) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      // Table detection: line starts and ends with |
+      if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+        const tableLines: string[] = [];
+        while (i < lines.length && lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) {
+          tableLines.push(lines[i].trim());
+          i++;
+        }
+
+        const parsedRows = tableLines
+          .map((tLine) =>
+            tLine
+              .slice(1, -1)
+              .split('|')
+              .map((c) => c.trim())
+          )
+          .filter((cells) => !cells.every((c) => /^:?-+:?$/.test(c)));
+
+        if (parsedRows.length > 0) {
+          const headerRow = parsedRows[0];
+          const bodyRows = parsedRows.slice(1);
+
+          elements.push(
+            <div key={`tbl-${i}`} className="my-2.5 overflow-x-auto rounded-xl border border-white/10 bg-[#0E111C]">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-white/10 bg-white/5">
+                    {headerRow.map((hCell, hIdx) => (
+                      <th key={hIdx} className="px-3 py-2 text-[#E5C158] font-bold text-[11px] whitespace-nowrap">
+                        {formatInline(hCell)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {bodyRows.map((row, rIdx) => (
+                    <tr key={rIdx} className="hover:bg-white/[0.02]">
+                      {row.map((cell, cIdx) => (
+                        <td key={cIdx} className="px-3 py-2 text-gray-200 whitespace-nowrap text-[11px]">
+                          {formatInline(cell)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ) : (
-            <p className={line.trim() === '' ? 'h-2' : 'my-0.5'}>{formattedParts}</p>
-          )}
-        </React.Fragment>
-      );
-    });
+          );
+        }
+        continue;
+      }
+
+      // Horizontal dividers (--- or ***)
+      if (/^(\-{3,}|\*{3,})$/.test(trimmed)) {
+        elements.push(<hr key={`hr-${i}`} className="my-2 border-white/10" />);
+        i++;
+        continue;
+      }
+
+      // Headings (###, ##, #)
+      if (trimmed.startsWith('#')) {
+        const cleanHeading = trimmed.replace(/^#+\s*/, '');
+        elements.push(
+          <div key={`h-${i}`} className="font-bold text-[#E5C158] text-xs sm:text-sm mt-2.5 mb-1 flex items-center gap-1.5">
+            {formatInline(cleanHeading)}
+          </div>
+        );
+        i++;
+        continue;
+      }
+
+      // Bullet items (*, -, •) - Strip leading symbol so it never repeats
+      if (/^(\*|\-|\•)\s+/.test(trimmed)) {
+        const cleanBullet = trimmed.replace(/^(\*|\-|\•)\s+/, '');
+        elements.push(
+          <div key={`bullet-${i}`} className="flex items-start gap-2 pl-2 my-1">
+            <span className="text-[#D4AF37] font-bold select-none">•</span>
+            <span className="flex-1 text-xs text-gray-200 leading-relaxed">{formatInline(cleanBullet)}</span>
+          </div>
+        );
+        i++;
+        continue;
+      }
+
+      // Indented sub-bullets (↳ or -> or —)
+      if (trimmed.startsWith('↳') || trimmed.startsWith('->') || trimmed.startsWith('—')) {
+        elements.push(
+          <div key={`sub-${i}`} className="pl-4 text-xs text-gray-300 my-0.5 leading-relaxed">
+            {formatInline(trimmed)}
+          </div>
+        );
+        i++;
+        continue;
+      }
+
+      // Empty line
+      if (trimmed === '') {
+        elements.push(<div key={`empty-${i}`} className="h-1.5" />);
+      } else {
+        elements.push(
+          <p key={`p-${i}`} className="text-xs text-gray-200 leading-relaxed my-0.5">
+            {formatInline(trimmed)}
+          </p>
+        );
+      }
+      i++;
+    }
+
+    return elements;
   };
+
 
   if (!isAuthenticated) {
     return (

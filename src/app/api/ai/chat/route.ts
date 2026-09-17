@@ -347,186 +347,47 @@ DIRECTRICES DE FORMATO VISUAL (MUY IMPORTANTE):
             source: 'gemini',
           });
         }
+
+        if (isQuotaExceeded) {
+          return NextResponse.json(
+            {
+              success: false,
+              isQuotaExceeded: true,
+              error: 'Has alcanzado el límite de 15 consultas por minuto de Google Gemini. Por favor espera unos segundos y vuelve a preguntar.',
+            },
+            { status: 429 }
+          );
+        }
       } catch (geminiErr) {
-        console.warn('Gemini API call error, falling back to analytical engine:', geminiErr);
+        console.error('Gemini API call error:', geminiErr);
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Ocurrió un error temporal al comunicarse con Google Gemini. Por favor intenta de nuevo en unos momentos.',
+          },
+          { status: 502 }
+        );
       }
+    } else {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'No se ha configurado la variable GEMINI_API_KEY en el servidor.',
+        },
+        { status: 500 }
+      );
     }
 
-
-    // -------------------------------------------------------------
-    // Native Analytical Engine (Instant, 100% Free, Zero-Dependency)
-    // -------------------------------------------------------------
-    let answer = '';
-
-    // INTENT 1: Ventas de Hoy
-    if (promptLower.includes('hoy') || promptLower.includes('today')) {
-      if (todayTot.count === 0) {
-        answer = `📅 **Ventas de Hoy**\n\nHoy aún no se han registrado órdenes en el sistema POS.\n\n* **Total en USD:** $0.00 USD\n* **Total en CUP:** 0.00 CUP\n* **Órdenes:** 0 órdenes\n\n*Apenas realices una venta en el Punto de Venta se reflejará aquí de inmediato.*`;
-      } else {
-        answer = `📊 **Reporte de Ventas de Hoy**\n\n` +
-          `* **Total en Dólares:** **$${todayTot.usd.toFixed(2)} USD** (${todayTot.paidUSD.toFixed(2)} cobrados en mano)\n` +
-          (todayTot.cup > 0 ? `* **Total en CUP:** **${todayTot.cup.toLocaleString()} CUP**\n` : '') +
-          `* **Órdenes generadas:** **${todayTot.count} órdenes**\n` +
-          `* **Displays despachados:** **${todayTot.itemsCount} unidades**\n` +
-          (todayTot.pendingUSD > 0 ? `\n⚠️ **Nota:** Hay **$${todayTot.pendingUSD.toFixed(2)} USD** en órdenes pendientes de cobro el día de hoy.` : '');
-      }
-    }
-    // INTENT 2: Ventas de Ayer
-    else if (promptLower.includes('ayer') || promptLower.includes('yesterday')) {
-      if (yesterdayTot.count === 0) {
-        answer = `📅 **Ventas de Ayer**\n\nAyer no se registraron órdenes en el sistema.\n\n* **Total:** $0.00 USD (0 órdenes)`;
-      } else {
-        answer = `📆 **Reporte de Ventas de Ayer**\n\n` +
-          `* **Total facturado:** **$${yesterdayTot.usd.toFixed(2)} USD**` +
-          (yesterdayTot.cup > 0 ? ` y **${yesterdayTot.cup.toLocaleString()} CUP**` : '') + `\n` +
-          `* **Órdenes cerradas:** **${yesterdayTot.count} órdenes**\n` +
-          `* **Repuestos entregados:** **${yesterdayTot.itemsCount} displays**`;
-      }
-    }
-    // INTENT 3: Deudores / Pagos Pendientes
-    else if (
-      promptLower.includes('debe') ||
-      promptLower.includes('deben') ||
-      promptLower.includes('pendiente') ||
-      promptLower.includes('pagar') ||
-      promptLower.includes('cobrar') ||
-      promptLower.includes('credito') ||
-      promptLower.includes('falta')
-    ) {
-      if (unpaidSales.length === 0) {
-        answer = `🎉 **¡Buenas noticias!**\n\nNo tienes **ninguna orden pendiente de pago**. Todos los clientes han cancelado sus compras en su totalidad.`;
-      } else {
-        const totalPendingUSD = unpaidSales.reduce((acc, s) => acc + (s.totalUSD || 0), 0);
-        const totalPendingCUP = unpaidSales.reduce((acc, s) => acc + (s.totalCUP || 0), 0);
-
-        let listText = '';
-        debtorsSummary.forEach((d) => {
-          listText += `* **Orden ${d.orderNumber}** - Cliente: **${d.client}** | Monto: **${d.currency === 'CUP' ? `${d.totalCUP.toLocaleString()} CUP` : `$${d.totalUSD.toFixed(2)} USD`}** (${d.date})${d.notes ? ` _[Nota: ${d.notes}]_` : ''}\n`;
-        });
-
-        answer = `⚠️ **Clientes y Órdenes Pendientes por Pagar**\n\n` +
-          `Actualmente tienes **${unpaidSales.length} órdenes pendientes** de cobro:\n\n` +
-          `* **Total por cobrar en USD:** **$${totalPendingUSD.toFixed(2)} USD**\n` +
-          (totalPendingCUP > 0 ? `* **Total por cobrar en CUP:** **${totalPendingCUP.toLocaleString()} CUP**\n` : '') +
-          `\n**Detalle de deudores:**\n${listText}\n` +
-          `_Puedes marcar estas órdenes como pagadas en [Historial de Ventas](/admin/pos/historial)._`;
-      }
-    }
-    // INTENT 4: Día récord / Día que más se vendió
-    else if (
-      (promptLower.includes('dia') || promptLower.includes('día')) &&
-      (promptLower.includes('mas') || promptLower.includes('más') || promptLower.includes('record') || promptLower.includes('mejor'))
-    ) {
-      if (!bestDay || bestDay.usd === 0) {
-        answer = `📈 **Día Récord de Ventas**\n\nAún no hay suficiente historial acumulado para calcular el día pico de ventas.`;
-      } else {
-        const formattedDate = new Date(bestDay.date + 'T12:00:00').toLocaleDateString('es-ES', {
-          weekday: 'long',
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric',
-        });
-        answer = `🏆 **Día Récord de Ventas Histórico**\n\n` +
-          `El día con mayor recaudación registrada ha sido el **${formattedDate}**:\n\n` +
-          `* **Monto facturado:** **$${bestDay.usd.toFixed(2)} USD**\n` +
-          (bestDay.cup > 0 ? `* **Total en CUP:** **${bestDay.cup.toLocaleString()} CUP**\n` : '') +
-          `* **Cantidad de órdenes:** **${bestDay.count} ventas**`;
-      }
-    }
-    // INTENT 5: Pantallas / Displays más vendidos
-    else if (
-      promptLower.includes('vendido') ||
-      promptLower.includes('vendidos') ||
-      promptLower.includes('popular') ||
-      promptLower.includes('pantalla') ||
-      promptLower.includes('modelo') ||
-      promptLower.includes('ranking')
-    ) {
-      if (topModels.length === 0) {
-        answer = `📱 **Displays Más Vendidos**\n\nAún no se han registrado ventas de repuestos en el historial.`;
-      } else {
-        const top5 = topModels.slice(0, 5);
-        let rankingText = '';
-        top5.forEach((m, idx) => {
-          rankingText += `${idx + 1}. **${m.marca} ${m.modelo}**: **${m.units} uds.** vendidas ($${m.revenueUSD.toFixed(2)} USD)\n`;
-        });
-
-        answer = `🔥 **Top Displays Más Vendidos**\n\n${rankingText}\n` +
-          `_Estos son los modelos con mayor rotación en tu tienda._`;
-      }
-    }
-    // INTENT 6: Stock / Inventario
-    else if (
-      promptLower.includes('stock') ||
-      promptLower.includes('inventario') ||
-      promptLower.includes('quedan') ||
-      promptLower.includes('agotado') ||
-      promptLower.includes('poco')
-    ) {
-      answer = `📦 **Estado de Inventario y Catálogo**\n\n` +
-        `* **Modelos activos en catálogo:** **${products.length} repuestos**\n` +
-        `* **Valor estimado del inventario:** **$${totalInventoryValue.toLocaleString('en-US', { minimumFractionDigits: 2 })} USD**\n` +
-        `* **Modelos agotados (0 stock):** **${outOfStockProducts.length} modelos**\n` +
-        `* **Modelos con stock bajo (1-2 uds):** **${lowStockProducts.length} modelos**\n\n` +
-        `_Puedes reponer o agregar stock en [Control de Inventario](/admin/pos/inventario)._`;
-    }
-    // INTENT 7: Mermas, Garantías y Repuestos Defectuosos
-    else if (
-      promptLower.includes('merma') ||
-      promptLower.includes('mermas') ||
-      promptLower.includes('garantia') ||
-      promptLower.includes('garantía') ||
-      promptLower.includes('garantias') ||
-      promptLower.includes('garantías') ||
-      promptLower.includes('defecto') ||
-      promptLower.includes('defectuoso') ||
-      promptLower.includes('defectuosa') ||
-      promptLower.includes('falla') ||
-      promptLower.includes('fallas') ||
-      promptLower.includes('roto') ||
-      promptLower.includes('rotura') ||
-      promptLower.includes('baja') ||
-      promptLower.includes('bajas') ||
-      promptLower.includes('devolucion') ||
-      promptLower.includes('devolución')
-    ) {
-      if (topMermas.length === 0) {
-        answer = `🛡️ **Mermas y Garantías del Taller**\n\nNo hay mermas ni piezas dadas de baja por garantía registradas en el sistema. Todo el inventario está en óptimas condiciones para la venta.`;
-      } else {
-        let rankingText = '';
-        topMermas.slice(0, 6).forEach((m, idx) => {
-          const reasonStr = m.reasons.length > 0 ? ` (${m.reasons.join(', ')})` : '';
-          rankingText += `${idx + 1}. **${m.producto}**: **${m.units} uds.** en merma${reasonStr}\n`;
-        });
-
-        answer = `📉 **Modelos con Más Problemas de Garantías y Mermas**\n\n` +
-          `En el sistema hay un total acumulado de **${totalMermaUnits} pantallas dadas de baja / en merma**:\n\n` +
-          `${rankingText}\n` +
-          `🥇 El modelo con mayor índice de bajas es **${topMermas[0]?.producto}** con **${topMermas[0]?.units} unidades** registradas.\n\n` +
-          `_Puedes consultar y filtrar cada reporte en [Control de Inventario & Mermas](/admin/pos/inventario)._`;
-      }
-    }
-    // DEFAULT: Resumen General Ejecutivo
-    else {
-      answer = `👋 **Resumen Ejecutivo de El Arca Display Club**\n\n` +
-        `Aquí tienes el estado actual de tu negocio:\n\n` +
-        `* **Ventas de Hoy:** **$${todayTot.usd.toFixed(2)} USD** (${todayTot.count} órdenes)\n` +
-        `* **Ventas de Ayer:** **$${yesterdayTot.usd.toFixed(2)} USD** (${yesterdayTot.count} órdenes)\n` +
-        `* **Ventas este Mes:** **$${monthTot.usd.toFixed(2)} USD** (${monthTot.count} órdenes)\n` +
-        `* **Pagos Pendientes:** **${unpaidSales.length} clientes** ($${debtorsSummary.reduce((a, b) => a + b.totalUSD, 0).toFixed(2)} USD)\n` +
-        `* **Total Displays en Catálogo:** **${products.length} modelos**\n\n` +
-        `💡 *Puedes preguntarme cosas como: "¿Cuánto vendí hoy?", "¿Quién me debe dinero?", "¿Cuál fue el día de más ventas?" o "¿Cuáles son los displays más vendidos?".*`;
-    }
-
-    return NextResponse.json({
-      success: true,
-      answer,
-      source: isQuotaExceeded ? 'fallback-quota' : 'engine',
-      quotaWarning: isQuotaExceeded,
-      warningMessage: isQuotaExceeded
-        ? '⚠️ Has alcanzado el límite gratuito temporal de 15 consultas por minuto de Google Gemini. Para protegerte de cobros y no detenerte, te respondo con el motor analítico interno de MongoDB.'
-        : undefined,
-    });
+    return NextResponse.json(
+      {
+        success: false,
+        isQuotaExceeded,
+        error: isQuotaExceeded
+          ? 'Has alcanzado el límite gratuito de velocidad de Google Gemini (15 consultas por minuto). Por favor espera un momento y vuelve a preguntar.'
+          : 'La IA no pudo generar una respuesta en este momento. Por favor intenta nuevamente en unos momentos.',
+      },
+      { status: isQuotaExceeded ? 429 : 503 }
+    );
   } catch (error) {
     console.error('[ai chat error]', error);
     return NextResponse.json(

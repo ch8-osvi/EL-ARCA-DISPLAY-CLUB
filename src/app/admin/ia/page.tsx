@@ -168,12 +168,7 @@ export default function AIAssistantPage() {
       setLoading(false);
 
       if (res.ok && data.success) {
-        if (data.quotaWarning) {
-          setQuotaAlert(data.warningMessage);
-        } else {
-          setQuotaAlert(null);
-        }
-
+        setQuotaAlert(null);
         const assistantMsgId = `assistant-${Date.now()}`;
         const assistantMsg: ChatMessage = {
           id: assistantMsgId,
@@ -185,13 +180,25 @@ export default function AIAssistantPage() {
         setMessages((prev) => [...prev, assistantMsg]);
         startTypewriter(data.answer, assistantMsgId);
       } else {
-        const errorMsg: ChatMessage = {
-          id: `err-${Date.now()}`,
-          sender: 'assistant',
-          text: `⚠️ **Ocurrió un inconveniente:** ${data.error || 'No pude procesar la consulta en este momento.'}`,
-          time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
-        };
-        setMessages((prev) => [...prev, errorMsg]);
+        const isQuota = data?.isQuotaExceeded || res.status === 429;
+        if (isQuota) {
+          setQuotaAlert('⏳ Límite temporal de 15 consultas/min de Gemini alcanzado. Espera unos segundos y vuelve a preguntar.');
+          const quotaMsg: ChatMessage = {
+            id: `quota-${Date.now()}`,
+            sender: 'assistant',
+            text: '⏳ **Límite temporal alcanzado (15 consultas por minuto)**\n\nGoogle Gemini está pausado temporalmente para respetar la cuota gratuita. **Tranquilo, no se te cobrará nada.** Por favor espera unos segundos y repite tu pregunta.',
+            time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+          };
+          setMessages((prev) => [...prev, quotaMsg]);
+        } else {
+          const errorMsg: ChatMessage = {
+            id: `err-${Date.now()}`,
+            sender: 'assistant',
+            text: `⚠️ **Aviso de la IA:** ${data?.error || 'No se pudo obtener respuesta de Google Gemini en este momento.'}`,
+            time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+          };
+          setMessages((prev) => [...prev, errorMsg]);
+        }
       }
     } catch {
       setLoading(false);
@@ -546,14 +553,14 @@ export default function AIAssistantPage() {
 
         {/* Quota / Limit Warning Banner */}
         {quotaAlert && (
-          <div className="p-3.5 rounded-2xl bg-amber-950/30 border border-amber-500/40 text-amber-200 text-xs flex items-center justify-between gap-3 shadow-lg animate-bounce">
+          <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/50 text-amber-200 text-xs flex items-center justify-between gap-3 shadow-lg shadow-amber-950/30">
             <div className="flex items-center gap-2.5">
-              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>{quotaAlert}</span>
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 animate-pulse" />
+              <span className="font-medium leading-relaxed">{quotaAlert}</span>
             </div>
             <button
               onClick={() => setQuotaAlert(null)}
-              className="text-amber-400 hover:text-white text-xs font-bold px-2 py-0.5"
+              className="text-amber-300 hover:text-white text-xs font-bold px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 transition-colors shrink-0"
             >
               Entendido
             </button>

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongoose';
 import { Sale } from '@/lib/models/Sale';
 import { Product } from '@/lib/models/Product';
-import { getHavanaDateKey } from '@/lib/dateUtils';
+import { getHavanaDateKey, getHavanaDaysAgoKey } from '@/lib/dateUtils';
 
 export const dynamic = 'force-dynamic';
 
@@ -114,10 +114,44 @@ export async function POST(req: NextRequest) {
 
     const topModels = Object.values(modelSalesMap).sort((a, b) => b.units - a.units);
 
-    // 6. Best sales day in history
+    // 6. Daily breakdown for the last 14 days in Cuba timezone
+    const last14DaysSummary = [];
+    for (let i = 0; i < 14; i++) {
+      const dateKey = getHavanaDaysAgoKey(i);
+      const daySales = sales.filter((s) => getHavanaDateKey(s.createdAt) === dateKey);
+      const totals = calcTotals(daySales);
+      let label = `Hace ${i} días`;
+      if (i === 0) label = 'Hoy';
+      else if (i === 1) label = 'Ayer';
+      else if (i === 2) label = 'Hace 2 días';
+      else if (i === 3) label = 'Hace 3 días';
+
+      last14DaysSummary.push({
+        fecha: dateKey,
+        etiqueta: label,
+        ventasUSD: totals.usd,
+        ventasCUP: totals.cup,
+        ordenes: totals.count,
+        repuestosVendidos: totals.itemsCount,
+      });
+    }
+
+    // 7. Recent sales details (last 25 orders)
+    const recentSalesDetails = sales.slice(0, 25).map((s) => ({
+      orden: s.orderNumber,
+      fecha: getHavanaDateKey(s.createdAt),
+      cliente: s.clientName || 'Consumidor Final',
+      articulos: (s.items || []).map((i: any) => `${i.qty}x ${i.marca} ${i.modelo} (${i.calidad})`).join(', '),
+      moneda: s.currency,
+      totalUSD: s.totalUSD,
+      totalCUP: s.totalCUP,
+      cobrado: s.paid ? 'SÍ' : 'PENDIENTE',
+    }));
+
+    // 8. Best sales day in history
     const daySalesMap: Record<string, { date: string; usd: number; cup: number; count: number }> = {};
     sales.forEach((s) => {
-      const dateKey = new Date(s.createdAt).toISOString().split('T')[0];
+      const dateKey = getHavanaDateKey(s.createdAt);
       if (!daySalesMap[dateKey]) {
         daySalesMap[dateKey] = { date: dateKey, usd: 0, cup: 0, count: 0 };
       }
@@ -131,7 +165,7 @@ export async function POST(req: NextRequest) {
 
     const bestDay = Object.values(daySalesMap).sort((a, b) => b.usd - a.usd)[0] || null;
 
-    // 7. Inventory status
+    // 9. Inventory status
     const lowStockProducts = products.filter((p) => p.stock <= 2 && p.stock > 0);
     const outOfStockProducts = products.filter((p) => p.stock === 0);
     const totalInventoryValue = products.reduce((acc, p) => acc + (p.precio * (p.stock || 0)), 0);
@@ -146,6 +180,7 @@ export async function POST(req: NextRequest) {
           negocio: 'EL ARCA DISPLAY CLUB (Venta y distribución de pantallas de celulares)',
           monedas: 'USD (Dólares en efectivo) y CUP (Pesos cubanos)',
           hoy: {
+            fecha: havanaTodayKey,
             ventasUSD: todayTot.usd,
             ventasCUP: todayTot.cup,
             ordenes: todayTot.count,
@@ -153,17 +188,20 @@ export async function POST(req: NextRequest) {
             pendienteUSD: todayTot.pendingUSD,
           },
           ayer: {
+            fecha: havanaYesterdayKey,
             ventasUSD: yesterdayTot.usd,
             ventasCUP: yesterdayTot.cup,
             ordenes: yesterdayTot.count,
             repuestosVendidos: yesterdayTot.itemsCount,
           },
-          ultimos7Dias: {
+          desgloseDiarioUltimos14Dias: last14DaysSummary,
+          ultimasVentasRegistradas: recentSalesDetails,
+          ultimos7DiasAcumulado: {
             ventasUSD: weekTot.usd,
             ventasCUP: weekTot.cup,
             ordenes: weekTot.count,
           },
-          esteMes: {
+          esteMesAcumulado: {
             ventasUSD: monthTot.usd,
             ventasCUP: monthTot.cup,
             ordenes: monthTot.count,
@@ -192,8 +230,9 @@ Instrucciones:
 1. Responde de forma cordial, profesional, ejecutiva y directa a la pregunta del dueño.
 2. Usa formato Markdown con números en **negrita**, listas con viñetas elegantes y tablas si es conveniente.
 3. Basa tus respuestas EXCLUSIVAMENTE en los datos reales suministrados en el contexto. No inventes números.
-4. Si te preguntan sobre quién debe dinero, desglosa los clientes y montos. Si preguntan sobre hoy o ayer, sé claro con los dólares y pesos.
-5. Si no hay registros para un período determinado (ej. hoy no ha habido ventas aún), indícalo amablemente sin alarmar.`;
+4. Tienes el desglose diario exacto de los últimos 14 días en "desgloseDiarioUltimos14Dias" (Hoy, Ayer, Hace 2 días, Hace 3 días, etc.) y las últimas 25 ventas individuales. Si el usuario te pregunta cuánto se vendió hace 2 días o cualquier día pasado, consulta ese bloque e informa los montos en USD y CUP con precisión.
+5. Si te preguntan sobre quién debe dinero, desglosa los clientes y montos. Si preguntan sobre hoy o ayer, sé claro con los dólares y pesos.
+6. Si no hay ventas registradas en una fecha determinada (0 órdenes), dilo amablemente con claridad.`;
 
         // List of models to try in priority order (Google updated new API keys to gemini-3.6-flash and gemini-flash-latest)
         const candidateModels = [
@@ -225,8 +264,8 @@ Instrucciones:
                   parts: [{ text: systemInstruction }],
                 },
                 generationConfig: {
-                  temperature: 0.3,
-                  maxOutputTokens: 1000,
+                  temperature: 0.2,
+                  maxOutputTokens: 2048,
                 },
               }),
             });
@@ -240,6 +279,7 @@ Instrucciones:
             console.warn(`Error querying model ${model}:`, modelErr);
           }
         }
+
 
         if (candidateText) {
           return NextResponse.json({

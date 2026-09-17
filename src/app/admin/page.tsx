@@ -814,43 +814,43 @@ export default function AdminPage() {
             </p>
           </div>
 
-          {/* 4 Action Buttons */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full lg:max-w-2xl shrink-0">
-            {/* Upload Excel Button */}
+          {/* 4 Action Buttons in 2x2 Grid (Cuadradito) */}
+          <div className="grid grid-cols-2 gap-3 w-full sm:w-80 md:w-96 shrink-0">
+            {/* Row 1 - Button 1: Upload Excel */}
             <button
               id="btn-open-excel-modal"
               onClick={() => setShowExcelModal(true)}
-              className="h-11 px-3 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-sm w-full"
+              className="h-12 px-3.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-sm w-full"
             >
               <FileSpreadsheet className="w-4 h-4 text-emerald-400 shrink-0" />
               <span>Cargar Excel</span>
             </button>
 
-            {/* Export Excel Button */}
+            {/* Row 1 - Button 2: Export Excel */}
             <button
               id="btn-export-excel"
               onClick={handleExportExcel}
-              className="h-11 px-3 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-sm w-full"
+              className="h-12 px-3.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-sm w-full"
             >
               <Download className="w-4 h-4 text-blue-400 shrink-0" />
               <span>Exportar Excel</span>
             </button>
 
-            {/* Restore button */}
+            {/* Row 2 - Button 3: Restore Excel */}
             <button
               id="btn-restore-excel"
               onClick={handleRestoreCatalog}
-              className="h-11 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-all hover:scale-105 w-full"
+              className="h-12 px-3.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-all hover:scale-105 w-full"
             >
               <RefreshCw className="w-3.5 h-3.5 shrink-0" />
               <span>Restaurar Excel</span>
             </button>
 
-            {/* AI Assistant Button */}
+            {/* Row 2 - Button 4: AI Assistant */}
             <Link
               id="btn-open-ai-assistant"
               href="/admin/ia"
-              className="h-11 px-3 rounded-xl bg-gradient-to-r from-purple-600/30 to-indigo-600/30 hover:from-purple-600/50 hover:to-indigo-600/50 text-purple-200 border border-purple-500/50 font-extrabold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-md shadow-purple-950/40 w-full"
+              className="h-12 px-3.5 rounded-xl bg-gradient-to-r from-purple-600/30 to-indigo-600/30 hover:from-purple-600/50 hover:to-indigo-600/50 text-purple-200 border border-purple-500/50 font-extrabold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-md shadow-purple-950/40 w-full"
             >
               <Sparkles className="w-4 h-4 text-purple-300 animate-pulse shrink-0" />
               <span>Asistente IA ✨</span>

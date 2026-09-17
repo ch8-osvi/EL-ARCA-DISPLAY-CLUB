@@ -24,6 +24,7 @@ interface ChatMessage {
   sender: 'user' | 'assistant';
   text: string;
   time: string;
+  isTyping?: boolean;
 }
 
 const PRESET_PROMPTS = [
@@ -64,7 +65,9 @@ export default function AIAssistantPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputQuery, setInputQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [quotaAlert, setQuotaAlert] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Check auth
   useEffect(() => {
@@ -93,6 +96,44 @@ export default function AIAssistantPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
+  // Cleanup typing interval on unmount
+  useEffect(() => {
+    return () => {
+      if (typingTimerRef.current) clearInterval(typingTimerRef.current);
+    };
+  }, []);
+
+  // Typewriter streaming effect (writes out the response letter by letter)
+  const startTypewriter = (fullText: string, messageId: string) => {
+    if (typingTimerRef.current) {
+      clearInterval(typingTimerRef.current);
+    }
+
+    let currentIndex = 0;
+    const chunkSize = 3;
+    const speed = 16;
+
+    typingTimerRef.current = setInterval(() => {
+      currentIndex += chunkSize;
+      if (currentIndex >= fullText.length) {
+        currentIndex = fullText.length;
+        if (typingTimerRef.current) clearInterval(typingTimerRef.current);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId ? { ...m, text: fullText, isTyping: false } : m
+          )
+        );
+      } else {
+        const partial = fullText.slice(0, currentIndex);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId ? { ...m, text: partial, isTyping: true } : m
+          )
+        );
+      }
+    }, speed);
+  };
+
   const handleSendMessage = async (userPrompt?: string) => {
     const queryToSend = (userPrompt || inputQuery).trim();
     if (!queryToSend || loading) return;
@@ -119,15 +160,25 @@ export default function AIAssistantPage() {
       });
 
       const data = await res.json();
+      setLoading(false);
 
       if (res.ok && data.success) {
+        if (data.quotaWarning) {
+          setQuotaAlert(data.warningMessage);
+        } else {
+          setQuotaAlert(null);
+        }
+
+        const assistantMsgId = `assistant-${Date.now()}`;
         const assistantMsg: ChatMessage = {
-          id: `assistant-${Date.now()}`,
+          id: assistantMsgId,
           sender: 'assistant',
-          text: data.answer,
+          text: '',
           time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+          isTyping: true,
         };
         setMessages((prev) => [...prev, assistantMsg]);
+        startTypewriter(data.answer, assistantMsgId);
       } else {
         const errorMsg: ChatMessage = {
           id: `err-${Date.now()}`,
@@ -138,6 +189,7 @@ export default function AIAssistantPage() {
         setMessages((prev) => [...prev, errorMsg]);
       }
     } catch {
+      setLoading(false);
       const connErrorMsg: ChatMessage = {
         id: `err-conn-${Date.now()}`,
         sender: 'assistant',
@@ -145,8 +197,6 @@ export default function AIAssistantPage() {
         time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
       };
       setMessages((prev) => [...prev, connErrorMsg]);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -158,6 +208,8 @@ export default function AIAssistantPage() {
   };
 
   const handleClearChat = () => {
+    if (typingTimerRef.current) clearInterval(typingTimerRef.current);
+    setQuotaAlert(null);
     setMessages([
       {
         id: `welcome-${Date.now()}`,
@@ -392,9 +444,13 @@ export default function AIAssistantPage() {
               <Trash2 className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Limpiar</span>
             </button>
+            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/30" title="Google Gemini cuenta con cuota gratuita sin sobrecargos.">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+              <span className="text-[11px] font-bold text-blue-300">Plan Protegido (0 Cargos)</span>
+            </div>
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-              <span className="text-[11px] font-extrabold text-emerald-300">Conectado a MongoDB</span>
+              <span className="text-[11px] font-extrabold text-emerald-300">MongoDB En Vivo</span>
             </div>
           </div>
         </div>
@@ -460,7 +516,12 @@ export default function AIAssistantPage() {
                     : 'bg-[#121626] border border-white/10 text-gray-200 shadow-xl'
                 }`}
               >
-                <div className="space-y-1">{renderMessageContent(msg.text)}</div>
+                <div className="space-y-1">
+                  {renderMessageContent(msg.text)}
+                  {msg.isTyping && (
+                    <span className="inline-block w-1.5 h-3.5 ml-1 bg-[#D4AF37] animate-pulse rounded-sm align-middle" />
+                  )}
+                </div>
                 <span className="text-[10px] text-gray-400 mt-2 block text-right font-semibold">
                   {msg.time}
                 </span>
@@ -468,21 +529,39 @@ export default function AIAssistantPage() {
             </div>
           ))}
 
-          {/* Typing Indicator */}
+          {/* Thinking Indicator */}
           {loading && (
             <div className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-700 text-white flex items-center justify-center shrink-0">
-                <Bot className="w-4 h-4" />
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-700 text-white flex items-center justify-center shrink-0 shadow-lg shadow-purple-950/40">
+                <Bot className="w-4 h-4 animate-bounce" />
               </div>
-              <div className="glass-card rounded-2xl px-4 py-3 border border-purple-500/30 flex items-center gap-2 text-xs text-purple-300 animate-pulse">
+              <div className="glass-card rounded-2xl px-4 py-3 border border-purple-500/30 flex items-center gap-2.5 text-xs text-purple-200 bg-[#121628]/90 shadow-xl">
                 <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#D4AF37]" />
-                <span>Analizando datos en tiempo real de MongoDB...</span>
+                <span className="font-semibold tracking-wide">
+                  Consultando MongoDB y redactando respuesta...
+                </span>
               </div>
             </div>
           )}
 
           <div ref={messagesEndRef} />
         </div>
+
+        {/* Quota / Limit Warning Banner */}
+        {quotaAlert && (
+          <div className="p-3.5 rounded-2xl bg-amber-950/30 border border-amber-500/40 text-amber-200 text-xs flex items-center justify-between gap-3 shadow-lg animate-bounce">
+            <div className="flex items-center gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>{quotaAlert}</span>
+            </div>
+            <button
+              onClick={() => setQuotaAlert(null)}
+              className="text-amber-400 hover:text-white text-xs font-bold px-2 py-0.5"
+            >
+              Entendido
+            </button>
+          </div>
+        )}
 
         {/* Input Bar */}
         <div className="relative w-full">

@@ -173,6 +173,7 @@ export async function POST(req: NextRequest) {
     // -------------------------------------------------------------
     // Try Google Gemini API if GEMINI_API_KEY is defined
     // -------------------------------------------------------------
+    let isQuotaExceeded = false;
     const geminiApiKey = process.env.GEMINI_API_KEY;
     if (geminiApiKey) {
       try {
@@ -284,12 +285,14 @@ DIRECTRICES DE FORMATO VISUAL (MUY IMPORTANTE):
               const geminiData = await geminiRes.json();
               candidateText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
               if (candidateText) break;
+            } else if (geminiRes.status === 429) {
+              isQuotaExceeded = true;
+              console.warn(`Model ${model} hit rate limit (429 RESOURCE_EXHAUSTED).`);
             }
           } catch (modelErr) {
             console.warn(`Error querying model ${model}:`, modelErr);
           }
         }
-
 
         if (candidateText) {
           return NextResponse.json({
@@ -302,6 +305,7 @@ DIRECTRICES DE FORMATO VISUAL (MUY IMPORTANTE):
         console.warn('Gemini API call error, falling back to analytical engine:', geminiErr);
       }
     }
+
 
     // -------------------------------------------------------------
     // Native Analytical Engine (Instant, 100% Free, Zero-Dependency)
@@ -435,7 +439,11 @@ DIRECTRICES DE FORMATO VISUAL (MUY IMPORTANTE):
     return NextResponse.json({
       success: true,
       answer,
-      source: 'engine',
+      source: isQuotaExceeded ? 'fallback-quota' : 'engine',
+      quotaWarning: isQuotaExceeded,
+      warningMessage: isQuotaExceeded
+        ? '⚠️ Has alcanzado el límite gratuito temporal de 15 consultas por minuto de Google Gemini. Para protegerte de cobros y no detenerte, te respondo con el motor analítico interno de MongoDB.'
+        : undefined,
     });
   } catch (error) {
     console.error('[ai chat error]', error);

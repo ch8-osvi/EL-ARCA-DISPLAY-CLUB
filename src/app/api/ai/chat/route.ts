@@ -195,42 +195,58 @@ Instrucciones:
 4. Si te preguntan sobre quién debe dinero, desglosa los clientes y montos. Si preguntan sobre hoy o ayer, sé claro con los dólares y pesos.
 5. Si no hay registros para un período determinado (ej. hoy no ha habido ventas aún), indícalo amablemente sin alarmar.`;
 
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
-        const geminiRes = await fetch(geminiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [
-              {
-                role: 'user',
-                parts: [
+        // List of models to try in priority order (Google updated new API keys to gemini-3.6-flash and gemini-flash-latest)
+        const candidateModels = [
+          'gemini-3.6-flash',
+          'gemini-flash-latest',
+          'gemini-2.5-flash',
+          'gemini-1.5-flash',
+        ];
+
+        let candidateText = '';
+        for (const model of candidateModels) {
+          try {
+            const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
+            const geminiRes = await fetch(geminiUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [
                   {
-                    text: `Contexto en tiempo real de la tienda:\n${JSON.stringify(contextPayload, null, 2)}\n\nPregunta del usuario: "${cleanPrompt}"`,
+                    role: 'user',
+                    parts: [
+                      {
+                        text: `Contexto en tiempo real de la tienda:\n${JSON.stringify(contextPayload, null, 2)}\n\nPregunta del usuario: "${cleanPrompt}"`,
+                      },
+                    ],
                   },
                 ],
-              },
-            ],
-            systemInstruction: {
-              parts: [{ text: systemInstruction }],
-            },
-            generationConfig: {
-              temperature: 0.3,
-              maxOutputTokens: 1000,
-            },
-          }),
-        });
-
-        if (geminiRes.ok) {
-          const geminiData = await geminiRes.json();
-          const candidateText =
-            geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (candidateText) {
-            return NextResponse.json({
-              success: true,
-              answer: candidateText,
-              source: 'gemini',
+                systemInstruction: {
+                  parts: [{ text: systemInstruction }],
+                },
+                generationConfig: {
+                  temperature: 0.3,
+                  maxOutputTokens: 1000,
+                },
+              }),
             });
+
+            if (geminiRes.ok) {
+              const geminiData = await geminiRes.json();
+              candidateText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+              if (candidateText) break;
+            }
+          } catch (modelErr) {
+            console.warn(`Error querying model ${model}:`, modelErr);
           }
+        }
+
+        if (candidateText) {
+          return NextResponse.json({
+            success: true,
+            answer: candidateText,
+            source: 'gemini',
+          });
         }
       } catch (geminiErr) {
         console.warn('Gemini API call error, falling back to analytical engine:', geminiErr);

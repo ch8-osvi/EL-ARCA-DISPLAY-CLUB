@@ -39,6 +39,11 @@ import {
   printRefundViaUsb,
   RefundTicketData,
 } from '@/components/PrintTicket';
+import {
+  getHavanaDateKey,
+  getHavanaDaysAgoKey,
+  formatHavanaDateTime,
+} from '@/lib/dateUtils';
 
 interface SaleItem {
   productId:   string;
@@ -370,11 +375,10 @@ export default function SalesHistoryPage() {
 
   // Filtered & Sorted Sales
   const filteredSales = useMemo(() => {
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const yesterdayStart = todayStart - 24 * 60 * 60 * 1000;
-    const weekStart = todayStart - 7 * 24 * 60 * 60 * 1000;
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const todayKey = getHavanaDateKey();
+    const yesterdayKey = getHavanaDaysAgoKey(1);
+    const weekKey = getHavanaDaysAgoKey(7);
+    const havanaMonthPrefix = todayKey.substring(0, 7);
 
     const filtered = sales.filter((s) => {
       // Status filter
@@ -385,13 +389,13 @@ export default function SalesHistoryPage() {
       // Currency filter
       if (filterCurrency !== 'ALL' && s.currency !== filterCurrency) return false;
 
-      // Date filter
+      // Date filter (Synchronized with Cuba local date)
       if (filterDate !== 'ALL') {
-        const saleTime = new Date(s.createdAt).getTime();
-        if (filterDate === 'TODAY' && saleTime < todayStart) return false;
-        if (filterDate === 'YESTERDAY' && (saleTime < yesterdayStart || saleTime >= todayStart)) return false;
-        if (filterDate === 'WEEK' && saleTime < weekStart) return false;
-        if (filterDate === 'MONTH' && saleTime < monthStart) return false;
+        const saleDateKey = getHavanaDateKey(s.createdAt);
+        if (filterDate === 'TODAY' && saleDateKey !== todayKey) return false;
+        if (filterDate === 'YESTERDAY' && saleDateKey !== yesterdayKey) return false;
+        if (filterDate === 'WEEK' && saleDateKey < weekKey) return false;
+        if (filterDate === 'MONTH' && !saleDateKey.startsWith(havanaMonthPrefix)) return false;
       }
 
       // Brand filter
@@ -760,11 +764,11 @@ export default function SalesHistoryPage() {
       <header className="sticky top-0 z-40 w-full glass-panel border-b border-[#D4AF37]/15 backdrop-blur-xl bg-[#090A0F]/90">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-4">
           <Link
-            href="/admin/pos"
+            href="/admin"
             className="flex items-center gap-2 text-[#D4AF37] hover:text-white transition-colors group"
           >
             <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
-            <span className="text-sm font-bold">Volver al Terminal POS</span>
+            <span className="text-sm font-bold">Panel Admin</span>
           </Link>
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/30">
             <History className="w-3.5 h-3.5 text-blue-400" />
@@ -1116,13 +1120,7 @@ export default function SalesHistoryPage() {
           <div className="space-y-3">
             {filteredSales.map((sale) => {
               const isExpanded = expandedOrder === sale._id;
-              const dateFormatted = new Date(sale.createdAt).toLocaleString('es-CU', {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-              });
+              const dateFormatted = formatHavanaDateTime(sale.createdAt);
 
               const totalItemsPurchased = sale.items.reduce((acc, i) => acc + i.qty, 0);
               const totalItemsReturned = sale.items.reduce((acc, i) => acc + (i.returnedQty || 0), 0);
@@ -1361,7 +1359,7 @@ export default function SalesHistoryPage() {
                                     -${refLog.refundUSD.toFixed(2)} USD (-{refLog.refundCUP.toLocaleString()} CUP)
                                   </span>
                                   <span className="text-[10px] text-gray-500">
-                                    {new Date(refLog.createdAt).toLocaleString('es-CU')}
+                                    {formatHavanaDateTime(refLog.createdAt)}
                                   </span>
                                 </div>
                               </div>

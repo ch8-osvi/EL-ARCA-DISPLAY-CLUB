@@ -3,14 +3,13 @@ import connectToDatabase from '@/lib/mongoose';
 import { Sale } from '@/lib/models/Sale';
 import { Product } from '@/lib/models/Product';
 import { StockHistory } from '@/lib/models/StockHistory';
+import { getHavanaMonthDay, getHavanaDateKey } from '@/lib/dateUtils';
 
 export const dynamic = 'force-dynamic';
 
-/** Generates order number: MMDD + 3 random letters + product count (zero-padded to 2) */
+/** Generates order number: MMDD + 3 random letters + product count (zero-padded to 2) in Cuba timezone */
 function generateOrderNumber(totalItems: number): string {
-  const now = new Date();
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const dd = String(now.getDate()).padStart(2, '0');
+  const { mm, dd } = getHavanaMonthDay();
   const letters = Array.from({ length: 3 }, () =>
     String.fromCharCode(65 + Math.floor(Math.random() * 26))
   ).join('');
@@ -28,10 +27,9 @@ export async function GET() {
 
     const sales = await Sale.find({}).sort({ createdAt: -1 }).lean();
 
-    // Daily summary (today only)
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todaySales = sales.filter((s) => new Date(s.createdAt) >= today);
+    // Daily summary (Cuba timezone today)
+    const havanaTodayKey = getHavanaDateKey();
+    const todaySales = sales.filter((s) => getHavanaDateKey(s.createdAt) === havanaTodayKey);
 
     // USD CASH DRAWER (Transactions paid in USD)
     const todayUSDSales     = todaySales.filter((s) => (s.currency || 'USD') === 'USD');

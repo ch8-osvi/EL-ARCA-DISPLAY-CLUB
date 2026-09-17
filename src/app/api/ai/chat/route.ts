@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongoose';
 import { Sale } from '@/lib/models/Sale';
 import { Product } from '@/lib/models/Product';
+import { getHavanaDateKey } from '@/lib/dateUtils';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,21 +33,22 @@ export async function POST(req: NextRequest) {
       Product.find({ isHidden: false }).lean(),
     ]);
 
-    // 2. Compute date boundaries
+    // 2. Compute date boundaries in Cuba timezone
     const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const yesterdayStart = todayStart - 24 * 60 * 60 * 1000;
-    const weekStart = todayStart - 7 * 24 * 60 * 60 * 1000;
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const havanaTodayKey = getHavanaDateKey(now);
+    const yesterdayDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const havanaYesterdayKey = getHavanaDateKey(yesterdayDate);
+    const weekStart = now.getTime() - 7 * 24 * 60 * 60 * 1000;
+    const [curYear, curMonth] = havanaTodayKey.split('-');
 
-    // 3. Segment sales by date
-    const todaySales = sales.filter((s) => new Date(s.createdAt).getTime() >= todayStart);
-    const yesterdaySales = sales.filter((s) => {
-      const t = new Date(s.createdAt).getTime();
-      return t >= yesterdayStart && t < todayStart;
-    });
+    // 3. Segment sales by date in Cuba timezone
+    const todaySales = sales.filter((s) => getHavanaDateKey(s.createdAt) === havanaTodayKey);
+    const yesterdaySales = sales.filter((s) => getHavanaDateKey(s.createdAt) === havanaYesterdayKey);
     const weekSales = sales.filter((s) => new Date(s.createdAt).getTime() >= weekStart);
-    const monthSales = sales.filter((s) => new Date(s.createdAt).getTime() >= monthStart);
+    const monthSales = sales.filter((s) => {
+      const [sYear, sMonth] = getHavanaDateKey(s.createdAt).split('-');
+      return sYear === curYear && sMonth === curMonth;
+    });
 
     // Helpers to sum sales
     const calcTotals = (saleList: any[]) => {

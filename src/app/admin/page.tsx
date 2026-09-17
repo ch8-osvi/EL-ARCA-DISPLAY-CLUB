@@ -810,12 +810,12 @@ export default function AdminPage() {
               Gestión de Catálogo en Vivo
             </h1>
             <p className="text-xs sm:text-sm text-gray-300">
-              Puedes subir un nuevo Excel (.xlsx), agregar productos manualmente o borrar los existentes en tiempo real.
+              Puedes subir un nuevo Excel (.xlsx), exportar o restaurar el catálogo en tiempo real.
             </p>
           </div>
 
-          {/* 5 Action Buttons */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 w-full lg:max-w-3xl shrink-0">
+          {/* 4 Action Buttons */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full lg:max-w-2xl shrink-0">
             {/* Upload Excel Button */}
             <button
               id="btn-open-excel-modal"
@@ -836,16 +836,6 @@ export default function AdminPage() {
               <span>Exportar Excel</span>
             </button>
 
-            {/* Add product button */}
-            <button
-              id="btn-open-add-modal"
-              onClick={() => setShowAddModal(true)}
-              className="h-11 px-3 rounded-xl gold-gradient-bg text-black font-extrabold text-xs shadow-gold-glow flex items-center justify-center gap-2 hover:scale-105 transition-all w-full"
-            >
-              <Plus className="w-4 h-4 text-black stroke-[3] shrink-0" />
-              <span>Agregar Producto</span>
-            </button>
-
             {/* Restore button */}
             <button
               id="btn-restore-excel"
@@ -860,7 +850,7 @@ export default function AdminPage() {
             <Link
               id="btn-open-ai-assistant"
               href="/admin/ia"
-              className="h-11 px-3 rounded-xl bg-gradient-to-r from-purple-600/30 to-indigo-600/30 hover:from-purple-600/50 hover:to-indigo-600/50 text-purple-200 border border-purple-500/50 font-extrabold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-md shadow-purple-950/40 w-full col-span-2 sm:col-span-1"
+              className="h-11 px-3 rounded-xl bg-gradient-to-r from-purple-600/30 to-indigo-600/30 hover:from-purple-600/50 hover:to-indigo-600/50 text-purple-200 border border-purple-500/50 font-extrabold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-md shadow-purple-950/40 w-full"
             >
               <Sparkles className="w-4 h-4 text-purple-300 animate-pulse shrink-0" />
               <span>Asistente IA ✨</span>

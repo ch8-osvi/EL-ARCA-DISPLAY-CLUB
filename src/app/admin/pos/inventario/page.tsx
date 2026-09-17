@@ -51,6 +51,16 @@ export default function InventoryPage() {
   const [filterStock, setFilterStock] = useState<'ALL' | 'OUT' | 'LOW'>('ALL');
   const [selectedBrand, setSelectedBrand] = useState('ALL');
 
+  // Add Product Modal State
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newMarca, setNewMarca] = useState('');
+  const [newModelo, setNewModelo] = useState('');
+  const [newCalidadSelect, setNewCalidadSelect] = useState('ORIGINAL C/M');
+  const [newCalidadCustom, setNewCalidadCustom] = useState('');
+  const [newPrecio, setNewPrecio] = useState('');
+  const [newStock, setNewStock] = useState('1');
+  const [isSubmittingAdd, setIsSubmittingAdd] = useState(false);
+
   // Add Stock Modal
   const [adjustModal, setAdjustModal] = useState<{
     open: boolean;
@@ -109,6 +119,69 @@ export default function InventoryPage() {
       fetchInventory();
     }
   }, [isAuthenticated]);
+
+  // Handle Add Single Product
+  const handleAddProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newModelo.trim() || !newPrecio) return;
+
+    const finalCalidad =
+      newCalidadSelect === 'CUSTOM'
+        ? newCalidadCustom.trim().toUpperCase() || 'ORIGINAL C/M'
+        : newCalidadSelect.trim().toUpperCase();
+
+    const marcaTrimmed = (newMarca || 'VARIOS').toUpperCase().trim();
+    const modeloTrimmed = newModelo.trim();
+
+    // Check duplicate
+    const isDuplicate = products.some(
+      (p) =>
+        p.marca.toUpperCase() === marcaTrimmed &&
+        p.modelo.toUpperCase() === modeloTrimmed.toUpperCase() &&
+        p.calidad.toUpperCase() === finalCalidad
+    );
+
+    if (isDuplicate) {
+      triggerToast('Error: Ya existe un display con la misma Marca, Modelo y Calidad.', true);
+      return;
+    }
+
+    const newProd: Product = {
+      id: `prod-custom-${Date.now()}`,
+      marca: marcaTrimmed,
+      modelo: modeloTrimmed,
+      calidad: finalCalidad,
+      precio: parseFloat(newPrecio) || 0,
+      stock: Math.max(0, parseInt(newStock, 10) || 0),
+    };
+
+    setIsSubmittingAdd(true);
+    try {
+      const res = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'add', product: newProd }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        triggerToast(`¡Display ${modeloTrimmed} agregado con éxito!`);
+        setShowAddModal(false);
+        setNewMarca('');
+        setNewModelo('');
+        setNewCalidadSelect('ORIGINAL C/M');
+        setNewCalidadCustom('');
+        setNewPrecio('');
+        setNewStock('1');
+        fetchInventory();
+      } else {
+        triggerToast(data.error || 'Error al guardar el producto', true);
+      }
+    } catch {
+      triggerToast('Error de conexión al guardar producto', true);
+    } finally {
+      setIsSubmittingAdd(false);
+    }
+  };
 
   // Open add stock modal
   const handleOpenAdjust = (prod: ProductWithHidden) => {
@@ -265,6 +338,145 @@ export default function InventoryPage() {
             <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
           )}
           <span className="text-xs font-bold">{toastMessage.text}</span>
+        </div>
+      )}
+
+      {/* Add New Single Product Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-lg glass-panel rounded-3xl p-6 sm:p-8 border border-[#D4AF37]/40 shadow-2xl relative space-y-6">
+            <button
+              onClick={() => setShowAddModal(false)}
+              className="absolute top-5 right-5 text-gray-400 hover:text-white"
+            >
+              <X className="w-6 h-6" />
+            </button>
+
+            <div className="space-y-1">
+              <h3 className="text-xl font-bold text-white">Agregar Nuevo Display</h3>
+              <p className="text-xs text-gray-400">
+                Añade un repuesto individual al catálogo e inventario en tiempo real.
+              </p>
+            </div>
+
+            <form onSubmit={handleAddProduct} className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">
+                  Marca
+                </label>
+                <input
+                  type="text"
+                  value={newMarca}
+                  onChange={(e) => setNewMarca(e.target.value)}
+                  placeholder="ej. SAMSUNG, iPHONE, XIAOMI"
+                  className="w-full px-4 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-sm focus:border-[#D4AF37] focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">
+                  Modelo / Código
+                </label>
+                <input
+                  type="text"
+                  value={newModelo}
+                  onChange={(e) => setNewModelo(e.target.value)}
+                  placeholder="ej. Galaxy A55 5G / A556"
+                  className="w-full px-4 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-sm focus:border-[#D4AF37] focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-gray-300 block mb-1">
+                    Calidad del Display
+                  </label>
+                  <select
+                    value={newCalidadSelect}
+                    onChange={(e) => setNewCalidadSelect(e.target.value)}
+                    className="w-full px-3 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-xs focus:border-[#D4AF37] focus:outline-none cursor-pointer"
+                  >
+                    <option value="ORIGINAL C/M">ORIGINAL C/M (Con Marco)</option>
+                    <option value="INCELL C/M">INCELL C/M (Con Marco)</option>
+                    <option value="OLED C/M">OLED C/M (Con Marco)</option>
+                    <option value="ORIGINAL">ORIGINAL S/M (Sin Marco)</option>
+                    <option value="INCELL">INCELL S/M (Sin Marco)</option>
+                    <option value="OLED">OLED S/M (Sin Marco)</option>
+                    <option value="OLED SOFT">OLED SOFT (Gama Alta)</option>
+                    <option value="AMOLED C/M">AMOLED C/M</option>
+                    <option value="MECHANIC">MECHANIC (Especial)</option>
+                    <option value="AAA">AAA</option>
+                    <option value="CUSTOM">-- Personalizada --</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-gray-300 block mb-1">
+                    Precio ($ USD)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={newPrecio}
+                    onChange={(e) => setNewPrecio(e.target.value)}
+                    placeholder="ej. 18.00"
+                    className="w-full px-3 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-xs focus:border-[#D4AF37] focus:outline-none"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-emerald-400 block mb-1">
+                    Stock Inicial
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={newStock}
+                    onChange={(e) => setNewStock(e.target.value)}
+                    placeholder="ej. 5"
+                    className="w-full px-3 py-3 bg-[#10131E] border border-emerald-500/30 rounded-xl text-white text-xs focus:border-emerald-400 focus:outline-none font-bold"
+                    required
+                  />
+                </div>
+              </div>
+
+              {newCalidadSelect === 'CUSTOM' && (
+                <div>
+                  <label className="text-xs font-semibold text-amber-300 block mb-1">
+                    Escribe la calidad personalizada (ej. ORIGINAL C/M ESPECIAL):
+                  </label>
+                  <input
+                    type="text"
+                    value={newCalidadCustom}
+                    onChange={(e) => setNewCalidadCustom(e.target.value)}
+                    placeholder="ej. ORIGINAL SERVICE PACK"
+                    className="w-full px-4 py-3 bg-[#10131E] border border-amber-500/30 rounded-xl text-white text-sm focus:border-amber-400 focus:outline-none"
+                    required
+                  />
+                </div>
+              )}
+
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 text-xs font-bold hover:bg-gray-700"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingAdd}
+                  className="flex-1 py-3 rounded-xl gold-gradient-bg text-black text-xs font-extrabold shadow-gold-glow flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isSubmittingAdd ? 'Guardando...' : 'Guardar Display'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
@@ -439,11 +651,11 @@ export default function InventoryPage() {
       <header className="sticky top-0 z-40 w-full glass-panel border-b border-[#D4AF37]/15 backdrop-blur-xl bg-[#090A0F]/90">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-4">
           <Link
-            href="/admin/pos"
+            href="/admin"
             className="flex items-center gap-2 text-[#D4AF37] hover:text-white transition-colors group"
           >
             <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
-            <span className="text-sm font-bold">Volver al Terminal POS</span>
+            <span className="text-sm font-bold">Panel Admin</span>
           </Link>
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#E5C158]/10 border border-[#D4AF37]/30">
             <Boxes className="w-3.5 h-3.5 text-[#D4AF37]" />
@@ -464,8 +676,18 @@ export default function InventoryPage() {
             </p>
           </div>
 
-          {/* View Mode Toggle */}
-          <div className="flex items-center gap-1.5 bg-[#10131E] p-1 rounded-2xl border border-white/10 shrink-0">
+          {/* Controls: Add Product & View Mode Toggle */}
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="px-4 py-2.5 rounded-2xl gold-gradient-bg text-black text-xs font-extrabold shadow-gold-glow flex items-center gap-2 hover:scale-105 active:scale-95 transition-all"
+            >
+              <Plus className="w-4 h-4 text-black stroke-[3]" />
+              <span>Agregar Producto</span>
+            </button>
+
+            {/* View Mode Toggle */}
+            <div className="flex items-center gap-1.5 bg-[#10131E] p-1 rounded-2xl border border-white/10 shrink-0">
             <button
               onClick={() => setCurrentView('STOCK')}
               className={`px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all ${
@@ -488,6 +710,7 @@ export default function InventoryPage() {
               <AlertOctagon className="w-4 h-4 text-rose-400" />
               <span>Mermas & Bajas ({totalMermaUnits})</span>
             </button>
+          </div>
           </div>
         </section>
 

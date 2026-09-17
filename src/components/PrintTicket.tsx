@@ -81,11 +81,13 @@ export function buildEscPosBytes(data: TicketData, copies = 1): Uint8Array {
   const divider = () => line('--------------------------------');
 
   const dateFormatted = new Date(data.createdAt).toLocaleString('es-CU', {
+    timeZone: 'America/Havana',
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    hour12: true,
   });
 
   for (let c = 0; c < copies; c++) {
@@ -393,11 +395,13 @@ export function printRefundTicket(data: RefundTicketData) {
     .join('');
 
   const dateFormatted = new Date(data.createdAt).toLocaleString('es-CU', {
+    timeZone: 'America/Havana',
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    hour12: true,
   });
 
   printWindow.document.write(`
@@ -478,11 +482,13 @@ export function printTicket(data: TicketData, copies = 1) {
     .join('');
 
   const dateFormatted = new Date(data.createdAt).toLocaleString('es-CU', {
+    timeZone: 'America/Havana',
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    hour12: true,
   });
 
   const singleTicketHtml = `
@@ -588,11 +594,13 @@ export const TicketContent: React.FC<TicketData> = ({
   createdAt,
 }) => {
   const dateFormatted = new Date(createdAt).toLocaleString('es-CU', {
+    timeZone: 'America/Havana',
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    hour12: true,
   });
 
   return (

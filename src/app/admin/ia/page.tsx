@@ -17,6 +17,13 @@ import {
   TrendingUp,
   Smartphone,
   Boxes,
+  MessageSquare,
+  Plus,
+  History,
+  X,
+  ChevronRight,
+  Clock,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface ChatMessage {
@@ -27,50 +34,98 @@ interface ChatMessage {
   isTyping?: boolean;
 }
 
+interface ChatSession {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  messages: ChatMessage[];
+}
+
 const PRESET_PROMPTS = [
   {
     icon: DollarSign,
     label: '¿Cuánto he vendido hoy?',
+    description: 'Total recaudado hoy en USD/CUP y cantidad de órdenes despachadas.',
     prompt: '¿Cuánto he vendido hoy en total y cuántas órdenes se registraron?',
+    tag: 'Ventas',
   },
   {
     icon: Calendar,
     label: '¿Cuánto vendí ayer?',
+    description: 'Comparativa de facturación y repuestos entregados en la jornada anterior.',
     prompt: '¿Cuánto vendí ayer y qué displays se despacharon?',
+    tag: 'Histórico',
   },
   {
     icon: AlertTriangle,
     label: '¿Quién me debe dinero?',
+    description: 'Listado de órdenes pendientes de cobro y deudores actuales.',
     prompt: '¿Quién me debe dinero y cuántas personas tienen pagos pendientes?',
+    tag: 'Cobranzas',
   },
   {
-    icon: TrendingUp,
-    label: '¿Cuál fue el día récord?',
-    prompt: '¿Cuál ha sido el día récord de mayores ventas en el historial?',
+    icon: ShieldAlert,
+    label: 'Mermas y Garantías',
+    description: 'Ranking de modelos con más bajas, roturas y motivos reportados.',
+    prompt: '¿Cuáles son los modelos con más problemas de garantía o mermas y por qué fallaron?',
+    tag: 'Taller',
   },
   {
     icon: Smartphone,
     label: 'Displays más vendidos',
+    description: 'Top de rotación de pantallas ordenadas por volumen y demanda.',
     prompt: '¿Cuáles son los 5 displays más vendidos y de mayor rotación?',
+    tag: 'Rotación',
   },
   {
     icon: Boxes,
-    label: 'Stock y agotados',
+    label: 'Stock y Agotados',
+    description: 'Modelos en cero o con existencias bajas (1 a 2 unidades).',
     prompt: '¿Qué modelos están agotados o con bajo stock de inventario?',
+    tag: 'Inventario',
   },
   {
-    icon: ShieldAlert,
-    label: 'Mermas y garantías',
-    prompt: '¿Cuáles son los modelos con más problemas de garantía o mermas y por qué fallaron?',
+    icon: TrendingUp,
+    label: 'Día récord de ventas',
+    description: 'El día histórico de mayor facturación en la base de datos.',
+    prompt: '¿Cuál ha sido el día récord de mayores ventas en el historial?',
+    tag: 'Récord',
   },
 ];
 
+const SESSIONS_STORAGE_KEY = 'el_arca_ai_chat_sessions_v2';
+const ACTIVE_SESSION_KEY = 'el_arca_ai_active_session_id';
+
+const createDefaultSession = (): ChatSession => {
+  const now = Date.now();
+  const timeStr = new Date(now).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+  return {
+    id: `session-${now}`,
+    title: 'Nueva Conversación',
+    createdAt: now,
+    updatedAt: now,
+    messages: [
+      {
+        id: `welcome-${now}`,
+        sender: 'assistant',
+        text: `👋 **¡Hola! Soy tu Asistente de Inteligencia de Negocio de El Arca Display Club.**\n\nEstoy conectado en tiempo real a tu base de datos de MongoDB (ventas, deudores, stock e historial de mermas).\n\nPuedes hacerme cualquier pregunta o seleccionar una de las **Consultas Frecuentes** en el panel lateral.`,
+        time: timeStr,
+      },
+    ],
+  };
+};
+
 export default function AIAssistantPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string>('');
   const [inputQuery, setInputQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [quotaAlert, setQuotaAlert] = useState<string | null>(null);
+  const [showHistorySidebar, setShowHistorySidebar] = useState<boolean>(false);
+  const [showPromptsMobile, setShowPromptsMobile] = useState<boolean>(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -82,19 +137,43 @@ export default function AIAssistantPage() {
     }
   }, []);
 
-  // Initial welcome message
+  // Load chat sessions from localStorage
   useEffect(() => {
-    if (isAuthenticated && messages.length === 0) {
-      setMessages([
-        {
-          id: 'welcome-1',
-          sender: 'assistant',
-          text: `👋 **¡Hola! Soy tu Asistente de Inteligencia de Negocio de El Arca Display Club.**\n\nEstoy conectado en tiempo real a tu base de datos de ventas, catálogo y clientes.\n\nPuedes hacerme cualquier pregunta sobre tus números o hacer clic en una de las sugerencias rápidas abajo:`,
-          time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
-        },
-      ]);
+    try {
+      const saved = localStorage.getItem(SESSIONS_STORAGE_KEY);
+      const activeId = localStorage.getItem(ACTIVE_SESSION_KEY);
+      if (saved) {
+        const parsed: ChatSession[] = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setSessions(parsed);
+          const found = parsed.find((s) => s.id === activeId);
+          setActiveSessionId(found ? found.id : parsed[0].id);
+          return;
+        }
+      }
+    } catch (e) {
+      console.error('Error loading AI chat sessions:', e);
     }
-  }, [isAuthenticated, messages.length]);
+
+    // Default session if nothing found
+    const initial = createDefaultSession();
+    setSessions([initial]);
+    setActiveSessionId(initial.id);
+  }, []);
+
+  // Persist sessions helper
+  const saveSessions = (updated: ChatSession[]) => {
+    setSessions(updated);
+    try {
+      localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(updated));
+    } catch (e) {
+      console.error('Error saving AI sessions:', e);
+    }
+  };
+
+  // Find active session
+  const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0];
+  const messages = activeSession?.messages || [];
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -108,8 +187,47 @@ export default function AIAssistantPage() {
     };
   }, []);
 
-  // Typewriter streaming effect (writes out the response letter by letter)
-  const startTypewriter = (fullText: string, messageId: string) => {
+  // Start new conversation
+  const handleNewChat = () => {
+    if (typingTimerRef.current) clearInterval(typingTimerRef.current);
+    setQuotaAlert(null);
+    const newSession = createDefaultSession();
+    const updated = [newSession, ...sessions];
+    saveSessions(updated);
+    setActiveSessionId(newSession.id);
+    localStorage.setItem(ACTIVE_SESSION_KEY, newSession.id);
+    setShowHistorySidebar(false);
+  };
+
+  // Select existing session
+  const handleSelectSession = (id: string) => {
+    if (typingTimerRef.current) clearInterval(typingTimerRef.current);
+    setQuotaAlert(null);
+    setActiveSessionId(id);
+    localStorage.setItem(ACTIVE_SESSION_KEY, id);
+    setShowHistorySidebar(false);
+  };
+
+  // Delete a session
+  const handleDeleteSession = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const filtered = sessions.filter((s) => s.id !== id);
+    if (filtered.length === 0) {
+      const fresh = createDefaultSession();
+      saveSessions([fresh]);
+      setActiveSessionId(fresh.id);
+      localStorage.setItem(ACTIVE_SESSION_KEY, fresh.id);
+    } else {
+      saveSessions(filtered);
+      if (activeSessionId === id) {
+        setActiveSessionId(filtered[0].id);
+        localStorage.setItem(ACTIVE_SESSION_KEY, filtered[0].id);
+      }
+    }
+  };
+
+  // Typewriter streaming effect
+  const startTypewriter = (fullText: string, messageId: string, targetSessionId: string) => {
     if (typingTimerRef.current) {
       clearInterval(typingTimerRef.current);
     }
@@ -120,30 +238,43 @@ export default function AIAssistantPage() {
 
     typingTimerRef.current = setInterval(() => {
       currentIndex += chunkSize;
-      if (currentIndex >= fullText.length) {
-        currentIndex = fullText.length;
-        if (typingTimerRef.current) clearInterval(typingTimerRef.current);
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === messageId ? { ...m, text: fullText, isTyping: false } : m
-          )
-        );
-      } else {
-        const partial = fullText.slice(0, currentIndex);
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === messageId ? { ...m, text: partial, isTyping: true } : m
-          )
-        );
+      const isFinished = currentIndex >= fullText.length;
+      const currentText = isFinished ? fullText : fullText.slice(0, currentIndex);
+
+      if (isFinished && typingTimerRef.current) {
+        clearInterval(typingTimerRef.current);
       }
+
+      setSessions((prevSessions) => {
+        const next = prevSessions.map((sess) => {
+          if (sess.id !== targetSessionId) return sess;
+          return {
+            ...sess,
+            updatedAt: Date.now(),
+            messages: sess.messages.map((m) =>
+              m.id === messageId ? { ...m, text: currentText, isTyping: !isFinished } : m
+            ),
+          };
+        });
+
+        if (isFinished) {
+          try {
+            localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(next));
+          } catch (e) {
+            console.error(e);
+          }
+        }
+        return next;
+      });
     }, speed);
   };
 
   const handleSendMessage = async (userPrompt?: string) => {
     const queryToSend = (userPrompt || inputQuery).trim();
-    if (!queryToSend || loading) return;
+    if (!queryToSend || loading || !activeSession) return;
 
     const timeStr = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    const currentSessionId = activeSession.id;
 
     // Append user message
     const userMsg: ChatMessage = {
@@ -153,9 +284,26 @@ export default function AIAssistantPage() {
       time: timeStr,
     };
 
-    setMessages((prev) => [...prev, userMsg]);
+    // If first query in session, update title
+    const isFirstQuery = activeSession.title === 'Nueva Conversación';
+    const newTitle = isFirstQuery
+      ? queryToSend.slice(0, 32) + (queryToSend.length > 32 ? '...' : '')
+      : activeSession.title;
+
+    const updatedSessionsWithUser = sessions.map((sess) => {
+      if (sess.id !== currentSessionId) return sess;
+      return {
+        ...sess,
+        title: newTitle,
+        updatedAt: Date.now(),
+        messages: [...sess.messages, userMsg],
+      };
+    });
+
+    saveSessions(updatedSessionsWithUser);
     setInputQuery('');
     setLoading(true);
+    if (showPromptsMobile) setShowPromptsMobile(false);
 
     try {
       const res = await fetch('/api/ai/chat', {
@@ -177,8 +325,16 @@ export default function AIAssistantPage() {
           time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
           isTyping: true,
         };
-        setMessages((prev) => [...prev, assistantMsg]);
-        startTypewriter(data.answer, assistantMsgId);
+
+        setSessions((prev) =>
+          prev.map((sess) =>
+            sess.id === currentSessionId
+              ? { ...sess, updatedAt: Date.now(), messages: [...sess.messages, assistantMsg] }
+              : sess
+          )
+        );
+
+        startTypewriter(data.answer, assistantMsgId, currentSessionId);
       } else {
         const isQuota = data?.isQuotaExceeded || res.status === 429;
         if (isQuota) {
@@ -189,7 +345,13 @@ export default function AIAssistantPage() {
             text: '⏳ **Límite temporal alcanzado (15 consultas por minuto)**\n\nGoogle Gemini está pausado temporalmente para respetar la cuota gratuita. **Tranquilo, no se te cobrará nada.** Por favor espera unos segundos y repite tu pregunta.',
             time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
           };
-          setMessages((prev) => [...prev, quotaMsg]);
+          setSessions((prev) =>
+            prev.map((sess) =>
+              sess.id === currentSessionId
+                ? { ...sess, updatedAt: Date.now(), messages: [...sess.messages, quotaMsg] }
+                : sess
+            )
+          );
         } else {
           const errorMsg: ChatMessage = {
             id: `err-${Date.now()}`,
@@ -197,7 +359,13 @@ export default function AIAssistantPage() {
             text: `⚠️ **Aviso de la IA:** ${data?.error || 'No se pudo obtener respuesta de Google Gemini en este momento.'}`,
             time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
           };
-          setMessages((prev) => [...prev, errorMsg]);
+          setSessions((prev) =>
+            prev.map((sess) =>
+              sess.id === currentSessionId
+                ? { ...sess, updatedAt: Date.now(), messages: [...sess.messages, errorMsg] }
+                : sess
+            )
+          );
         }
       }
     } catch {
@@ -208,7 +376,13 @@ export default function AIAssistantPage() {
         text: '⚠️ **Error de conexión:** No se pudo comunicar con el servidor analítico de la tienda.',
         time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
       };
-      setMessages((prev) => [...prev, connErrorMsg]);
+      setSessions((prev) =>
+        prev.map((sess) =>
+          sess.id === currentSessionId
+            ? { ...sess, updatedAt: Date.now(), messages: [...sess.messages, connErrorMsg] }
+            : sess
+        )
+      );
     }
   };
 
@@ -219,27 +393,34 @@ export default function AIAssistantPage() {
     }
   };
 
-  const handleClearChat = () => {
+  const handleClearCurrentChat = () => {
     if (typingTimerRef.current) clearInterval(typingTimerRef.current);
     setQuotaAlert(null);
-    setMessages([
-      {
-        id: `welcome-${Date.now()}`,
-        sender: 'assistant',
-        text: `🧹 **Chat reiniciado.**\n\n¿Qué deseas consultar ahora sobre tus ventas o inventario?`,
-        time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
-      },
-    ]);
+    if (!activeSession) return;
+    const timeStr = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    const resetSession: ChatSession = {
+      ...activeSession,
+      updatedAt: Date.now(),
+      messages: [
+        {
+          id: `welcome-${Date.now()}`,
+          sender: 'assistant',
+          text: `🧹 **Chat reiniciado.**\n\n¿Qué deseas consultar ahora sobre tus ventas, deudores o inventario de repuestos?`,
+          time: timeStr,
+        },
+      ],
+    };
+    const updated = sessions.map((s) => (s.id === activeSession.id ? resetSession : s));
+    saveSessions(updated);
   };
 
-  // Helper to render markdown cleanly without raw symbols (no ###, no raw table syntax, clean bullets)
+  // Format inline markdown
   const renderMessageContent = (content: string) => {
     const lines = content.split('\n');
     const elements: React.ReactNode[] = [];
     let i = 0;
 
     const formatInline = (text: string) => {
-      // 1. Inline code `code`
       const codeParts = text.split(/(`.*?`)/g);
       return codeParts.map((cPart, cIdx) => {
         if (cPart.startsWith('`') && cPart.endsWith('`') && cPart.length > 2) {
@@ -253,7 +434,6 @@ export default function AIAssistantPage() {
           );
         }
 
-        // 2. Bold **text**
         const boldParts = cPart.split(/(\*\*.*?\*\*)/g);
         return boldParts.map((bPart, bIdx) => {
           if (bPart.startsWith('**') && bPart.endsWith('**') && bPart.length > 4) {
@@ -264,7 +444,6 @@ export default function AIAssistantPage() {
             );
           }
 
-          // 3. Italic *text*
           const italicParts = bPart.split(/(\*.*?\*)/g);
           return italicParts.map((iPart, iIdx) => {
             if (iPart.startsWith('*') && iPart.endsWith('*') && iPart.length > 2 && !iPart.startsWith('**')) {
@@ -318,11 +497,11 @@ export default function AIAssistantPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {bodyRows.map((row, rIdx) => (
-                    <tr key={rIdx} className="hover:bg-white/[0.02]">
-                      {row.map((cell, cIdx) => (
-                        <td key={cIdx} className="px-3 py-2 text-gray-200 whitespace-nowrap text-[11px]">
-                          {formatInline(cell)}
+                  {bodyRows.map((bRow, rIdx) => (
+                    <tr key={rIdx} className="hover:bg-white/5 transition-colors">
+                      {bRow.map((bCell, cIdx) => (
+                        <td key={cIdx} className="px-3 py-2 text-gray-300 whitespace-nowrap">
+                          {formatInline(bCell)}
                         </td>
                       ))}
                     </tr>
@@ -335,70 +514,55 @@ export default function AIAssistantPage() {
         continue;
       }
 
-      // Horizontal dividers (--- or ***)
-      if (/^(\-{3,}|\*{3,})$/.test(trimmed)) {
-        elements.push(<hr key={`hr-${i}`} className="my-2 border-white/10" />);
-        i++;
-        continue;
-      }
-
-      // Headings (###, ##, #)
-      if (trimmed.startsWith('#')) {
-        const cleanHeading = trimmed.replace(/^#+\s*/, '');
+      // Headers (### Header)
+      if (trimmed.startsWith('###') || trimmed.startsWith('##')) {
+        const cleanHeader = trimmed.replace(/^#+\s*/, '');
         elements.push(
-          <div key={`h-${i}`} className="font-bold text-[#E5C158] text-xs sm:text-sm mt-2.5 mb-1 flex items-center gap-1.5">
-            {formatInline(cleanHeading)}
+          <div key={`h-${i}`} className="pt-2 pb-1 font-bold text-sm text-[#E5C158] flex items-center gap-1.5">
+            <span>{formatInline(cleanHeader)}</span>
           </div>
         );
         i++;
         continue;
       }
 
-      // Bullet items (*, -, •) - Strip leading symbol so it never repeats
-      if (/^(\*|\-|\•)\s+/.test(trimmed)) {
-        const cleanBullet = trimmed.replace(/^(\*|\-|\•)\s+/, '');
+      // Bullet points (- or • or *)
+      if (/^[-*•]\s+/.test(trimmed)) {
+        const bulletContent = trimmed.replace(/^[-*•]\s+/, '');
         elements.push(
-          <div key={`bullet-${i}`} className="flex items-start gap-2 pl-2 my-1">
-            <span className="text-[#D4AF37] font-bold select-none">•</span>
-            <span className="flex-1 text-xs text-gray-200 leading-relaxed">{formatInline(cleanBullet)}</span>
+          <div key={`b-${i}`} className="flex items-start gap-2 pl-2 my-1 text-gray-200">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37] mt-1.5 shrink-0" />
+            <div className="flex-1 leading-relaxed">{formatInline(bulletContent)}</div>
           </div>
         );
         i++;
         continue;
       }
 
-      // Indented sub-bullets (↳ or -> or —)
-      if (trimmed.startsWith('↳') || trimmed.startsWith('->') || trimmed.startsWith('—')) {
-        elements.push(
-          <div key={`sub-${i}`} className="pl-4 text-xs text-gray-300 my-0.5 leading-relaxed">
-            {formatInline(trimmed)}
-          </div>
-        );
+      // Empty lines
+      if (!trimmed) {
+        elements.push(<div key={`sp-${i}`} className="h-1.5" />);
         i++;
         continue;
       }
 
-      // Empty line
-      if (trimmed === '') {
-        elements.push(<div key={`empty-${i}`} className="h-1.5" />);
-      } else {
-        elements.push(
-          <p key={`p-${i}`} className="text-xs text-gray-200 leading-relaxed my-0.5">
-            {formatInline(trimmed)}
-          </p>
-        );
-      }
+      // Standard paragraph
+      elements.push(
+        <p key={`p-${i}`} className="my-0.5 leading-relaxed">
+          {formatInline(line)}
+        </p>
+      );
       i++;
     }
 
     return elements;
   };
 
-
+  // Auth gate
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-[#090A0F] text-white flex flex-col justify-center items-center p-4">
-        <div className="glass-panel rounded-3xl p-8 border border-rose-500/30 space-y-4 text-center max-w-sm">
+        <div className="glass-panel rounded-3xl p-8 border border-rose-500/30 space-y-4 text-center max-w-sm shadow-2xl">
           <ShieldAlert className="w-12 h-12 text-rose-400 mx-auto" />
           <h1 className="text-xl font-extrabold text-white">Acceso Denegado</h1>
           <p className="text-sm text-gray-400">
@@ -406,7 +570,7 @@ export default function AIAssistantPage() {
           </p>
           <Link
             href="/admin"
-            className="block px-5 py-2.5 rounded-xl gold-gradient-bg text-black font-extrabold text-sm text-center"
+            className="block px-5 py-2.5 rounded-xl gold-gradient-bg text-black font-extrabold text-sm text-center shadow-gold-glow"
           >
             Ir al Panel Admin
           </Link>
@@ -416,59 +580,374 @@ export default function AIAssistantPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#090A0F] text-white flex flex-col">
+    <div className="h-screen bg-[#090A0F] text-white flex flex-col overflow-hidden">
       {/* Top Header */}
-      <header className="sticky top-0 z-40 w-full glass-panel border-b border-purple-500/20 backdrop-blur-xl bg-[#090A0F]/90">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/admin"
-              className="flex items-center gap-2 text-[#D4AF37] hover:text-white transition-colors group"
-            >
-              <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
-              <span className="text-sm font-bold hidden sm:inline">Panel Admin</span>
-            </Link>
-            <div className="h-6 w-px bg-white/10 hidden sm:block" />
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 p-[1px] flex items-center justify-center shadow-lg shadow-purple-950/50">
-                <div className="w-full h-full bg-[#10131E] rounded-[11px] flex items-center justify-center">
-                  <Sparkles className="w-4 h-4 text-purple-300 animate-pulse" />
-                </div>
-              </div>
-              <div>
-                <h1 className="text-base font-extrabold text-white leading-tight flex items-center gap-1.5">
-                  <span>Asistente Inteligente</span>
-                  <span className="text-[10px] uppercase font-black px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                    IA EN VIVO
-                  </span>
-                </h1>
-                <p className="text-[10px] text-gray-400">Analítica & Respuestas de Negocio</p>
+      <header className="h-16 sm:h-20 z-40 w-full glass-panel border-b border-purple-500/20 backdrop-blur-xl bg-[#090A0F]/95 px-4 sm:px-6 flex items-center justify-between gap-3 shrink-0">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/admin"
+            className="flex items-center gap-1.5 text-[#D4AF37] hover:text-white transition-colors group px-2.5 py-1.5 rounded-xl hover:bg-white/5"
+            title="Volver al Panel Administrador"
+          >
+            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
+            <span className="text-xs sm:text-sm font-bold hidden sm:inline">Panel Admin</span>
+          </Link>
+
+          <div className="h-6 w-px bg-white/10" />
+
+          {/* Toggle History Sidebar */}
+          <button
+            onClick={() => setShowHistorySidebar((prev) => !prev)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+              showHistorySidebar
+                ? 'bg-purple-600/30 border-purple-500/60 text-purple-200 shadow-lg'
+                : 'bg-white/5 border-white/10 text-gray-300 hover:text-white hover:bg-white/10'
+            }`}
+            title="Ver historial de conversaciones"
+          >
+            <History className="w-3.5 h-3.5 text-[#D4AF37]" />
+            <span className="hidden md:inline">Historial</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/10 font-bold">
+              {sessions.length}
+            </span>
+          </button>
+
+          <div className="flex items-center gap-2.5 pl-1">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 p-[1px] flex items-center justify-center shadow-lg shadow-purple-950/50 shrink-0">
+              <div className="w-full h-full bg-[#10131E] rounded-[11px] flex items-center justify-center">
+                <Sparkles className="w-4 h-4 text-[#D4AF37]" />
               </div>
             </div>
+            <div>
+              <h1 className="text-sm sm:text-base font-extrabold text-white leading-tight">
+                Asistente Inteligente
+              </h1>
+              <p className="text-[10px] text-gray-400 hidden sm:block">
+                Analítica & Decisiones de Negocio
+              </p>
+            </div>
           </div>
+        </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleClearChat}
-              className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-colors border border-white/5"
-              title="Limpiar conversación"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Limpiar</span>
-            </button>
-          </div>
+        {/* Header Actions */}
+        <div className="flex items-center gap-2">
+          {/* New Chat Button */}
+          <button
+            onClick={handleNewChat}
+            className="px-3 py-1.5 rounded-xl gold-gradient-bg text-black text-xs font-extrabold flex items-center gap-1.5 shadow-gold-glow hover:scale-105 transition-all"
+            title="Iniciar nueva conversación"
+          >
+            <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+            <span className="hidden sm:inline">Nuevo Chat</span>
+          </button>
+
+          {/* Mobile Toggle for Preset Prompts */}
+          <button
+            onClick={() => setShowPromptsMobile((prev) => !prev)}
+            className="lg:hidden px-3 py-1.5 rounded-xl bg-purple-500/15 border border-purple-500/30 text-purple-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-colors"
+            title="Ver preguntas frecuentes"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-[#D4AF37]" />
+            <span className="hidden xs:inline">Preguntas</span>
+          </button>
+
+          {/* Clear Current Chat Button */}
+          <button
+            onClick={handleClearCurrentChat}
+            className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-colors border border-white/5"
+            title="Reiniciar chat actual"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">Reiniciar</span>
+          </button>
         </div>
       </header>
 
-      {/* Main Chat Container */}
-      <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 flex flex-col justify-between space-y-6">
-        {/* Preset Prompt Buttons */}
-        <div className="space-y-2">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-            Consultas Rápidas Recomendadas:
-          </span>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+      {/* Main Workspace Body */}
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* ========================================================================= */}
+        {/* SIDEBAR IZQUIERDO: HISTORIAL DE CHATS (Desktop colapsable + Mobile Drawer) */}
+        {/* ========================================================================= */}
+        {showHistorySidebar && (
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
+            onClick={() => setShowHistorySidebar(false)}
+          />
+        )}
+
+        <aside
+          className={`
+            fixed lg:static top-0 bottom-0 left-0 z-50 lg:z-10
+            w-72 sm:w-80 lg:w-72 shrink-0
+            bg-[#0B0D17] border-r border-white/10
+            flex flex-col justify-between
+            transition-transform duration-300 ease-in-out
+            ${showHistorySidebar ? 'translate-x-0' : '-translate-x-full lg:hidden'}
+          `}
+        >
+          {/* Sidebar Top Header */}
+          <div className="p-4 border-b border-white/10 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <History className="w-4 h-4 text-[#D4AF37]" />
+              <span className="text-xs font-bold uppercase tracking-wider text-gray-200">
+                Historial de Chats
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={handleNewChat}
+                className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[#D4AF37] hover:text-white transition-colors"
+                title="Nueva conversación"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setShowHistorySidebar(false)}
+                className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors lg:hidden"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Session List */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+            {sessions.length === 0 ? (
+              <div className="text-center py-8 text-gray-500 text-xs">
+                No hay conversaciones guardadas.
+              </div>
+            ) : (
+              sessions.map((sess) => {
+                const isActive = sess.id === activeSessionId;
+                const formattedTime = new Date(sess.updatedAt).toLocaleDateString('es-ES', {
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                });
+
+                return (
+                  <div
+                    key={sess.id}
+                    onClick={() => handleSelectSession(sess.id)}
+                    className={`group w-full text-left p-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-between gap-2 border ${
+                      isActive
+                        ? 'bg-purple-950/40 border-[#D4AF37]/50 text-white shadow-lg'
+                        : 'bg-white/[0.02] border-transparent hover:bg-white/5 text-gray-300 hover:text-white'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <MessageSquare
+                        className={`w-4 h-4 shrink-0 ${
+                          isActive ? 'text-[#D4AF37]' : 'text-gray-500 group-hover:text-gray-300'
+                        }`}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold truncate leading-tight">
+                          {sess.title}
+                        </p>
+                        <p className="text-[10px] text-gray-500 flex items-center gap-1 mt-0.5">
+                          <Clock className="w-2.5 h-2.5" />
+                          <span>{formattedTime}</span>
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Delete button */}
+                    <button
+                      onClick={(e) => handleDeleteSession(sess.id, e)}
+                      className="p-1 rounded text-gray-500 hover:text-rose-400 hover:bg-rose-500/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Eliminar conversación"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Sidebar Footer */}
+          <div className="p-3 border-t border-white/10 bg-[#0E111F]/50">
+            <button
+              onClick={handleNewChat}
+              className="w-full py-2.5 px-3 rounded-xl gold-gradient-bg text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-gold-glow hover:scale-[1.02] transition-transform"
+            >
+              <Plus className="w-4 h-4 stroke-[2.5]" />
+              <span>Nueva Conversación</span>
+            </button>
+          </div>
+        </aside>
+
+        {/* ========================================================================= */}
+        {/* ÁREA CENTRAL: FEED DE CHAT PRINCIPAL & INPUT */}
+        {/* ========================================================================= */}
+        <main className="flex-1 flex flex-col min-w-0 h-full bg-[#090A0F] relative">
+          {/* Chat Message Scrollable Feed */}
+          <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 space-y-4">
+            <div className="max-w-3xl mx-auto space-y-4">
+              {messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`flex items-start gap-3 ${
+                    msg.sender === 'user' ? 'flex-row-reverse' : 'flex-row'
+                  }`}
+                >
+                  {/* Avatar */}
+                  <div
+                    className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-md ${
+                      msg.sender === 'user'
+                        ? 'gold-gradient-bg text-black'
+                        : 'bg-gradient-to-br from-purple-600 to-indigo-700 text-white'
+                    }`}
+                  >
+                    {msg.sender === 'user' ? (
+                      <User className="w-4 h-4" />
+                    ) : (
+                      <Bot className="w-4 h-4" />
+                    )}
+                  </div>
+
+                  {/* Message Bubble */}
+                  <div
+                    className={`max-w-[85%] sm:max-w-[80%] rounded-2xl p-4 text-xs sm:text-sm leading-relaxed ${
+                      msg.sender === 'user'
+                        ? 'bg-gradient-to-r from-[#D4AF37]/20 to-[#AA8826]/20 border border-[#D4AF37]/40 text-white shadow-gold-glow'
+                        : 'bg-[#121626] border border-white/10 text-gray-200 shadow-xl'
+                    }`}
+                  >
+                    <div className="space-y-1">
+                      {renderMessageContent(msg.text)}
+                      {msg.isTyping && (
+                        <span className="inline-block w-1.5 h-3.5 ml-1 bg-[#D4AF37] animate-pulse rounded-sm align-middle" />
+                      )}
+                    </div>
+                    <span className="text-[10px] text-gray-400 mt-2 block text-right font-semibold">
+                      {msg.time}
+                    </span>
+                  </div>
+                </div>
+              ))}
+
+              {/* Thinking Indicator */}
+              {loading && (
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-700 text-white flex items-center justify-center shrink-0 shadow-lg shadow-purple-950/40">
+                    <Bot className="w-4 h-4 animate-bounce" />
+                  </div>
+                  <div className="glass-card rounded-2xl px-4 py-3 border border-purple-500/30 flex items-center gap-2.5 text-xs text-purple-200 bg-[#121628]/90 shadow-xl">
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#D4AF37]" />
+                    <span className="font-semibold tracking-wide">
+                      Consultando MongoDB y redactando respuesta...
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div ref={messagesEndRef} />
+            </div>
+          </div>
+
+          {/* Quota / Limit Warning Banner */}
+          {quotaAlert && (
+            <div className="px-4 sm:px-6 pb-2 max-w-3xl mx-auto w-full">
+              <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/50 text-amber-200 text-xs flex items-center justify-between gap-3 shadow-lg shadow-amber-950/30">
+                <div className="flex items-center gap-2.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 animate-pulse" />
+                  <span className="font-medium leading-relaxed">{quotaAlert}</span>
+                </div>
+                <button
+                  onClick={() => setQuotaAlert(null)}
+                  className="text-amber-300 hover:text-white text-xs font-bold px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 transition-colors shrink-0"
+                >
+                  Entendido
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Quick Horizontal Carousel on Mobile */}
+          <div className="lg:hidden px-4 py-1.5 overflow-x-auto flex items-center gap-1.5 scrollbar-none border-t border-white/5 bg-[#090A0F]">
+            {PRESET_PROMPTS.slice(0, 5).map((p, idx) => (
+              <button
+                key={idx}
+                onClick={() => handleSendMessage(p.prompt)}
+                disabled={loading}
+                className="whitespace-nowrap px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-[11px] text-gray-300 hover:text-white hover:border-[#D4AF37]/40 flex items-center gap-1 shrink-0"
+              >
+                <span>{p.label}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Input Bar */}
+          <div className="p-3 sm:p-4 bg-[#0B0D17]/90 border-t border-white/10 backdrop-blur-md shrink-0">
+            <div className="max-w-3xl mx-auto relative w-full">
+              <input
+                type="text"
+                value={inputQuery}
+                onChange={(e) => setInputQuery(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Pregunta a la IA (ej. ¿cuánto vendí hoy?, ¿quién me debe?, mermas)..."
+                disabled={loading}
+                className="w-full pl-5 pr-28 py-3.5 bg-[#121624] border border-purple-500/30 rounded-2xl text-white placeholder-gray-500 text-xs sm:text-sm focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all disabled:opacity-50"
+              />
+
+              <button
+                onClick={() => handleSendMessage()}
+                disabled={loading || !inputQuery.trim()}
+                className="absolute right-2 top-2 h-9 px-4 rounded-xl gold-gradient-bg text-black font-extrabold text-xs flex items-center gap-1.5 shadow-gold-glow hover:scale-105 transition-all disabled:opacity-40 disabled:hover:scale-100"
+              >
+                <span>Preguntar</span>
+                <Send className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </main>
+
+        {/* ========================================================================= */}
+        {/* SIDEBAR DERECHO: CONSULTAS FRECUENTES (Desktop fijo + Mobile Modal Drawer) */}
+        {/* ========================================================================= */}
+        {showPromptsMobile && (
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
+            onClick={() => setShowPromptsMobile(false)}
+          />
+        )}
+
+        <aside
+          className={`
+            fixed lg:static top-0 bottom-0 right-0 z-50 lg:z-10
+            w-80 xl:w-88 shrink-0
+            bg-[#0B0D17] border-l border-white/10
+            flex flex-col
+            transition-transform duration-300 ease-in-out
+            ${showPromptsMobile ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'}
+          `}
+        >
+          {/* Header Panel Derecho */}
+          <div className="p-4 border-b border-white/10 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-[#D4AF37]" />
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider text-gray-200 block">
+                  Consultas Frecuentes
+                </span>
+                <span className="text-[10px] text-gray-400">
+                  Preguntas rápidas para la IA
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowPromptsMobile(false)}
+              className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors lg:hidden"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Cards Vertical List */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
             {PRESET_PROMPTS.map((p, idx) => {
               const Icon = p.icon;
               return (
@@ -476,119 +955,38 @@ export default function AIAssistantPage() {
                   key={idx}
                   onClick={() => handleSendMessage(p.prompt)}
                   disabled={loading}
-                  className="glass-card rounded-xl p-2.5 border border-white/10 hover:border-purple-500/50 hover:bg-purple-950/20 text-left transition-all duration-200 group flex flex-col justify-between disabled:opacity-50"
+                  className="w-full text-left p-3 rounded-2xl glass-card border border-white/10 hover:border-[#D4AF37]/50 hover:bg-white/[0.04] transition-all group disabled:opacity-50 relative overflow-hidden"
                 >
-                  <Icon className="w-4 h-4 text-[#D4AF37] group-hover:scale-110 transition-transform mb-1.5" />
-                  <span className="text-[11px] font-bold text-gray-200 group-hover:text-purple-200 leading-tight">
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-white/5 text-[#D4AF37] border border-white/10">
+                      {p.tag}
+                    </span>
+                    <Icon className="w-4 h-4 text-[#D4AF37] group-hover:scale-110 transition-transform" />
+                  </div>
+                  <h3 className="text-xs font-bold text-gray-100 group-hover:text-[#F3E0A9] transition-colors leading-snug">
                     {p.label}
-                  </span>
+                  </h3>
+                  <p className="text-[11px] text-gray-400 leading-normal mt-1">
+                    {p.description}
+                  </p>
+                  <div className="flex items-center gap-1 text-[10px] text-[#D4AF37] font-semibold mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span>Consultar ahora</span>
+                    <ChevronRight className="w-3 h-3" />
+                  </div>
                 </button>
               );
             })}
           </div>
-        </div>
 
-        {/* Chat Message Scrollable Feed */}
-        <div className="glass-panel rounded-3xl p-5 sm:p-7 border border-white/10 flex-1 min-h-[420px] max-h-[580px] overflow-y-auto space-y-5 shadow-2xl">
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex items-start gap-3 ${
-                msg.sender === 'user' ? 'flex-row-reverse' : 'flex-row'
-              }`}
-            >
-              {/* Avatar */}
-              <div
-                className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-md ${
-                  msg.sender === 'user'
-                    ? 'gold-gradient-bg text-black'
-                    : 'bg-gradient-to-br from-purple-600 to-indigo-700 text-white'
-                }`}
-              >
-                {msg.sender === 'user' ? (
-                  <User className="w-4 h-4" />
-                ) : (
-                  <Bot className="w-4 h-4" />
-                )}
-              </div>
-
-              {/* Message Bubble */}
-              <div
-                className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 text-xs sm:text-sm leading-relaxed ${
-                  msg.sender === 'user'
-                    ? 'bg-gradient-to-r from-[#D4AF37]/20 to-[#AA8826]/20 border border-[#D4AF37]/40 text-white shadow-gold-glow'
-                    : 'bg-[#121626] border border-white/10 text-gray-200 shadow-xl'
-                }`}
-              >
-                <div className="space-y-1">
-                  {renderMessageContent(msg.text)}
-                  {msg.isTyping && (
-                    <span className="inline-block w-1.5 h-3.5 ml-1 bg-[#D4AF37] animate-pulse rounded-sm align-middle" />
-                  )}
-                </div>
-                <span className="text-[10px] text-gray-400 mt-2 block text-right font-semibold">
-                  {msg.time}
-                </span>
-              </div>
-            </div>
-          ))}
-
-          {/* Thinking Indicator */}
-          {loading && (
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-700 text-white flex items-center justify-center shrink-0 shadow-lg shadow-purple-950/40">
-                <Bot className="w-4 h-4 animate-bounce" />
-              </div>
-              <div className="glass-card rounded-2xl px-4 py-3 border border-purple-500/30 flex items-center gap-2.5 text-xs text-purple-200 bg-[#121628]/90 shadow-xl">
-                <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#D4AF37]" />
-                <span className="font-semibold tracking-wide">
-                  Consultando MongoDB y redactando respuesta...
-                </span>
-              </div>
-            </div>
-          )}
-
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Quota / Limit Warning Banner */}
-        {quotaAlert && (
-          <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/50 text-amber-200 text-xs flex items-center justify-between gap-3 shadow-lg shadow-amber-950/30">
-            <div className="flex items-center gap-2.5">
-              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 animate-pulse" />
-              <span className="font-medium leading-relaxed">{quotaAlert}</span>
-            </div>
-            <button
-              onClick={() => setQuotaAlert(null)}
-              className="text-amber-300 hover:text-white text-xs font-bold px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 transition-colors shrink-0"
-            >
-              Entendido
-            </button>
+          {/* Panel Info Badge Footer */}
+          <div className="p-3 border-t border-white/10 bg-[#0E111F]/50 flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span className="text-[11px] text-gray-400 leading-tight">
+              Los datos se extraen en tiempo real de tu base de datos de MongoDB.
+            </span>
           </div>
-        )}
-
-        {/* Input Bar */}
-        <div className="relative w-full">
-          <input
-            type="text"
-            value={inputQuery}
-            onChange={(e) => setInputQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Pregunta a la IA (ej. ¿cuánto vendí hoy?, ¿quién me debe?, ¿cuál fue el día récord?)..."
-            disabled={loading}
-            className="w-full pl-5 pr-28 py-3.5 bg-[#10131E] border border-purple-500/40 rounded-2xl text-white placeholder-gray-500 text-sm focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all disabled:opacity-50"
-          />
-
-          <button
-            onClick={() => handleSendMessage()}
-            disabled={loading || !inputQuery.trim()}
-            className="absolute right-2 top-2 h-9 px-4 rounded-xl gold-gradient-bg text-black font-extrabold text-xs flex items-center gap-1.5 shadow-gold-glow hover:scale-105 transition-all disabled:opacity-40 disabled:hover:scale-100"
-          >
-            <span>Preguntar</span>
-            <Send className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </main>
+        </aside>
+      </div>
     </div>
   );
 }

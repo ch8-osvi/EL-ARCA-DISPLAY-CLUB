@@ -58,6 +58,11 @@ const PRESET_PROMPTS = [
     label: 'Stock y agotados',
     prompt: '¿Qué modelos están agotados o con bajo stock de inventario?',
   },
+  {
+    icon: ShieldAlert,
+    label: 'Mermas y garantías',
+    prompt: '¿Cuáles son los modelos con más problemas de garantía o mermas y por qué fallaron?',
+  },
 ];
 
 export default function AIAssistantPage() {

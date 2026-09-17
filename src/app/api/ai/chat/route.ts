@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongoose';
 import { Sale } from '@/lib/models/Sale';
 import { Product } from '@/lib/models/Product';
+import { StockHistory } from '@/lib/models/StockHistory';
 import { getHavanaDateKey, getHavanaDaysAgoKey } from '@/lib/dateUtils';
 
 export const dynamic = 'force-dynamic';
@@ -28,9 +29,10 @@ export async function POST(req: NextRequest) {
     const promptLower = cleanPrompt.toLowerCase();
 
     // 1. Fetch live data
-    const [sales, products] = await Promise.all([
+    const [sales, products, mermasHistory] = await Promise.all([
       Sale.find({}).sort({ createdAt: -1 }).lean(),
       Product.find({ isHidden: false }).lean(),
+      StockHistory.find({ type: 'merma' }).sort({ createdAt: -1 }).lean(),
     ]);
 
     // 2. Compute date boundaries in Cuba timezone
@@ -170,6 +172,34 @@ export async function POST(req: NextRequest) {
     const outOfStockProducts = products.filter((p) => p.stock === 0);
     const totalInventoryValue = products.reduce((acc, p) => acc + (p.precio * (p.stock || 0)), 0);
 
+    // 10. Mermas, Defectives and Warranties Breakdown
+    const totalMermaUnits = (mermasHistory || []).reduce((acc: number, m: any) => acc + (m.qty || 0), 0);
+    const mermasByProductMap: Record<string, { producto: string; units: number; reasons: string[]; lastDate: string }> = {};
+
+    (mermasHistory || []).forEach((m: any) => {
+      const name = m.productName || 'Desconocido';
+      if (!mermasByProductMap[name]) {
+        mermasByProductMap[name] = {
+          producto: name,
+          units: 0,
+          reasons: [],
+          lastDate: m.createdAt ? new Date(m.createdAt).toLocaleDateString('es-ES') : '',
+        };
+      }
+      mermasByProductMap[name].units += m.qty || 0;
+      if (m.reason) {
+        const cleanReason = m.reason
+          .replace(' [MERMA / ROTO / DEFECTUOSO - No apto para venta]', '')
+          .replace(/Devolución Orden #[^:]+:\s*/i, '')
+          .trim();
+        if (cleanReason && !mermasByProductMap[name].reasons.includes(cleanReason)) {
+          mermasByProductMap[name].reasons.push(cleanReason);
+        }
+      }
+    });
+
+    const topMermas = Object.values(mermasByProductMap).sort((a, b) => b.units - a.units);
+
     // -------------------------------------------------------------
     // Try Google Gemini API if GEMINI_API_KEY is defined
     // -------------------------------------------------------------
@@ -223,6 +253,21 @@ export async function POST(req: NextRequest) {
             modelosAgotados: outOfStockProducts.length,
             modelosBajoStock: lowStockProducts.length,
           },
+          mermasYGarantias: {
+            totalBajasMermasUds: totalMermaUnits,
+            rankingModelosConProblemas: topMermas.map((m) => ({
+              modelo: m.producto,
+              unidadesEnMerma: m.units,
+              motivosRegistrados: m.reasons,
+              fechaUltimaBaja: m.lastDate,
+            })),
+            ultimosRegistrosDetallados: (mermasHistory || []).slice(0, 15).map((m: any) => ({
+              producto: m.productName,
+              cantidad: m.qty,
+              motivo: m.reason,
+              fecha: m.createdAt ? new Date(m.createdAt).toLocaleDateString('es-ES') : '',
+            })),
+          },
         };
 
         const systemInstruction = `Eres el asistente de negocios y mano derecha de Osvaldo en "EL ARCA DISPLAY CLUB" (tienda líder de pantallas y repuestos de teléfonos celulares).
@@ -243,7 +288,8 @@ DIRECTRICES DE FORMATO VISUAL (MUY IMPORTANTE):
 
    💵 **Total Pendiente:** **$XX.XX USD** / **XX,XXX CUP** (X órdenes)
 4. No uses encabezados con almohadillas (###). Usa títulos en negrita con emojis elegantes.
-5. Tienes el desglose diario exacto de los últimos 14 días y las últimas 25 ventas individuales. Basa tus respuestas exclusivamente en los datos reales de la tienda.`;
+5. Tienes el desglose diario exacto de los últimos 14 días y las últimas 25 ventas individuales. Basa tus respuestas exclusivamente en los datos reales de la tienda.
+6. Tienes el historial exacto de mermas, roturas y repuestos dados de baja por garantía en el taller (mermasYGarantias). Si preguntan por modelos con problemas de garantías, mermas, piezas con fallas o devoluciones, indica claramente cuáles modelos encabezan las bajas, cuántas unidades fallaron y los motivos registrados (fallas de táctil, flex roto, pantalla rota, etc.).`;
 
         // List of models to try in priority order (Google updated new API keys to gemini-3.6-flash and gemini-flash-latest)
         const candidateModels = [
@@ -423,6 +469,42 @@ DIRECTRICES DE FORMATO VISUAL (MUY IMPORTANTE):
         `* **Modelos agotados (0 stock):** **${outOfStockProducts.length} modelos**\n` +
         `* **Modelos con stock bajo (1-2 uds):** **${lowStockProducts.length} modelos**\n\n` +
         `_Puedes reponer o agregar stock en [Control de Inventario](/admin/pos/inventario)._`;
+    }
+    // INTENT 7: Mermas, Garantías y Repuestos Defectuosos
+    else if (
+      promptLower.includes('merma') ||
+      promptLower.includes('mermas') ||
+      promptLower.includes('garantia') ||
+      promptLower.includes('garantía') ||
+      promptLower.includes('garantias') ||
+      promptLower.includes('garantías') ||
+      promptLower.includes('defecto') ||
+      promptLower.includes('defectuoso') ||
+      promptLower.includes('defectuosa') ||
+      promptLower.includes('falla') ||
+      promptLower.includes('fallas') ||
+      promptLower.includes('roto') ||
+      promptLower.includes('rotura') ||
+      promptLower.includes('baja') ||
+      promptLower.includes('bajas') ||
+      promptLower.includes('devolucion') ||
+      promptLower.includes('devolución')
+    ) {
+      if (topMermas.length === 0) {
+        answer = `🛡️ **Mermas y Garantías del Taller**\n\nNo hay mermas ni piezas dadas de baja por garantía registradas en el sistema. Todo el inventario está en óptimas condiciones para la venta.`;
+      } else {
+        let rankingText = '';
+        topMermas.slice(0, 6).forEach((m, idx) => {
+          const reasonStr = m.reasons.length > 0 ? ` (${m.reasons.join(', ')})` : '';
+          rankingText += `${idx + 1}. **${m.producto}**: **${m.units} uds.** en merma${reasonStr}\n`;
+        });
+
+        answer = `📉 **Modelos con Más Problemas de Garantías y Mermas**\n\n` +
+          `En el sistema hay un total acumulado de **${totalMermaUnits} pantallas dadas de baja / en merma**:\n\n` +
+          `${rankingText}\n` +
+          `🥇 El modelo con mayor índice de bajas es **${topMermas[0]?.producto}** con **${topMermas[0]?.units} unidades** registradas.\n\n` +
+          `_Puedes consultar y filtrar cada reporte en [Control de Inventario & Mermas](/admin/pos/inventario)._`;
+      }
     }
     // DEFAULT: Resumen General Ejecutivo
     else {

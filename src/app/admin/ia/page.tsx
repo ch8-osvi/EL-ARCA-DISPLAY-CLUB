@@ -444,14 +444,6 @@ export default function AIAssistantPage() {
               <Trash2 className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Limpiar</span>
             </button>
-            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/30" title="Google Gemini cuenta con cuota gratuita sin sobrecargos.">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
-              <span className="text-[11px] font-bold text-blue-300">Plan Protegido (0 Cargos)</span>
-            </div>
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-              <span className="text-[11px] font-extrabold text-emerald-300">MongoDB En Vivo</span>
-            </div>
           </div>
         </div>
       </header>

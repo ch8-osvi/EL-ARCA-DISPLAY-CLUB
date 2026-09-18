@@ -270,8 +270,8 @@ Si Osvaldo te pide explícitamente realizar una acción en la base de datos, inc
 
 Si es una consulta normal de información (precios, stock, ventas, deudores, etc.), responde directamente sin etiquetas de acción.`;
 
-    // Try calling Gemini models in order
-    const candidateModels = ['gemini-3.6-flash', 'gemini-flash-latest', 'gemini-2.5-flash', 'gemini-1.5-flash'];
+    // Try calling Gemini models in order (official fast & reliable Google Gemini models)
+    const candidateModels = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-flash-latest'];
     for (const model of candidateModels) {
       try {
         const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
@@ -375,7 +375,7 @@ REGLAS DE SEGURIDAD Y PRIVACIDAD ESTRICTAS (OBLIGATORIAS):
 3. Da información clara y cordial: precios en dólares USD, modelos compatibles, calidades disponibles (Original, Incell, OLED, etc.) y si hay stock.
 4. Usa formato de WhatsApp con negritas (*texto*), viñetas con guiones (-) y emojis amables. Sé breve y profesional.`;
 
-  const candidateModels = ['gemini-3.6-flash', 'gemini-flash-latest', 'gemini-2.5-flash', 'gemini-1.5-flash'];
+  const candidateModels = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-flash-latest'];
   for (const model of candidateModels) {
     try {
       const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;

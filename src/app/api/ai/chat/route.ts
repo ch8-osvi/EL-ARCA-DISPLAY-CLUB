@@ -291,12 +291,12 @@ DIRECTRICES DE FORMATO VISUAL (MUY IMPORTANTE):
 5. Tienes el desglose diario exacto de los últimos 14 días y las últimas 25 ventas individuales. Basa tus respuestas exclusivamente en los datos reales de la tienda.
 6. Tienes el historial exacto de mermas, roturas y repuestos dados de baja por garantía en el taller (mermasYGarantias). Si preguntan por modelos con problemas de garantías, mermas, piezas con fallas o devoluciones, indica claramente cuáles modelos encabezan las bajas, cuántas unidades fallaron y los motivos registrados (fallas de táctil, flex roto, pantalla rota, etc.).`;
 
-        // List of models to try in priority order (Google updated new API keys to gemini-3.6-flash and gemini-flash-latest)
+        // List of models to try in priority order (official fast & reliable Google Gemini models)
         const candidateModels = [
-          'gemini-3.6-flash',
-          'gemini-flash-latest',
-          'gemini-2.5-flash',
+          'gemini-2.0-flash',
           'gemini-1.5-flash',
+          'gemini-1.5-pro',
+          'gemini-flash-latest',
         ];
 
         let candidateText = '';

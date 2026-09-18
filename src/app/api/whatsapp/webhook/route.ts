@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { processWhatsAppAiMessage, sendWhatsAppMessage, normalizePhoneNumber } from '@/lib/whatsapp/service';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 // Set of recently processed message IDs to prevent re-delivery duplicates
 const processedMessageIds = new Set<string>();

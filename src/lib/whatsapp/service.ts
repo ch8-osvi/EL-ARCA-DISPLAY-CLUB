@@ -240,23 +240,37 @@ export async function processWhatsAppAiMessage(userMessage: string, senderPhone:
       topMasVendidos: topModels,
       inventarioTotalModelos: products.length,
       inventarioAgotados: products.filter((p) => p.stock === 0).length,
+      catalogoProductos: products.map((p) => ({
+        marca: p.marca,
+        modelo: p.modelo,
+        calidad: p.calidad,
+        precioUSD: p.precio,
+        stock: p.stock,
+        disponibilidad: p.stock > 0 ? `${p.stock} uds disponibles` : 'Agotado (0 stock)',
+      })),
     };
 
     const adminInstruction = `Eres el asistente ejecutivo y mano derecha de Osvaldo en su negocio "EL ARCA DISPLAY CLUB".
-Estás chateando con él directamente en su WhatsApp personal.
+Estás chateando con él directamente en su WhatsApp personal (+53 52031972).
 
 DIRECTRICES:
-1. Habla de forma completamente natural, directa y cercana (de tú a tú, sin formalidades como "Estimado").
+1. Habla de forma completamente natural, directa y cercana (de tú a tú, como su socio de taller).
 2. Formatea tus respuestas exclusivamente para WhatsApp: usa negritas con un solo asterisco (*texto*), viñetas con guiones (-) y emojis útiles.
 3. NO uses tablas de markdown con barras (|) ni almohadillas (###).
-4. Tienes disponibles HERRAMIENTAS (Function Calling) para:
-   - Marcar órdenes como pagadas (marcar_orden_pagada) o pendientes (marcar_orden_pendiente).
-   - Actualizar precios de productos (actualizar_precio_producto).
-   - Agregar o restar stock en almacén (ajustar_stock_producto).
-   - Registrar ventas rápidas (registrar_venta_rapida).
-   Si Osvaldo te pide hacer cualquiera de estas acciones, invoca la herramienta correspondiente.`;
+4. Tienes el catálogo completo de productos en "catalogoProductos". Si Osvaldo te pregunta por el precio o stock de cualquier modelo (ej: Redmi 9A, Samsung A04, iPhone 11 Pro, etc.), dale el precio exacto en USD y cuántas unidades quedan en almacén.
+5. Tienes las ventas de hoy, ayer, deudores pendientes y mermas. Responde cualquier dato solicitado.
 
-    // Try calling Gemini with Admin tools
+INSTRUCCIÓN PARA EJECUTAR ACCIONES REALES:
+Si Osvaldo te pide explícitamente realizar una acción en la base de datos, incluye en tu respuesta la etiqueta de acción correspondiente:
+- Para marcar orden pagada: [ACCION:MARCAR_PAGADO:CODIGO_ORDEN] (ej: [ACCION:MARCAR_PAGADO:0828QQL01])
+- Para marcar orden pendiente: [ACCION:MARCAR_PENDIENTE:CODIGO_ORDEN]
+- Para cambiar precio: [ACCION:ACTUALIZAR_PRECIO:MODELO:NUEVO_PRECIO_USD] (ej: [ACCION:ACTUALIZAR_PRECIO:Samsung A04:22])
+- Para sumar o restar stock: [ACCION:AJUSTAR_STOCK:MODELO:CANTIDAD] (ej: [ACCION:AJUSTAR_STOCK:Redmi 9A:10])
+- Para registrar venta rápida: [ACCION:VENTA_RAPIDA:CLIENTE:MODELO:CANTIDAD:MONEDA:PAGADO] (ej: [ACCION:VENTA_RAPIDA:Ivan:Redmi 9A:1:USD:true])
+
+Si es una consulta normal de información (precios, stock, ventas, deudores, etc.), responde directamente sin etiquetas de acción.`;
+
+    // Try calling Gemini models in order
     const candidateModels = ['gemini-3.6-flash', 'gemini-flash-latest', 'gemini-2.5-flash', 'gemini-1.5-flash'];
     for (const model of candidateModels) {
       try {
@@ -275,50 +289,61 @@ DIRECTRICES:
                 ],
               },
             ],
-            tools: [{ functionDeclarations: ADMIN_TOOL_DECLARATIONS }],
             systemInstruction: { parts: [{ text: adminInstruction }] },
-            generationConfig: { temperature: 0.15, maxOutputTokens: 1024 },
+            generationConfig: { temperature: 0.2, maxOutputTokens: 1024 },
           }),
         });
 
         if (res.ok) {
           const data = await res.json();
-          const firstCandidate = data?.candidates?.[0]?.content?.parts?.[0];
+          const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
-          // Check if Gemini invoked a tool (Function Call)
-          if (firstCandidate?.functionCall) {
-            const { name, args } = firstCandidate.functionCall;
+          if (candidateText) {
+            // Check for Action Tags execution
+            const matchPagado = candidateText.match(/\[ACCION:MARCAR_PAGADO:([^\]]+)\]/i);
+            if (matchPagado) {
+              const result = await executeMarcarOrdenPagada(matchPagado[1].trim());
+              return result.message;
+            }
 
-            if (name === 'marcar_orden_pagada') {
-              const result = await executeMarcarOrdenPagada(args.orderNumber);
+            const matchPendiente = candidateText.match(/\[ACCION:MARCAR_PENDIENTE:([^\]]+)\]/i);
+            if (matchPendiente) {
+              const result = await executeMarcarOrdenPendiente(matchPendiente[1].trim());
               return result.message;
-            } else if (name === 'marcar_orden_pendiente') {
-              const result = await executeMarcarOrdenPendiente(args.orderNumber);
+            }
+
+            const matchPrecio = candidateText.match(/\[ACCION:ACTUALIZAR_PRECIO:([^:]+):([0-9.]+)\]/i);
+            if (matchPrecio) {
+              const result = await executeActualizarPrecioProducto(matchPrecio[1].trim(), parseFloat(matchPrecio[2]));
               return result.message;
-            } else if (name === 'actualizar_precio_producto') {
-              const result = await executeActualizarPrecioProducto(args.queryProducto, args.nuevoPrecioUSD);
+            }
+
+            const matchStock = candidateText.match(/\[ACCION:AJUSTAR_STOCK:([^:]+):(-?[0-9]+)\]/i);
+            if (matchStock) {
+              const result = await executeAjustarStockProducto(matchStock[1].trim(), parseInt(matchStock[2], 10));
               return result.message;
-            } else if (name === 'ajustar_stock_producto') {
-              const result = await executeAjustarStockProducto(args.queryProducto, args.cantidadAgregada, args.motivo);
-              return result.message;
-            } else if (name === 'registrar_venta_rapida') {
+            }
+
+            const matchVenta = candidateText.match(/\[ACCION:VENTA_RAPIDA:([^:]+):([^:]+):([0-9]+):([^:]+):(true|false)\]/i);
+            if (matchVenta) {
               const result = await executeRegistrarVentaRapida({
-                cliente: args.cliente,
-                modeloProducto: args.modeloProducto,
-                cantidad: args.cantidad,
-                moneda: args.moneda,
-                pagado: args.pagado,
+                cliente: matchVenta[1].trim(),
+                modeloProducto: matchVenta[2].trim(),
+                cantidad: parseInt(matchVenta[3], 10),
+                moneda: matchVenta[4].trim().toUpperCase() as 'USD' | 'CUP',
+                pagado: matchVenta[5].toLowerCase() === 'true',
               });
               return result.message;
             }
-          }
 
-          if (firstCandidate?.text) {
-            return firstCandidate.text;
+            return candidateText;
           }
+        } else {
+          const errText = await res.text();
+          console.warn(`[Gemini Admin query status ${res.status} on ${model}]:`, errText);
         }
       } catch (err) {
-        console.warn(`[Gemini Admin query failed on ${model}]`, err);
+        console.warn(`[Gemini Admin query error on ${model}]:`, err);
       }
     }
 

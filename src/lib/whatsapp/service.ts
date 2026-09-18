@@ -25,48 +25,81 @@ export function isAdminUser(phone: string): boolean {
   return normalized === adminPhone || normalized === '5352031972' || normalized.endsWith('52031972');
 }
 
-/** Sends a message to a WhatsApp user via Meta Cloud API */
+/** Sends a message to a WhatsApp user via Whapi.cloud Gateway or Meta Cloud API */
 export async function sendWhatsAppMessage(to: string, messageText: string): Promise<boolean> {
-  const token = process.env.WHATSAPP_TOKEN;
-  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const whapiToken = process.env.WHAPI_TOKEN;
+  const metaToken = process.env.WHATSAPP_TOKEN;
+  const metaPhoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
 
-  if (!token || !phoneId) {
-    console.warn('[WhatsApp] WHATSAPP_TOKEN or WHATSAPP_PHONE_NUMBER_ID is not configured in environment.');
-    return false;
-  }
+  // 1. Preferred: Whapi.cloud Gateway (Independent, zero-ban, works with any number)
+  if (whapiToken) {
+    const rawTo = (to || '').trim();
+    const destination = rawTo.includes('@') ? rawTo : `${normalizePhoneNumber(rawTo)}@s.whatsapp.net`;
+    const url = 'https://gate.whapi.cloud/messages/text';
 
-  const cleanTo = normalizePhoneNumber(to);
-  const url = `https://graph.facebook.com/v20.0/${phoneId}/messages`;
-
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: cleanTo,
-        type: 'text',
-        text: {
-          preview_url: false,
-          body: messageText,
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${whapiToken}`,
+          'Content-Type': 'application/json',
         },
-      }),
-    });
+        body: JSON.stringify({
+          to: destination,
+          body: messageText,
+        }),
+      });
 
-    const data = await res.json();
-    if (!res.ok) {
-      console.error('[WhatsApp API error]', data);
+      const data = await res.json();
+      if (!res.ok) {
+        console.error('[Whapi send error]', data);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('[Whapi network error]', err);
       return false;
     }
-    return true;
-  } catch (err) {
-    console.error('[WhatsApp send error]', err);
-    return false;
   }
+
+  // 2. Fallback: Meta Cloud API
+  if (metaToken && metaPhoneId) {
+    const cleanTo = normalizePhoneNumber(to);
+    const url = `https://graph.facebook.com/v20.0/${metaPhoneId}/messages`;
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${metaToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: cleanTo,
+          type: 'text',
+          text: {
+            preview_url: false,
+            body: messageText,
+          },
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        console.error('[WhatsApp Meta API error]', data);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('[WhatsApp Meta send error]', err);
+      return false;
+    }
+  }
+
+  console.warn('[WhatsApp] Neither WHAPI_TOKEN nor Meta credentials (WHATSAPP_TOKEN) are set in environment.');
+  return false;
 }
 
 /** Processes an incoming WhatsApp text message through Gemini with Admin/Client security isolation */

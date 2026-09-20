@@ -452,6 +452,8 @@ DIRECTRICES DE TONO Y ESTILO (OBLIGATORIO)
     const candidateModels = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
 
     let candidateText = '';
+    let lastError = '';
+    
     for (const model of candidateModels) {
       try {
         const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
@@ -459,6 +461,9 @@ DIRECTRICES DE TONO Y ESTILO (OBLIGATORIO)
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            system_instruction: {
+              parts: [{ text: systemInstruction }],
+            },
             contents: [
               ...geminiHistory,
               {
@@ -470,9 +475,6 @@ DIRECTRICES DE TONO Y ESTILO (OBLIGATORIO)
                 ],
               },
             ],
-            systemInstruction: {
-              parts: [{ text: systemInstruction }],
-            },
             generationConfig: {
               temperature: 0.15,
               maxOutputTokens: 2048,
@@ -489,9 +491,11 @@ DIRECTRICES DE TONO Y ESTILO (OBLIGATORIO)
           console.warn(`Model ${model} hit rate limit (429).`);
         } else {
           const errorText = await geminiRes.text();
-          console.error(`Gemini API Error for model ${model}: [${geminiRes.status}] ${errorText}`);
+          lastError = `[${model} - ${geminiRes.status}] ${errorText}`;
+          console.error(`Gemini API Error for model ${model}:`, lastError);
         }
-      } catch (modelErr) {
+      } catch (modelErr: any) {
+        lastError = `Exception for ${model}: ${modelErr.message || String(modelErr)}`;
         console.warn(`Error querying model ${model}:`, modelErr);
       }
     }
@@ -504,7 +508,7 @@ DIRECTRICES DE TONO Y ESTILO (OBLIGATORIO)
         );
       }
       return NextResponse.json(
-        { success: false, error: 'La IA no pudo generar una respuesta en este momento. Por favor intenta nuevamente.' },
+        { success: false, error: `La IA no pudo generar una respuesta. Detalle del error de Google: ${lastError || 'Fallo desconocido'}` },
         { status: 503 }
       );
     }

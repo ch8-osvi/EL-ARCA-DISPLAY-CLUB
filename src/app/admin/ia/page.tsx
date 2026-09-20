@@ -358,7 +358,7 @@ export default function AIAssistantPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt: queryToSend,
-          history: historyMessages.slice(0, -1), // exclude the current user message (already added)
+          history: historyMessages, // send full extracted history without deleting the last message
         }),
       });
 

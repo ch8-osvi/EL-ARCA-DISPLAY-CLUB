@@ -345,6 +345,7 @@ export default function AIAssistantPage() {
     try {
       // Build conversation history for context
       const historyMessages = activeSession.messages
+        .filter((m) => !m.id.startsWith('welcome-')) // Exclude the initial welcome message
         .filter((m) => m.sender !== 'assistant' || !m.isTyping) // exclude typing placeholders
         .slice(-20) // last 20 messages
         .map((m) => ({

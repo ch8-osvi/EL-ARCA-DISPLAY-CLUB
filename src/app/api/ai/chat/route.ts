@@ -415,12 +415,28 @@ DIRECTRICES DE TONO Y ESTILO (OBLIGATORIO)
 
     // ── 14. Build Gemini history ──────────────────────────────────────────────
 
-    const geminiHistory: { role: 'user' | 'model'; parts: { text: string }[] }[] = (history || [])
+    const rawHistory = (history || [])
       .slice(-10) // Keep last 10 turns for context
       .map((h: ChatHistoryEntry) => ({
         role: h.role,
         parts: h.parts,
       }));
+
+    // Sanitize history: ensure it starts with 'user' and alternates strictly
+    const geminiHistory: { role: 'user' | 'model'; parts: { text: string }[] }[] = [];
+    let expectedRole = 'user';
+
+    for (const msg of rawHistory) {
+      if (msg.role === expectedRole) {
+        geminiHistory.push(msg);
+        expectedRole = expectedRole === 'user' ? 'model' : 'user';
+      }
+    }
+
+    // Ensure the history ends with 'model' so the new 'user' prompt alternates correctly
+    if (geminiHistory.length > 0 && geminiHistory[geminiHistory.length - 1].role === 'user') {
+      geminiHistory.pop();
+    }
 
     // ── 15. Call Gemini ───────────────────────────────────────────────────────
 
@@ -471,6 +487,9 @@ DIRECTRICES DE TONO Y ESTILO (OBLIGATORIO)
         } else if (geminiRes.status === 429) {
           isQuotaExceeded = true;
           console.warn(`Model ${model} hit rate limit (429).`);
+        } else {
+          const errorText = await geminiRes.text();
+          console.error(`Gemini API Error for model ${model}: [${geminiRes.status}] ${errorText}`);
         }
       } catch (modelErr) {
         console.warn(`Error querying model ${model}:`, modelErr);

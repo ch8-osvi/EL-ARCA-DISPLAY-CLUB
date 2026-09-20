@@ -449,7 +449,8 @@ DIRECTRICES DE TONO Y ESTILO (OBLIGATORIO)
     }
 
     let isQuotaExceeded = false;
-    const candidateModels = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro'];
+    // As of 2026, previous models are deprecated. Google recommends gemini-3.6-flash.
+    const candidateModels = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.0-flash'];
 
     let candidateText = '';
     const allErrors: string[] = [];

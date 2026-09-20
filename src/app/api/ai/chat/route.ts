@@ -449,10 +449,10 @@ DIRECTRICES DE TONO Y ESTILO (OBLIGATORIO)
     }
 
     let isQuotaExceeded = false;
-    const candidateModels = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+    const candidateModels = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro'];
 
     let candidateText = '';
-    let lastError = '';
+    const allErrors: string[] = [];
     
     for (const model of candidateModels) {
       try {
@@ -488,14 +488,17 @@ DIRECTRICES DE TONO Y ESTILO (OBLIGATORIO)
           if (candidateText) break;
         } else if (geminiRes.status === 429) {
           isQuotaExceeded = true;
+          allErrors.push(`[${model}] Rate Limit 429`);
           console.warn(`Model ${model} hit rate limit (429).`);
         } else {
           const errorText = await geminiRes.text();
-          lastError = `[${model} - ${geminiRes.status}] ${errorText}`;
-          console.error(`Gemini API Error for model ${model}:`, lastError);
+          const errStr = `[${model} - ${geminiRes.status}] ${errorText}`;
+          allErrors.push(errStr);
+          console.error(`Gemini API Error for model ${model}:`, errStr);
         }
       } catch (modelErr: any) {
-        lastError = `Exception for ${model}: ${modelErr.message || String(modelErr)}`;
+        const errStr = `Exception for ${model}: ${modelErr.message || String(modelErr)}`;
+        allErrors.push(errStr);
         console.warn(`Error querying model ${model}:`, modelErr);
       }
     }
@@ -508,7 +511,7 @@ DIRECTRICES DE TONO Y ESTILO (OBLIGATORIO)
         );
       }
       return NextResponse.json(
-        { success: false, error: `La IA no pudo generar una respuesta. Detalle del error de Google: ${lastError || 'Fallo desconocido'}` },
+        { success: false, error: `La IA no pudo generar una respuesta. Detalle del error de Google: ${allErrors.join(' | ')}` },
         { status: 503 }
       );
     }

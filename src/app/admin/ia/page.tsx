@@ -43,54 +43,91 @@ interface ChatSession {
 }
 
 const PRESET_PROMPTS = [
+  // ── ANALYTICS ────────────────────────────────────────────────────────────────
   {
     icon: DollarSign,
-    label: '¿Cuánto he vendido hoy?',
-    description: 'Total recaudado hoy en USD/CUP y cantidad de órdenes despachadas.',
-    prompt: '¿Cuánto he vendido hoy en total y cuántas órdenes se registraron?',
+    label: '¿Cuánto vendí hoy?',
+    description: 'Total recaudado hoy en USD/CUP y órdenes despachadas.',
+    prompt: '¿Cuánto vendí hoy en total y cuántas órdenes se registraron?',
     tag: 'Ventas',
   },
   {
     icon: Calendar,
     label: '¿Cuánto vendí ayer?',
-    description: 'Comparativa de facturación y repuestos entregados en la jornada anterior.',
+    description: 'Comparativa de facturación de la jornada anterior.',
     prompt: '¿Cuánto vendí ayer y qué displays se despacharon?',
     tag: 'Histórico',
   },
   {
     icon: AlertTriangle,
-    label: '¿Quién me debe dinero?',
-    description: 'Listado de órdenes pendientes de cobro y deudores actuales.',
+    label: '¿Quién me debe?',
+    description: 'Listado de órdenes pendientes de cobro y deudores.',
     prompt: '¿Quién me debe dinero y cuántas personas tienen pagos pendientes?',
     tag: 'Cobranzas',
   },
   {
     icon: ShieldAlert,
     label: 'Mermas y Garantías',
-    description: 'Ranking de modelos con más bajas, roturas y motivos reportados.',
-    prompt: '¿Cuáles son los modelos con más problemas de garantía o mermas y por qué fallaron?',
+    description: 'Ranking de modelos con más bajas, roturas y motivos.',
+    prompt: '¿Cuáles son los modelos con más problemas de garantía o mermas?',
     tag: 'Taller',
   },
   {
     icon: Smartphone,
     label: 'Displays más vendidos',
-    description: 'Top de rotación de pantallas ordenadas por volumen y demanda.',
-    prompt: '¿Cuáles son los 5 displays más vendidos y de mayor rotación?',
+    description: 'Top de rotación de pantallas por volumen y demanda.',
+    prompt: '¿Cuáles son los 5 displays más vendidos?',
     tag: 'Rotación',
   },
   {
     icon: Boxes,
     label: 'Stock y Agotados',
-    description: 'Modelos en cero o con existencias bajas (1 a 2 unidades).',
-    prompt: '¿Qué modelos están agotados o con bajo stock de inventario?',
+    description: 'Modelos en cero o con existencias bajas.',
+    prompt: '¿Qué modelos están agotados o con bajo stock?',
     tag: 'Inventario',
   },
   {
     icon: TrendingUp,
     label: 'Día récord de ventas',
-    description: 'El día histórico de mayor facturación en la base de datos.',
-    prompt: '¿Cuál ha sido el día récord de mayores ventas en el historial?',
+    description: 'El día histórico de mayor facturación.',
+    prompt: '¿Cuál ha sido el día récord de mayores ventas?',
     tag: 'Récord',
+  },
+  // ── GESTIÓN / ACCIONES ───────────────────────────────────────────────────────
+  {
+    icon: Plus,
+    label: 'Registrar venta rápida',
+    description: 'Crea una nueva venta y descuenta el stock automáticamente.',
+    prompt: 'Quiero registrar una venta: 1 Samsung A04 calidad original a un cliente llamado Consumidor Final, pagado en efectivo.',
+    tag: 'Gestión',
+  },
+  {
+    icon: DollarSign,
+    label: 'Cambiar precio de producto',
+    description: 'Actualiza el precio de venta de una pantalla en el catálogo.',
+    prompt: 'Cambia el precio de la Redmi 9A a $10 USD',
+    tag: 'Precios',
+  },
+  {
+    icon: Boxes,
+    label: 'Ajustar stock de producto',
+    description: 'Sumar o restar unidades del inventario físico.',
+    prompt: 'Agrega 5 unidades al stock del Samsung A12 porque llegó mercancía del proveedor.',
+    tag: 'Stock',
+  },
+  {
+    icon: CheckCircle2,
+    label: 'Marcar orden como pagada',
+    description: 'Actualiza el estado de una orden a PAGADA.',
+    prompt: 'Marca la orden #0920ABC01 como pagada',
+    tag: 'Cobros',
+  },
+  {
+    icon: Plus,
+    label: 'Agregar nuevo producto',
+    description: 'Añade un nuevo modelo al catálogo con precio y stock.',
+    prompt: 'Agrega al catálogo: Samsung Galaxy A15, calidad original, precio $18 USD, 4 unidades en stock.',
+    tag: 'Catálogo',
   },
 ];
 
@@ -109,7 +146,7 @@ const createDefaultSession = (): ChatSession => {
       {
         id: `welcome-${now}`,
         sender: 'assistant',
-        text: `👋 **¡Hola! Soy tu Asistente de Inteligencia de Negocio de El Arca Display Club.**\n\nEstoy conectado en tiempo real a tu base de datos de MongoDB (ventas, deudores, stock e historial de mermas).\n\nPuedes hacerme cualquier pregunta o seleccionar una de las **Consultas Frecuentes** en el panel lateral.`,
+        text: `👋 **¡Hola! Soy tu Asistente de Gestión IA de El Arca Display Club.**\n\nEstoy conectado en tiempo real a tu base de datos MongoDB. Puedo **consultar Y modificar** tu negocio:\n\n📊 **Analíticas:** ventas de hoy/ayer, deudores, mermas, top productos\n🛍️ **Gestión:** crear órdenes, cambiar precios, ajustar stock, agregar productos\n💳 **Cobros:** marcar órdenes como pagadas o pendientes\n\nUsa las **Acciones Rápidas** del panel lateral o escribe directamente lo que necesitas.`,
         time: timeStr,
       },
     ],
@@ -306,10 +343,22 @@ export default function AIAssistantPage() {
     if (showPromptsMobile) setShowPromptsMobile(false);
 
     try {
+      // Build conversation history for context
+      const historyMessages = activeSession.messages
+        .filter((m) => m.sender !== 'assistant' || !m.isTyping) // exclude typing placeholders
+        .slice(-20) // last 20 messages
+        .map((m) => ({
+          role: m.sender === 'user' ? 'user' : 'model' as 'user' | 'model',
+          parts: [{ text: m.text }],
+        }));
+
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: queryToSend }),
+        body: JSON.stringify({
+          prompt: queryToSend,
+          history: historyMessages.slice(0, -1), // exclude the current user message (already added)
+        }),
       });
 
       const data = await res.json();
@@ -838,7 +887,7 @@ export default function AIAssistantPage() {
                   <div className="glass-card rounded-2xl px-4 py-3 border border-purple-500/30 flex items-center gap-2.5 text-xs text-purple-200 bg-[#121628]/90 shadow-xl">
                     <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#D4AF37]" />
                     <span className="font-semibold tracking-wide">
-                      Consultando MongoDB y redactando respuesta...
+                      Consultando datos y procesando...
                     </span>
                   </div>
                 </div>
@@ -888,7 +937,7 @@ export default function AIAssistantPage() {
                 value={inputQuery}
                 onChange={(e) => setInputQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Pregunta a la IA (ej. ¿cuánto vendí hoy?, ¿quién me debe?, mermas)..."
+                placeholder="Pregunta o pide una acción (ej: vende 2 Samsung A04 a Mario, cambia precio Redmi 9A a $10...)..."
                 disabled={loading}
                 className="w-full pl-5 pr-28 py-3.5 bg-[#121624] border border-purple-500/30 rounded-2xl text-white placeholder-gray-500 text-xs sm:text-sm focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all disabled:opacity-50"
               />
@@ -982,7 +1031,7 @@ export default function AIAssistantPage() {
           <div className="p-3 border-t border-white/10 bg-[#0E111F]/50 flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
             <span className="text-[11px] text-gray-400 leading-tight">
-              Los datos se extraen en tiempo real de tu base de datos de MongoDB.
+              Lee y modifica tu MongoDB en tiempo real — ventas, precios, stock y más.
             </span>
           </div>
         </aside>

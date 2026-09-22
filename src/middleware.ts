@@ -18,18 +18,13 @@ export function middleware(request: NextRequest) {
 
   // --- 1. Proteger las páginas UI de Administración ---
   if (PROTECTED_UI_ROUTES.some((route) => pathname.startsWith(route))) {
-    // Si la ruta es exactamente /admin (asumiendo que es el login) o /admin/login, permitir
-    if (pathname === '/admin' || pathname === '/admin/login') {
-      // Si ya está autenticado, redirigir al POS
-      if (isAuthenticated) {
-        return NextResponse.redirect(new URL('/admin/pos', request.url));
+    // Si la ruta es exactamente /admin, permitimos el acceso sin redirección.
+    // El frontend (page.tsx) se encargará de mostrar el Login o el Catálogo según la sesión.
+    // Solo exigiremos autenticación obligatoria para las subrutas (pos, ia, etc.)
+    if (pathname !== '/admin' && pathname !== '/admin/') {
+      if (!isAuthenticated) {
+        return NextResponse.redirect(new URL('/admin', request.url));
       }
-      return NextResponse.next();
-    }
-
-    // Para cualquier otra subruta de admin (ej. /admin/pos, /admin/ia), requerir auth
-    if (!isAuthenticated) {
-      return NextResponse.redirect(new URL('/admin', request.url));
     }
   }
 

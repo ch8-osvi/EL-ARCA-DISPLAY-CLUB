@@ -78,6 +78,8 @@ export default function AdminPage() {
     const auth = sessionStorage.getItem('el_arca_admin_auth');
     if (auth === 'true') {
       setIsAuthenticated(true);
+      // Auto-heal cookie for middleware if it was lost
+      document.cookie = "el_arca_admin_session=authenticated; path=/; max-age=86400";
     }
   }, []);
 
@@ -130,6 +132,7 @@ export default function AdminPage() {
     if (passwordInput === 'arca2026' || passwordInput === 'admin') {
       setIsAuthenticated(true);
       sessionStorage.setItem('el_arca_admin_auth', 'true');
+      document.cookie = "el_arca_admin_session=authenticated; path=/; max-age=86400";
       setLoginError(false);
     } else {
       setLoginError(true);
@@ -139,6 +142,7 @@ export default function AdminPage() {
   const handleLogout = () => {
     setIsAuthenticated(false);
     sessionStorage.removeItem('el_arca_admin_auth');
+    document.cookie = "el_arca_admin_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
   };
 
   // Trigger Toast Notification with custom duration

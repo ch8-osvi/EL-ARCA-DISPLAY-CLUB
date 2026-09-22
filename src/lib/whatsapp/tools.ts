@@ -1,7 +1,8 @@
 import connectToDatabase from '@/lib/mongoose';
-import { Sale } from '@/lib/models/Sale';
 import { Product } from '@/lib/models/Product';
+import { Sale } from '@/lib/models/Sale';
 import { StockHistory } from '@/lib/models/StockHistory';
+import { ExchangeRate } from '@/lib/models/ExchangeRate';
 import { getHavanaMonthDay } from '@/lib/dateUtils';
 
 /** Generates order number: MMDD + 3 random letters + product count */
@@ -419,7 +420,8 @@ export async function executeRegistrarVentaRapida(args: {
 
     // Calculate totals
     const subtotalUSD = parseFloat((product.precio * qty).toFixed(2));
-    const rate = 300;
+    const rateDoc = await ExchangeRate.findOne().lean() as { rate: number } | null;
+    const rate = rateDoc?.rate ?? 300;
     const totalCUP = parseFloat((subtotalUSD * rate).toFixed(2));
 
     // Generate unique order number

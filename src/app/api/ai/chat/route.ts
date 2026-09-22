@@ -346,6 +346,7 @@ export async function POST(req: NextRequest) {
     const debtorsSummary = unpaidSales.map((s) => ({
       orderNumber: s.orderNumber,
       client: s.clientName || 'Consumidor Final',
+      articulos: (s.items || []).map((i: any) => `${i.qty}x ${i.marca} ${i.modelo} (${i.calidad})`).join(', '),
       totalUSD: s.totalUSD,
       totalCUP: s.totalCUP,
       currency: s.currency,

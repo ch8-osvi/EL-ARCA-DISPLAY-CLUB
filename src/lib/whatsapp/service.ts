@@ -265,6 +265,7 @@ export async function processWhatsAppAiMessage(userMessage: string, senderPhone:
     const debtorsSummary = unpaidSales.map((s) => ({
       orden: s.orderNumber,
       cliente: s.clientName || 'Consumidor Final',
+      articulos: (s.items || []).map((i: any) => `${i.qty}x ${i.marca} ${i.modelo} (${i.calidad})`).join(', '),
       totalUSD: s.totalUSD,
       totalCUP: s.totalCUP,
       moneda: s.currency,
@@ -291,7 +292,7 @@ export async function processWhatsAppAiMessage(userMessage: string, senderPhone:
       }
       const lines = debtorsSummary.map(
         (d) =>
-          `👤 *${d.cliente}* (Orden #${d.orden})\n   ↳ Monto: *${d.moneda === 'CUP' ? `${d.totalCUP?.toLocaleString()} CUP` : `$${d.totalUSD?.toFixed(2)} USD`}*${d.nota ? ` - _${d.nota}_` : ''} (Fecha: ${d.fecha})`
+          `👤 *${d.cliente}* (Orden #${d.orden})\n   ↳ Monto: *${d.moneda === 'CUP' ? `${d.totalCUP?.toLocaleString()} CUP` : `$${d.totalUSD?.toFixed(2)} USD`}*\n   ↳ Productos: _${d.articulos}_${d.nota ? `\n   ↳ Nota: _${d.nota}_` : ''} (Fecha: ${d.fecha})`
       );
       const totalUSD = debtorsSummary.reduce((acc, d) => acc + (d.totalUSD || 0), 0);
       const reply = `📋 *Cuentas Pendientes de Cobro (${debtorsSummary.length} órdenes)*:\n\n${lines.join('\n\n')}\n\n💵 *Total pendiente:* *$${totalUSD.toFixed(2)} USD*`;

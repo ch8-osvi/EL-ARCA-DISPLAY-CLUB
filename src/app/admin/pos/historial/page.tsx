@@ -81,7 +81,7 @@ interface SaleRecord {
   totalCUP:         number;
   paid:             boolean;
   notes:            string;
-  status?:          'COMPLETED' | 'PARTIALLY_REFUNDED' | 'REFUNDED';
+  status?:          'COMPLETED' | 'PARTIALLY_REFUNDED' | 'REFUNDED' | 'CANCELLED';
   totalRefundedUSD?:number;
   totalRefundedCUP?:number;
   refunds?:         SaleRefundLog[];
@@ -449,6 +449,7 @@ export default function SalesHistoryPage() {
     let pendingCUP = 0;
 
     filteredSales.forEach((s) => {
+      if (s.status === 'CANCELLED') return;
       if (s.currency === 'CUP') {
         totalCUP += s.totalCUP;
         if (s.paid) paidCUP += s.totalCUP;
@@ -1170,6 +1171,12 @@ export default function SalesHistoryPage() {
                           >
                             <span>{sale.paid ? '✓ Pagado' : '⏳ Pendiente (Clic para Cobrar)'}</span>
                           </button>
+
+                          {sale.status === 'CANCELLED' && (
+                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                              Anulada / Cancelada 🚫
+                            </span>
+                          )}
 
                           {sale.status === 'REFUNDED' && (
                             <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40">

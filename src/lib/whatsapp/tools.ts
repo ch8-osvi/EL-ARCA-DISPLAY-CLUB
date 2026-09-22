@@ -118,7 +118,7 @@ export const ADMIN_TOOL_DECLARATIONS = [
 ];
 
 /**
- * Smart product finder that matches queries like "redmi 9a", "rm 9a", "la redmi 9a", "samsung a04"
+ * Smart product finder that matches queries like "redmi 9a", "rm 9a", "sm a32", "la redmi 9a c/m", "samsung a04"
  */
 export async function findProductSmart(rawQuery: string) {
   await connectToDatabase();
@@ -135,15 +135,20 @@ export async function findProductSmart(rawQuery: string) {
   // 2. Expand common phone abbreviations
   const expandedQuery = cleanStr
     .replace(/\brm\b/i, 'redmi')
-    .replace(/\bsam\b/i, 'samsung')
-    .replace(/\bip\b/i, 'iphone')
+    .replace(/\bsam\b|\bsm\b/i, 'samsung')
+    .replace(/\bip\b|\biph\b/i, 'iphone')
+    .replace(/\bmoto\b/i, 'motorola')
+    .replace(/\binf\b/i, 'infinix')
+    .replace(/\btec\b/i, 'tecno')
+    .replace(/\bpco\b/i, 'poco')
+    .replace(/\bhw\b/i, 'huawei')
     .trim();
 
   // Attempt A: Exact substring match on modelo
   const escapedA = expandedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   let product = await Product.findOne({
     modelo: new RegExp(escapedA, 'i'),
-  });
+  }).sort({ stock: -1 });
   if (product) return product;
 
   // Attempt B: Match with cleanStr if different
@@ -151,25 +156,50 @@ export async function findProductSmart(rawQuery: string) {
     const escapedB = cleanStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     product = await Product.findOne({
       modelo: new RegExp(escapedB, 'i'),
-    });
+    }).sort({ stock: -1 });
     if (product) return product;
   }
 
-  // Attempt C: Match all tokens (each word must appear in modelo or marca)
-  const tokens = expandedQuery.split(/[\s/]+/).filter((t) => t.length > 1);
+  // Attempt C: Match all tokens across modelo, marca, AND calidad
+  // Special treatment for frame: "c/m" or "con marco", "s/m" or "sin marco"
+  const tokens = expandedQuery.split(/[\s]+/).filter((t) => t.length > 1);
   if (tokens.length > 0) {
-    const andConditions = tokens.map((token) => ({
-      $or: [
-        { modelo: new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
-        { marca: new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
-      ],
-    }));
+    const andConditions = tokens.map((token) => {
+      const isCM = /^(c\/m|cm|con marco)$/i.test(token);
+      const isSM = /^(s\/m|sin marco)$/i.test(token);
 
-    product = await Product.findOne({ $and: andConditions });
+      if (isCM) {
+        return {
+          $or: [
+            { calidad: /C\/M|CON MARCO/i },
+            { modelo: /C\/M|CON MARCO/i },
+          ],
+        };
+      }
+      if (isSM) {
+        return {
+          $or: [
+            { calidad: /S\/M|SIN MARCO/i },
+            { modelo: /S\/M|SIN MARCO/i },
+          ],
+        };
+      }
+
+      const escapedToken = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return {
+        $or: [
+          { modelo: new RegExp(escapedToken, 'i') },
+          { marca: new RegExp(escapedToken, 'i') },
+          { calidad: new RegExp(escapedToken, 'i') },
+        ],
+      };
+    });
+
+    product = await Product.findOne({ $and: andConditions }).sort({ stock: -1 });
     if (product) return product;
   }
 
-  // Attempt D: ID direct match (e.g. display-049)
+  // Attempt D: ID direct match (e.g. display-049 or 0920-ABCD)
   product = await Product.findOne({ id: new RegExp(`^${query}$`, 'i') });
   if (product) return product;
 

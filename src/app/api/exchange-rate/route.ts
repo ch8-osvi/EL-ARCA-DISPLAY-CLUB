@@ -27,14 +27,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'Tasa inválida' }, { status: 400 });
     }
 
-    // Upsert: keep only one document
-    const doc = await ExchangeRate.findOne();
-    if (doc) {
-      doc.rate = num;
-      await doc.save();
-    } else {
-      await ExchangeRate.create({ rate: num });
-    }
+    // Singleton: Eliminar cualquier registro previo (limpiar duplicados) y crear uno único
+    await ExchangeRate.deleteMany({});
+    await ExchangeRate.create({ rate: num });
 
     return NextResponse.json({ success: true, rate: num });
   } catch (err) {

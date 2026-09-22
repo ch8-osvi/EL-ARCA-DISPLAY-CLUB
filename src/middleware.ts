@@ -1,53 +1,48 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-// Routes that require admin authentication
-const PROTECTED_ROUTES = ['/admin'];
+// Rutas protegidas de la interfaz de usuario (admin pages)
+const PROTECTED_UI_ROUTES = ['/admin'];
+// Rutas donde NO se requiere autenticación (login)
+const PUBLIC_UI_ROUTES = ['/admin/login', '/admin']; 
+// (Nota: si /admin es la página de login, debe ser pública. Si el login está en /admin, 
+// debemos asegurar que solo las subrutas como /admin/pos estén protegidas)
 
-// API routes that require auth (write operations)
-const PROTECTED_API_ROUTES = ['/api/products'];
-const PROTECTED_API_ACTIONS = ['delete', 'unhide', 'add', 'restore', 'sync', 'delete-permanent'];
+// Rutas de API que requieren autenticación estricta
+const PROTECTED_API_ROUTES = ['/api/products', '/api/sales', '/api/ai/chat'];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const adminSession = request.cookies.get('el_arca_admin_session');
+  const isAuthenticated = adminSession && adminSession.value === 'authenticated';
 
-  // --- Protect admin page routes ---
-  if (PROTECTED_ROUTES.some((route) => pathname.startsWith(route))) {
-    // Check for admin session cookie
-    const adminSession = request.cookies.get('el_arca_admin_session');
-    if (!adminSession || adminSession.value !== 'authenticated') {
-      // Allow access to /admin itself (it handles its own login UI)
-      // Only block sub-routes like /admin/ocultos if somehow accessed directly
-      // The actual auth check is done client-side via sessionStorage
-      // This is an extra server-side safety layer
+  // --- 1. Proteger las páginas UI de Administración ---
+  if (PROTECTED_UI_ROUTES.some((route) => pathname.startsWith(route))) {
+    // Si la ruta es exactamente /admin (asumiendo que es el login) o /admin/login, permitir
+    if (pathname === '/admin' || pathname === '/admin/login') {
+      // Si ya está autenticado, redirigir al POS
+      if (isAuthenticated) {
+        return NextResponse.redirect(new URL('/admin/pos', request.url));
+      }
       return NextResponse.next();
+    }
+
+    // Para cualquier otra subruta de admin (ej. /admin/pos, /admin/ia), requerir auth
+    if (!isAuthenticated) {
+      return NextResponse.redirect(new URL('/admin', request.url));
     }
   }
 
-  // --- Protect API write operations ---
-  if (pathname.startsWith('/api/products') && request.method === 'POST') {
-    const referer = request.headers.get('referer') || '';
-    const origin = request.headers.get('origin') || '';
-    const host = request.headers.get('host') || '';
-
-    // Allow requests from the same origin (our app)
-    const allowedOrigins = [
-      `https://${host}`,
-      `http://${host}`,
-      'http://localhost:3000',
-      'http://localhost:3001',
-    ];
-
-    const isFromOurApp = allowedOrigins.some(
-      (allowed) => referer.startsWith(allowed) || origin.startsWith(allowed)
-    );
-
-    if (!isFromOurApp && origin !== '') {
-      // Block cross-origin POST requests to our API
-      return NextResponse.json(
-        { success: false, error: 'No autorizado' },
-        { status: 401 }
-      );
+  // --- 2. Proteger Operaciones Críticas de la API ---
+  if (PROTECTED_API_ROUTES.some((route) => pathname.startsWith(route))) {
+    // Métodos que alteran la DB o exponen datos sensibles de negocio
+    if (request.method !== 'OPTIONS') { // Permitir preflight CORS si es necesario
+      if (!isAuthenticated) {
+        return NextResponse.json(
+          { success: false, error: 'Acceso denegado: API protegida' },
+          { status: 401 }
+        );
+      }
     }
   }
 
@@ -56,9 +51,13 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Match admin pages
-    '/admin/:path*',
-    // Match product API
-    '/api/products/:path*',
+    /*
+     * Match all request paths except for the ones starting with:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico, sitemap.xml, robots.txt (metadata files)
+     * - assets, public files
+     */
+    '/((?!_next/static|_next/image|favicon.ico|assets|favicon|logo).*)',
   ],
 };

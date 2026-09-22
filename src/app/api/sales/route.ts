@@ -25,11 +25,14 @@ export async function GET() {
   try {
     await connectToDatabase();
 
-    const sales = await Sale.find({}).sort({ createdAt: -1 }).lean();
+    // Solo traer las últimas 200 ventas para evitar OOM (Memory Leak)
+    const sales = await Sale.find({}).sort({ createdAt: -1 }).limit(200).lean();
 
-    // Daily summary (Cuba timezone today)
+    // Daily summary (Cuba timezone today, excluding cancelled orders)
     const havanaTodayKey = getHavanaDateKey();
-    const todaySales = sales.filter((s) => getHavanaDateKey(s.createdAt) === havanaTodayKey);
+    const todaySales = sales.filter(
+      (s) => getHavanaDateKey(s.createdAt) === havanaTodayKey && s.status !== 'CANCELLED'
+    );
 
     // USD CASH DRAWER (Transactions paid in USD)
     const todayUSDSales     = todaySales.filter((s) => (s.currency || 'USD') === 'USD');
@@ -129,13 +132,24 @@ export async function POST(req: Request) {
         }
 
         const stockBefore = product.stock;
-        product.stock = stockBefore - qty;
+        
+        // 🚨 ACTUALIZACIÓN ATÓMICA ($inc) PARA EVITAR RACE CONDITIONS 🚨
+        const updatedProduct = await Product.findOneAndUpdate(
+          { id: productId, stock: { $gte: qty } },
+          { 
+            $inc: { stock: -qty },
+            // Set isHidden to true if stock becomes 0
+            $set: { isHidden: stockBefore - qty <= 0 }
+          },
+          { new: true }
+        );
 
-        // Auto-hide if stock reaches 0
-        if (product.stock <= 0) {
-          product.isHidden = true;
+        if (!updatedProduct) {
+          return NextResponse.json(
+            { success: false, error: `Error de concurrencia: El stock de ${product.marca} ${product.modelo} cambió mientras se procesaba la orden.` },
+            { status: 409 }
+          );
         }
-        await product.save();
 
         // Record stock movement
         await StockHistory.create({
@@ -288,12 +302,17 @@ export async function POST(req: Request) {
           const stockBefore = product.stock;
 
           if (itemDestination === 'stock') {
-            // Reincorporate good units into sellable stock
-            product.stock = stockBefore + qtyNum;
-            if (product.isHidden && product.stock > 0) {
-              product.isHidden = false;
-            }
-            await product.save();
+            // Reincorporate good units into sellable stock atomically
+            const updatedProduct = await Product.findOneAndUpdate(
+              { id: productId },
+              {
+                $inc: { stock: qtyNum },
+                $set: { isHidden: false } // ensure it's visible if it has stock
+              },
+              { new: true }
+            );
+            
+            const stockAfter = updatedProduct ? updatedProduct.stock : stockBefore + qtyNum;
 
             // Record in StockHistory as 'entrada'
             await StockHistory.create({
@@ -302,7 +321,7 @@ export async function POST(req: Request) {
               type:        'entrada',
               qty:         qtyNum,
               stockBefore,
-              stockAfter:  product.stock,
+              stockAfter:  stockAfter,
               reason:      `Devolución Orden #${sale.orderNumber}: ${reason.trim()} [Reintegrado a Stock]`,
             });
           } else {

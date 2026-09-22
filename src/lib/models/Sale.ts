@@ -35,7 +35,7 @@ export interface ISale extends Document {
   totalCUP:          number;
   paid:              boolean;
   notes:             string;
-  status:            'COMPLETED' | 'PARTIALLY_REFUNDED' | 'REFUNDED';
+  status:            'COMPLETED' | 'PARTIALLY_REFUNDED' | 'REFUNDED' | 'CANCELLED';
   totalRefundedUSD:  number;
   totalRefundedCUP:  number;
   refunds:           ISaleRefund[];
@@ -89,7 +89,7 @@ const SaleSchema = new Schema<ISale>(
     totalCUP:          { type: Number, required: true, min: 0 },
     paid:              { type: Boolean, default: false },
     notes:             { type: String, default: '' },
-    status:            { type: String, enum: ['COMPLETED', 'PARTIALLY_REFUNDED', 'REFUNDED'], default: 'COMPLETED' },
+    status:            { type: String, enum: ['COMPLETED', 'PARTIALLY_REFUNDED', 'REFUNDED', 'CANCELLED'], default: 'COMPLETED' },
     totalRefundedUSD:  { type: Number, default: 0, min: 0 },
     totalRefundedCUP:  { type: Number, default: 0, min: 0 },
     refunds:           { type: [SaleRefundSchema], default: [] },

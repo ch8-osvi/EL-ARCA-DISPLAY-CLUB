@@ -24,6 +24,7 @@ import {
   ChevronRight,
   Clock,
   CheckCircle2,
+  Edit3,
 } from 'lucide-react';
 
 interface ChatMessage {
@@ -42,7 +43,16 @@ interface ChatSession {
   messages: ChatMessage[];
 }
 
-const PRESET_PROMPTS = [
+interface PresetPrompt {
+  icon: any;
+  label: string;
+  description: string;
+  prompt: string;
+  tag: string;
+  type: 'query' | 'template';
+}
+
+const PRESET_PROMPTS: PresetPrompt[] = [
   // ── ANALYTICS ────────────────────────────────────────────────────────────────
   {
     icon: DollarSign,
@@ -50,6 +60,7 @@ const PRESET_PROMPTS = [
     description: 'Total recaudado hoy en USD/CUP y órdenes despachadas.',
     prompt: '¿Cuánto vendí hoy en total y cuántas órdenes se registraron?',
     tag: 'Ventas',
+    type: 'query',
   },
   {
     icon: Calendar,
@@ -57,6 +68,7 @@ const PRESET_PROMPTS = [
     description: 'Comparativa de facturación de la jornada anterior.',
     prompt: '¿Cuánto vendí ayer y qué displays se despacharon?',
     tag: 'Histórico',
+    type: 'query',
   },
   {
     icon: AlertTriangle,
@@ -64,6 +76,7 @@ const PRESET_PROMPTS = [
     description: 'Listado de órdenes pendientes de cobro y deudores.',
     prompt: '¿Quién me debe dinero y cuántas personas tienen pagos pendientes?',
     tag: 'Cobranzas',
+    type: 'query',
   },
   {
     icon: ShieldAlert,
@@ -71,6 +84,7 @@ const PRESET_PROMPTS = [
     description: 'Ranking de modelos con más bajas, roturas y motivos.',
     prompt: '¿Cuáles son los modelos con más problemas de garantía o mermas?',
     tag: 'Taller',
+    type: 'query',
   },
   {
     icon: Smartphone,
@@ -78,6 +92,7 @@ const PRESET_PROMPTS = [
     description: 'Top de rotación de pantallas por volumen y demanda.',
     prompt: '¿Cuáles son los 5 displays más vendidos?',
     tag: 'Rotación',
+    type: 'query',
   },
   {
     icon: Boxes,
@@ -85,6 +100,7 @@ const PRESET_PROMPTS = [
     description: 'Modelos en cero o con existencias bajas.',
     prompt: '¿Qué modelos están agotados o con bajo stock?',
     tag: 'Inventario',
+    type: 'query',
   },
   {
     icon: TrendingUp,
@@ -92,42 +108,64 @@ const PRESET_PROMPTS = [
     description: 'El día histórico de mayor facturación.',
     prompt: '¿Cuál ha sido el día récord de mayores ventas?',
     tag: 'Récord',
+    type: 'query',
   },
   // ── GESTIÓN / ACCIONES ───────────────────────────────────────────────────────
   {
     icon: Plus,
     label: 'Registrar venta rápida',
-    description: 'Crea una nueva venta y descuenta el stock automáticamente.',
-    prompt: 'Quiero registrar una venta: 1 Samsung A04 calidad original a un cliente llamado Consumidor Final, pagado en efectivo.',
+    description: 'Carga plantilla para registrar venta y descontar stock.',
+    prompt: 'Registrar venta rápida: 1 [Modelo de Pantalla] al cliente [Consumidor Final], pagado en [USD o CUP].',
     tag: 'Gestión',
+    type: 'template',
   },
   {
     icon: DollarSign,
     label: 'Cambiar precio de producto',
-    description: 'Actualiza el precio de venta de una pantalla en el catálogo.',
-    prompt: 'Cambia el precio de la Redmi 9A a $10 USD',
+    description: 'Carga plantilla para actualizar precio en catálogo.',
+    prompt: 'Cambia el precio de [Modelo exacto] a $[Nuevo Precio] USD.',
     tag: 'Precios',
+    type: 'template',
   },
   {
     icon: Boxes,
     label: 'Ajustar stock de producto',
-    description: 'Sumar o restar unidades del inventario físico.',
-    prompt: 'Agrega 5 unidades al stock del Samsung A12 porque llegó mercancía del proveedor.',
+    description: 'Carga plantilla para sumar o restar unidades en almacén.',
+    prompt: 'Ajustar stock de [Modelo exacto]: sumar [Cantidad] unidades por motivo: [Motivo]',
     tag: 'Stock',
+    type: 'template',
   },
   {
     icon: CheckCircle2,
     label: 'Marcar orden como pagada',
-    description: 'Actualiza el estado de una orden a PAGADA.',
-    prompt: 'Marca la orden #0920ABC01 como pagada',
+    description: 'Carga plantilla para saldar deuda de una orden.',
+    prompt: 'Marca la orden #[Código de Orden] como pagada.',
     tag: 'Cobros',
+    type: 'template',
+  },
+  {
+    icon: Trash2,
+    label: 'Anular orden de venta',
+    description: 'Cancela orden y reintegra las pantallas al almacén.',
+    prompt: 'Anula la orden #[Código de Orden] por motivo: [Motivo de la anulación]',
+    tag: 'Órdenes',
+    type: 'template',
+  },
+  {
+    icon: RefreshCw,
+    label: 'Actualizar tasa de cambio',
+    description: 'Modifica la tasa oficial de conversión USD a CUP.',
+    prompt: 'Actualiza la tasa de cambio oficial a: 1 USD = [Tasa en CUP] CUP.',
+    tag: 'Finanzas',
+    type: 'template',
   },
   {
     icon: Plus,
     label: 'Agregar nuevo producto',
-    description: 'Añade un nuevo modelo al catálogo con precio y stock.',
-    prompt: 'Agrega al catálogo: Samsung Galaxy A15, calidad original, precio $18 USD, 4 unidades en stock.',
+    description: 'Carga plantilla para dar de alta un nuevo repuesto.',
+    prompt: 'Agrega al catálogo: Marca [Marca], Modelo [Modelo], Calidad [ORIGINAL C/M / S/M / INCELL], Precio $[Precio] USD, Stock [Cantidad] unidades.',
     tag: 'Catálogo',
+    type: 'template',
   },
 ];
 
@@ -160,10 +198,12 @@ export default function AIAssistantPage() {
   const [inputQuery, setInputQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [quotaAlert, setQuotaAlert] = useState<string | null>(null);
+  const [templateNotice, setTemplateNotice] = useState<string | null>(null);
   const [showHistorySidebar, setShowHistorySidebar] = useState<boolean>(false);
   const [showPromptsMobile, setShowPromptsMobile] = useState<boolean>(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Check auth
@@ -310,6 +350,15 @@ export default function AIAssistantPage() {
     const queryToSend = (userPrompt || inputQuery).trim();
     if (!queryToSend || loading || !activeSession) return;
 
+    // Frontend validation: Prevent sending templates with unresolved placeholders
+    if (/\[.*?\]/.test(queryToSend)) {
+      setTemplateNotice('⚠️ Por favor, reemplaza los datos marcados entre [corchetes] antes de enviar.');
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 50);
+      return;
+    }
+
     const timeStr = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
     const currentSessionId = activeSession.id;
 
@@ -339,6 +388,7 @@ export default function AIAssistantPage() {
 
     saveSessions(updatedSessionsWithUser);
     setInputQuery('');
+    setTemplateNotice(null);
     setLoading(true);
     if (showPromptsMobile) setShowPromptsMobile(false);
 
@@ -443,9 +493,24 @@ export default function AIAssistantPage() {
     }
   };
 
+  const handlePresetClick = (p: PresetPrompt) => {
+    if (p.type === 'query') {
+      setTemplateNotice(null);
+      handleSendMessage(p.prompt);
+    } else {
+      setInputQuery(p.prompt);
+      setTemplateNotice('✏️ Plantilla interactiva cargada en el campo de texto. Rellena los datos entre [corchetes] y pulsa Preguntar.');
+      if (showPromptsMobile) setShowPromptsMobile(false);
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 50);
+    }
+  };
+
   const handleClearCurrentChat = () => {
     if (typingTimerRef.current) clearInterval(typingTimerRef.current);
     setQuotaAlert(null);
+    setTemplateNotice(null);
     if (!activeSession) return;
     const timeStr = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
     const resetSession: ChatSession = {
@@ -916,12 +981,30 @@ export default function AIAssistantPage() {
             </div>
           )}
 
+          {/* Template Loaded Notice */}
+          {templateNotice && (
+            <div className="px-4 sm:px-6 pb-2 max-w-3xl mx-auto w-full">
+              <div className="p-3 rounded-2xl bg-amber-950/40 border border-amber-500/40 text-amber-200 text-xs flex items-center justify-between gap-3 shadow-md">
+                <div className="flex items-center gap-2">
+                  <Edit3 className="w-4 h-4 text-[#D4AF37] shrink-0" />
+                  <span className="font-medium leading-snug">{templateNotice}</span>
+                </div>
+                <button
+                  onClick={() => setTemplateNotice(null)}
+                  className="text-gray-400 hover:text-white text-[11px] font-bold px-2 py-0.5 rounded bg-white/5 hover:bg-white/10 transition-colors shrink-0"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Quick Horizontal Carousel on Mobile */}
           <div className="lg:hidden px-4 py-1.5 overflow-x-auto flex items-center gap-1.5 scrollbar-none border-t border-white/5 bg-[#090A0F]">
-            {PRESET_PROMPTS.slice(0, 5).map((p, idx) => (
+            {PRESET_PROMPTS.slice(0, 6).map((p, idx) => (
               <button
                 key={idx}
-                onClick={() => handleSendMessage(p.prompt)}
+                onClick={() => handlePresetClick(p)}
                 disabled={loading}
                 className="whitespace-nowrap px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-[11px] text-gray-300 hover:text-white hover:border-[#D4AF37]/40 flex items-center gap-1 shrink-0"
               >
@@ -934,6 +1017,7 @@ export default function AIAssistantPage() {
           <div className="p-3 sm:p-4 bg-[#0B0D17]/90 border-t border-white/10 backdrop-blur-md shrink-0">
             <div className="max-w-3xl mx-auto relative w-full">
               <input
+                ref={inputRef}
                 type="text"
                 value={inputQuery}
                 onChange={(e) => setInputQuery(e.target.value)}
@@ -1000,17 +1084,33 @@ export default function AIAssistantPage() {
           <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
             {PRESET_PROMPTS.map((p, idx) => {
               const Icon = p.icon;
+              const isTemplate = p.type === 'template';
               return (
                 <button
                   key={idx}
-                  onClick={() => handleSendMessage(p.prompt)}
+                  onClick={() => handlePresetClick(p)}
                   disabled={loading}
-                  className="w-full text-left p-3 rounded-2xl glass-card border border-white/10 hover:border-[#D4AF37]/50 hover:bg-white/[0.04] transition-all group disabled:opacity-50 relative overflow-hidden"
+                  className={`w-full text-left p-3 rounded-2xl glass-card border transition-all group disabled:opacity-50 relative overflow-hidden ${
+                    isTemplate
+                      ? 'border-amber-500/20 hover:border-amber-500/50 hover:bg-amber-500/[0.04]'
+                      : 'border-white/10 hover:border-[#D4AF37]/50 hover:bg-white/[0.04]'
+                  }`}
                 >
                   <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-white/5 text-[#D4AF37] border border-white/10">
-                      {p.tag}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-white/5 text-[#D4AF37] border border-white/10">
+                        {p.tag}
+                      </span>
+                      <span
+                        className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                          isTemplate
+                            ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                            : 'bg-purple-500/10 text-purple-300 border-purple-500/30'
+                        }`}
+                      >
+                        {isTemplate ? '✏️ Plantilla' : '⚡ Directa'}
+                      </span>
+                    </div>
                     <Icon className="w-4 h-4 text-[#D4AF37] group-hover:scale-110 transition-transform" />
                   </div>
                   <h3 className="text-xs font-bold text-gray-100 group-hover:text-[#F3E0A9] transition-colors leading-snug">
@@ -1020,7 +1120,7 @@ export default function AIAssistantPage() {
                     {p.description}
                   </p>
                   <div className="flex items-center gap-1 text-[10px] text-[#D4AF37] font-semibold mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span>Consultar ahora</span>
+                    <span>{isTemplate ? 'Cargar plantilla al chat' : 'Consultar ahora'}</span>
                     <ChevronRight className="w-3 h-3" />
                   </div>
                 </button>

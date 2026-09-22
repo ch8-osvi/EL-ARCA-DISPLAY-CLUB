@@ -34,7 +34,7 @@ function generateOrderNumber(totalItems: number): string {
   return `${mm}${dd}${letters}${count}`;
 }
 
-// ─── Agregar Producto Individual ──────────────────────────────────────────────
+// ─── Agregar Producto Individual (con detección de duplicados) ─────────────────
 
 export async function executeAgregarProducto(input: {
   marca: string;
@@ -46,16 +46,40 @@ export async function executeAgregarProducto(input: {
   try {
     await connectToDatabase();
 
-    const stock = input.stock ?? 0;
+    const marcaUp    = input.marca.toUpperCase().trim();
+    const modeloTrim = input.modelo.trim();
+    const calidadUp  = input.calidad.toUpperCase().trim();
+    const stock      = input.stock ?? 1;
+
+    // ━ Deduplication check — same marca + modelo + calidad (case-insensitive)
+    const existing = await Product.findOne({
+      marca: marcaUp,
+      modelo: { $regex: new RegExp(`^${modeloTrim.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+      calidad: calidadUp,
+      isHidden: false,
+    }).lean();
+
+    if (existing) {
+      return {
+        success: false,
+        isDuplicate: true,
+        message:
+          `⚠️ **Ya existe en el catálogo:** ${marcaUp} ${modeloTrim} ${calidadUp}\n` +
+          `• ID actual: ${existing.id} | Stock: ${existing.stock} uds | Precio: $${(existing.precio as number).toFixed(2)} USD\n\n` +
+          `¿Deseas en cambio **actualizar su stock** o **cambiar su precio**?`,
+      };
+    }
+
+    // ━ Generate consistent ID
     const { mm, dd } = getHavanaMonthDay();
     const rnd = Math.random().toString(36).slice(2, 6).toUpperCase();
     const customId = `${mm}${dd}-${rnd}`;
 
     const product = await Product.create({
       id: customId,
-      marca: input.marca.toUpperCase().trim(),
-      modelo: input.modelo.trim(),
-      calidad: input.calidad.toUpperCase().trim(),
+      marca: marcaUp,
+      modelo: modeloTrim,
+      calidad: calidadUp,
       precio: input.precio,
       stock,
       isHidden: stock === 0,
@@ -75,7 +99,12 @@ export async function executeAgregarProducto(input: {
 
     return {
       success: true,
-      message: `✅ **Producto agregado al catálogo**\n\n📱 **${product.marca} ${product.modelo} ${product.calidad}**\n💰 Precio: $${input.precio.toFixed(2)} USD\n📦 Stock inicial: ${stock} unidades\n🆔 ID: ${customId}`,
+      message:
+        `✅ **Producto agregado al catálogo**\n\n` +
+        `📱 **${product.marca} ${product.modelo} ${product.calidad}**\n` +
+        `💰 Precio: $${input.precio.toFixed(2)} USD\n` +
+        `📦 Stock inicial: ${stock} unidades\n` +
+        `🆔 ID: ${customId}`,
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -83,30 +112,229 @@ export async function executeAgregarProducto(input: {
   }
 }
 
-// ─── Alta Masiva de Productos ─────────────────────────────────────────────────
+// ─── Alta en Lote (hasta ~50 productos) — con insertMany bulk y deduplicación ────────
 
 export async function executeAgregarProductosLote(
   items: Array<{ marca: string; modelo: string; calidad: string; precio: number; stock?: number }>
 ) {
-  const results: string[] = [];
-  let successCount = 0;
-  let errorCount = 0;
+  try {
+    await connectToDatabase();
 
-  for (const item of items) {
-    const result = await executeAgregarProducto(item);
-    if (result.success) {
-      successCount++;
-      results.push(`✅ ${item.marca} ${item.modelo} ${item.calidad} — $${item.precio} USD`);
-    } else {
-      errorCount++;
-      results.push(`❌ ${item.marca} ${item.modelo}: ${result.message}`);
+    if (items.length === 0) {
+      return { success: false, message: '❌ La lista de productos está vacía.' };
     }
-  }
 
-  return {
-    success: errorCount === 0,
-    message: `📦 **Alta masiva completada**\n\n✅ ${successCount} productos agregados${errorCount > 0 ? `\n❌ ${errorCount} errores` : ''}\n\n${results.join('\n')}`,
-  };
+    const { mm, dd } = getHavanaMonthDay();
+
+    // ━ Single bulk dedup scan (one DB call)
+    const existingProducts = await Product.find({ isHidden: false })
+      .select('marca modelo calidad')
+      .lean() as Array<{ marca: string; modelo: string; calidad: string }>;
+
+    const existingSet = new Set(
+      existingProducts.map((p) => `${p.marca}|${p.modelo.toLowerCase()}|${p.calidad}`)
+    );
+
+    const toInsert: typeof items = [];
+    const duplicates: string[] = [];
+
+    for (const item of items) {
+      const marcaUp    = (item.marca   || '').toUpperCase().trim();
+      const modeloTrim = (item.modelo  || '').trim();
+      const calidadUp  = (item.calidad || '').toUpperCase().trim();
+      const key = `${marcaUp}|${modeloTrim.toLowerCase()}|${calidadUp}`;
+      if (existingSet.has(key)) {
+        duplicates.push(`${marcaUp} ${modeloTrim} ${calidadUp}`);
+      } else {
+        existingSet.add(key);
+        toInsert.push({ ...item, marca: marcaUp, modelo: modeloTrim, calidad: calidadUp });
+      }
+    }
+
+    if (toInsert.length === 0) {
+      return {
+        success: false,
+        message:
+          `⚠️ **Todos los productos ya existen en el catálogo:**\n` +
+          `${duplicates.slice(0, 10).map((d) => `• ${d}`).join('\n')}` +
+          `${duplicates.length > 10 ? `\n... y ${duplicates.length - 10} más` : ''}\n\n` +
+          `No se insertó ningún producto nuevo.`,
+      };
+    }
+
+    // ━ Build documents with consistent IDs
+    const insertDocs = toInsert.map((item) => {
+      const rnd      = Math.random().toString(36).slice(2, 6).toUpperCase();
+      const customId = `${mm}${dd}-${rnd}`;
+      const stock    = item.stock ?? 1;
+      return {
+        customId,
+        productName: `${item.marca} ${item.modelo} (${item.calidad})`,
+        stock,
+        doc: {
+          id: customId,
+          marca:    item.marca,
+          modelo:   item.modelo,
+          calidad:  item.calidad,
+          precio:   Number(item.precio) || 0,
+          stock,
+          isHidden: stock === 0,
+        },
+      };
+    });
+
+    // ━ Bulk insert products (one DB round-trip)
+    await Product.insertMany(insertDocs.map((d) => d.doc), { ordered: false });
+
+    // ━ Bulk insert StockHistory for products with stock > 0
+    const stockEntries = insertDocs
+      .filter((d) => d.stock > 0)
+      .map((d) => ({
+        productId:   d.customId,
+        productName: d.productName,
+        type:        'entrada' as const,
+        qty:         d.stock,
+        stockBefore: 0,
+        stockAfter:  d.stock,
+        reason:      'Alta masiva por Asistente IA',
+      }));
+
+    if (stockEntries.length > 0) {
+      await StockHistory.insertMany(stockEntries, { ordered: false });
+    }
+
+    // ━ Build response summary
+    const listPreview = insertDocs
+      .slice(0, 12)
+      .map((d) => `• ${d.doc.marca} ${d.doc.modelo} ${d.doc.calidad} — $${d.doc.precio.toFixed(2)} USD — Stock: ${d.stock} uds`)
+      .join('\n');
+    const moreText   = insertDocs.length > 12 ? `\n... y ${insertDocs.length - 12} más` : '';
+    const dupSection = duplicates.length > 0
+      ? `\n\n⚠️ **${duplicates.length} omitido(s) por duplicado:**\n` +
+        duplicates.slice(0, 5).map((d) => `• ${d}`).join('\n') +
+        (duplicates.length > 5 ? `\n... y ${duplicates.length - 5} más` : '')
+      : '';
+
+    return {
+      success: true,
+      message:
+        `📦 **Alta masiva completada** — ${insertDocs.length} producto(s) agregado(s)` +
+        `${duplicates.length > 0 ? ` (${duplicates.length} duplicados omitidos)` : ''}\n\n` +
+        `**Insertados:**\n${listPreview}${moreText}${dupSection}`,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { success: false, message: `❌ Error en alta masiva: ${msg}` };
+  }
+}
+
+// ─── Alta Masiva Grande (50–500 productos) — batches de 50 con métricas ───────
+
+export async function executeAgregarLoteBulk(
+  items: Array<{ marca: string; modelo: string; calidad: string; precio: number; stock?: number }>
+) {
+  try {
+    await connectToDatabase();
+
+    if (items.length === 0) {
+      return { success: false, message: '❌ La lista está vacía.' };
+    }
+    if (items.length > 500) {
+      return { success: false, message: '❌ El máximo por operación es 500 productos. Divide el lote en grupos.' };
+    }
+
+    const { mm, dd } = getHavanaMonthDay();
+
+    // ━ Single pre-scan for deduplication (one DB call)
+    const existingProducts = await Product.find({ isHidden: false })
+      .select('marca modelo calidad')
+      .lean() as Array<{ marca: string; modelo: string; calidad: string }>;
+
+    const existingSet = new Set(
+      existingProducts.map((p) => `${p.marca}|${p.modelo.toLowerCase()}|${p.calidad}`)
+    );
+
+    const toInsert: typeof items = [];
+    let dupCount = 0;
+
+    for (const item of items) {
+      const marcaUp    = (item.marca   || '').toUpperCase().trim();
+      const modeloTrim = (item.modelo  || '').trim();
+      const calidadUp  = (item.calidad || '').toUpperCase().trim();
+      const key = `${marcaUp}|${modeloTrim.toLowerCase()}|${calidadUp}`;
+      if (existingSet.has(key)) {
+        dupCount++;
+      } else {
+        existingSet.add(key);
+        toInsert.push({ ...item, marca: marcaUp, modelo: modeloTrim, calidad: calidadUp });
+      }
+    }
+
+    // ━ Build all insert docs
+    const insertDocs = toInsert.map((item) => {
+      const rnd      = Math.random().toString(36).slice(2, 6).toUpperCase();
+      const customId = `${mm}${dd}-${rnd}`;
+      const stock    = item.stock ?? 1;
+      return {
+        customId,
+        productName: `${item.marca} ${item.modelo} (${item.calidad})`,
+        stock,
+        doc: {
+          id: customId,
+          marca:    item.marca,
+          modelo:   item.modelo,
+          calidad:  item.calidad,
+          precio:   Number(item.precio) || 0,
+          stock,
+          isHidden: stock === 0,
+        },
+      };
+    });
+
+    // ━ Process in batches of 50 for reliability
+    const BATCH = 50;
+    let totalInserted = 0;
+    let totalErrors   = 0;
+
+    for (let i = 0; i < insertDocs.length; i += BATCH) {
+      const batch = insertDocs.slice(i, i + BATCH);
+      try {
+        await Product.insertMany(batch.map((b) => b.doc), { ordered: false });
+
+        const stockEntries = batch
+          .filter((b) => b.stock > 0)
+          .map((b) => ({
+            productId:   b.customId,
+            productName: b.productName,
+            type:        'entrada' as const,
+            qty:         b.stock,
+            stockBefore: 0,
+            stockAfter:  b.stock,
+            reason:      'Alta masiva (lote grande) por Asistente IA',
+          }));
+
+        if (stockEntries.length > 0) {
+          await StockHistory.insertMany(stockEntries, { ordered: false });
+        }
+        totalInserted += batch.length;
+      } catch {
+        totalErrors += batch.length;
+      }
+    }
+
+    return {
+      success: totalErrors === 0,
+      message:
+        `📦 **Alta masiva completada**\n\n` +
+        `✅ ${totalInserted} producto(s) insertado(s) exitosamente\n` +
+        `${dupCount > 0      ? `⚠️ ${dupCount} omitido(s) por duplicado\n`       : ''}` +
+        `${totalErrors > 0   ? `❌ ${totalErrors} fallido(s) por error\n`        : ''}\n` +
+        `El catálogo ha sido actualizado. Puedes consultarlo en el panel de administración.`,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { success: false, message: `❌ Error crítico en alta masiva: ${msg}` };
+  }
 }
 
 // ─── Actualizar Calidad ────────────────────────────────────────────────────────
@@ -145,7 +373,64 @@ export async function executeActualizarCalidadProducto(
   }
 }
 
-// ─── Ocultar Producto ─────────────────────────────────────────────────────────
+// ─── Modificar Producto General (Corrección) ───────────────────────────────────
+
+export async function executeModificarProducto(input: {
+  queryProducto: string;
+  nuevaMarca?: string;
+  nuevoModelo?: string;
+  nuevaCalidad?: string;
+  nuevoPrecio?: number;
+}) {
+  try {
+    await connectToDatabase();
+    const { findProductSmart } = await import('@/lib/whatsapp/tools');
+    const product = await findProductSmart(input.queryProducto);
+
+    if (!product) {
+      return {
+        success: false,
+        message: `❌ No encontré ningún producto que coincida con "${input.queryProducto}".`,
+      };
+    }
+
+    const updates: Record<string, any> = {};
+    const changes: string[] = [];
+
+    if (input.nuevaMarca) {
+      updates.marca = input.nuevaMarca.toUpperCase().trim();
+      changes.push(`Marca: ${product.marca} ➔ **${updates.marca}**`);
+    }
+    if (input.nuevoModelo) {
+      updates.modelo = input.nuevoModelo.trim();
+      changes.push(`Modelo: ${product.modelo} ➔ **${updates.modelo}**`);
+    }
+    if (input.nuevaCalidad) {
+      updates.calidad = input.nuevaCalidad.toUpperCase().trim();
+      changes.push(`Calidad: ${product.calidad} ➔ **${updates.calidad}**`);
+    }
+    if (input.nuevoPrecio !== undefined && input.nuevoPrecio >= 0) {
+      updates.precio = input.nuevoPrecio;
+      changes.push(`Precio: $${(product.precio as number).toFixed(2)} ➔ **$${updates.precio.toFixed(2)} USD**`);
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return { success: false, message: '⚠️ No se proporcionó ningún dato para modificar.' };
+    }
+
+    await Product.updateOne({ _id: product._id }, { $set: updates });
+
+    return {
+      success: true,
+      message: `✅ **Producto Modificado**\n\n📱 Original: **${product.marca} ${product.modelo} ${product.calidad}**\n\n**Cambios aplicados:**\n${changes.map((c) => `• ${c}`).join('\n')}`,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { success: false, message: `❌ Error al modificar producto: ${msg}` };
+  }
+}
+
+// ─── Ocultar Producto Individual ───────────────────────────────────────────────
 
 export async function executeOcultarProducto(queryProducto: string) {
   try {
@@ -169,6 +454,45 @@ export async function executeOcultarProducto(queryProducto: string) {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return { success: false, message: `❌ Error: ${msg}` };
+  }
+}
+
+// ─── Ocultar Lote de Productos (Undo Masivo) ──────────────────────────────────
+
+export async function executeOcultarLote(queries: string[]) {
+  try {
+    await connectToDatabase();
+    const { findProductSmart } = await import('@/lib/whatsapp/tools');
+
+    if (!queries || queries.length === 0) {
+      return { success: false, message: '❌ No se proporcionaron productos para ocultar.' };
+    }
+
+    let successCount = 0;
+    const fallidos: string[] = [];
+
+    for (const query of queries) {
+      const product = await findProductSmart(query);
+      if (product) {
+        await Product.updateOne({ _id: product._id }, { $set: { isHidden: true } });
+        successCount++;
+      } else {
+        fallidos.push(query);
+      }
+    }
+
+    let msg = `✅ **Lote ocultado correctamente (Deshacer ejecutado)**\n\n👁️ Se ocultaron **${successCount}** productos del catálogo.`;
+    if (fallidos.length > 0) {
+      msg += `\n\n⚠️ No se encontraron ${fallidos.length} productos:\n` + fallidos.slice(0, 10).map((f) => `• ${f}`).join('\n') + (fallidos.length > 10 ? `\n... y ${fallidos.length - 10} más` : '');
+    }
+
+    return {
+      success: true,
+      message: msg,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { success: false, message: `❌ Error al ocultar lote: ${msg}` };
   }
 }
 
@@ -365,22 +689,30 @@ export async function executeCrearOrdenMulti(input: {
       refunds: [],
     });
 
-    // Deduct stock and log
+    // Deduct stock and log atomically
     for (const item of resolvedItems) {
-      const stockAfter = Math.max(0, item.stockBefore - item.qty);
-      await Product.updateOne(
-        { _id: item.productMongoId },
-        { $set: { stock: stockAfter, isHidden: stockAfter <= 0 } }
+      const updatedProduct = await Product.findOneAndUpdate(
+        { _id: item.productMongoId, stock: { $gte: item.qty } },
+        { $inc: { stock: -item.qty } },
+        { new: true }
       );
-      await StockHistory.create({
-        productId: item.productCustomId,
-        productName: `${item.marca} ${item.modelo} (${item.calidad})`,
-        type: 'salida',
-        qty: item.qty,
-        stockBefore: item.stockBefore,
-        stockAfter,
-        reason: `Venta Asistente IA Web — Orden #${orderNumber}`,
-      });
+
+      // Si falló por falta de stock repentina o producto eliminado, se omite el log (o se manejaría rollback en un sistema completo)
+      if (updatedProduct) {
+        if (updatedProduct.stock <= 0 && !updatedProduct.isHidden) {
+          await Product.updateOne({ _id: item.productMongoId }, { $set: { isHidden: true } });
+        }
+        
+        await StockHistory.create({
+          productId: item.productCustomId,
+          productName: `${item.marca} ${item.modelo} (${item.calidad})`,
+          type: 'salida',
+          qty: item.qty,
+          stockBefore: item.stockBefore,
+          stockAfter: updatedProduct.stock,
+          reason: `Venta Asistente IA Web — Orden #${orderNumber}`,
+        });
+      }
     }
 
     const itemsText = resolvedItems
@@ -403,3 +735,128 @@ export async function executeCrearOrdenMulti(input: {
     return { success: false, message: `❌ Error al crear orden: ${msg}` };
   }
 }
+
+// ─── Anular Orden con Reintegro de Stock ──────────────────────────────────────
+
+export async function executeAnularOrden(orderNumber: string, motivo?: string) {
+  try {
+    await connectToDatabase();
+    const cleanOrder = (orderNumber || '').trim().replace('#', '');
+    if (!cleanOrder) {
+      return { success: false, message: '❌ Debes especificar el número o código de la orden que deseas anular.' };
+    }
+
+    const sale = await Sale.findOne({
+      orderNumber: { $regex: new RegExp(`^${cleanOrder}$`, 'i') },
+    });
+
+    if (!sale) {
+      return {
+        success: false,
+        message: `❌ No encontré ninguna orden con el código #${cleanOrder}. Verifica el número en el historial de ventas.`,
+      };
+    }
+
+    if (sale.status === 'CANCELLED') {
+      return {
+        success: false,
+        message: `ℹ️ La orden #${sale.orderNumber} de *${sale.clientName}* ya se encontraba ANULADA previamente.`,
+      };
+    }
+
+    // Reintegrar al stock las unidades no devueltas aún
+    const restoredItems: string[] = [];
+    for (const item of sale.items) {
+      const alreadyReturned = item.returnedQty || 0;
+      const remainingToReturn = item.qty - alreadyReturned;
+
+      if (remainingToReturn > 0) {
+        const product = await Product.findOne({ id: item.productId });
+        if (product) {
+          const stockBefore = product.stock;
+          
+          const updatedProduct = await Product.findOneAndUpdate(
+            { id: item.productId },
+            { 
+              $inc: { stock: remainingToReturn },
+              $set: { isHidden: false } 
+            },
+            { new: true }
+          );
+
+          if (updatedProduct) {
+            await StockHistory.create({
+              productId: product.id,
+              productName: `${product.marca} ${product.modelo} (${product.calidad})`,
+              type: 'entrada',
+              qty: remainingToReturn,
+              stockBefore,
+              stockAfter: updatedProduct.stock,
+              reason: `Anulación Orden #${sale.orderNumber}: ${motivo || 'Cancelada vía Asistente IA'}`,
+            });
+            restoredItems.push(`• **${remainingToReturn}x** ${item.marca} ${item.modelo} (${item.calidad}) ➔ Stock en almacén: **${updatedProduct.stock}** uds`);
+          }
+        }
+        item.returnedQty = item.qty;
+      }
+    }
+
+    sale.status = 'CANCELLED';
+    sale.notes = (sale.notes ? `${sale.notes} | ` : '') + `[ANULADA vía IA: ${motivo || 'Cancelación solicitada por Administrador'}]`;
+    // BUG 4 FIX: markModified ensures Mongoose detects changes in the items subdocument array
+    sale.markModified('items');
+    await sale.save();
+
+    const montoStr = sale.currency === 'CUP'
+      ? `${sale.totalCUP?.toLocaleString()} CUP`
+      : `$${sale.totalUSD?.toFixed(2)} USD`;
+
+    return {
+      success: true,
+      message:
+        `🚫 **Orden #${sale.orderNumber} ANULADA con éxito**\n\n` +
+        `👤 Cliente: **${sale.clientName || 'Consumidor Final'}**\n` +
+        `💰 Monto anulado: **${montoStr}**\n` +
+        `📝 Motivo: ${motivo ? `*${motivo}*` : 'Cancelación solicitada por Administrador'}\n\n` +
+        (restoredItems.length > 0
+          ? `📦 **Stock reintegrado al almacén:**\n${restoredItems.join('\n')}`
+          : '📦 No había ítems pendientes por reintegrar.'),
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { success: false, message: `❌ Error al anular orden: ${msg}` };
+  }
+}
+
+// ─── Actualizar Tasa de Cambio USD a CUP ──────────────────────────────────────
+
+export async function executeActualizarTasaCambio(nuevaTasa: number) {
+  try {
+    await connectToDatabase();
+    const rate = parseFloat(String(nuevaTasa));
+    if (isNaN(rate) || rate < 1) {
+      return { success: false, message: '❌ La tasa de cambio debe ser un número positivo válido (ej: 320, 340).' };
+    }
+
+    // Obtener la tasa actual para informar el cambio
+    const oldDoc = await ExchangeRate.findOne().sort({ updatedAt: -1 }).lean() as { rate: number } | null;
+    const tasaAnterior = oldDoc?.rate ?? 300;
+
+    // Singleton: Eliminar todos los registros duplicados y mantener uno solo
+    await ExchangeRate.deleteMany({});
+    await ExchangeRate.create({ rate });
+
+    return {
+      success: true,
+      message:
+        `💱 **Tasa de Cambio Actualizada con Éxito**\n\n` +
+        `• Tasa anterior: 1 USD = **${tasaAnterior} CUP**\n` +
+        `• Nueva tasa oficial: **1 USD = ${rate} CUP** 💵\n\n` +
+        `El sistema calculará automáticamente las nuevas ventas y equivalencias usando esta tasa.`,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { success: false, message: `❌ Error al actualizar tasa de cambio: ${msg}` };
+  }
+}
+

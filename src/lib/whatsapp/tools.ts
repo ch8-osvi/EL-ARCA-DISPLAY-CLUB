@@ -333,15 +333,27 @@ export async function executeAjustarStockProducto(queryProducto: string, cantida
       };
     }
 
-    const stockBefore = product.stock || 0;
-    const stockAfter = Math.max(0, stockBefore + qty);
-    const isHidden = stockAfter === 0;
-
     // Atomic update
-    await Product.updateOne(
+    const updatedProduct = await Product.findOneAndUpdate(
       { _id: product._id },
-      { $set: { stock: stockAfter, isHidden } }
+      { $inc: { stock: qty } },
+      { new: true }
     );
+
+    if (!updatedProduct) {
+      return { success: false, message: '❌ Error al actualizar el stock (producto no encontrado durante la operación).' };
+    }
+
+    if (updatedProduct.stock <= 0 && !updatedProduct.isHidden) {
+      updatedProduct.isHidden = true;
+      await updatedProduct.save();
+    } else if (updatedProduct.stock > 0 && updatedProduct.isHidden) {
+      updatedProduct.isHidden = false;
+      await updatedProduct.save();
+    }
+
+    const stockBefore = product.stock || 0;
+    const stockAfter = updatedProduct.stock;
 
     // Log stock movement in StockHistory
     await StockHistory.create({
@@ -392,6 +404,16 @@ export async function executeRegistrarVentaRapida(args: {
       };
     }
 
+    // Verify exchange rate first before mutating DB
+    const rateDoc = await ExchangeRate.findOne().lean() as { rate: number } | null;
+    if (!rateDoc || typeof rateDoc.rate !== 'number') {
+      return {
+        success: false,
+        message: '❌ *Error Crítico:* No se ha configurado la Tasa de Cambio en el sistema. Configura la tasa primero.',
+      };
+    }
+    const rate = rateDoc.rate;
+
     if (product.stock < qty) {
       return {
         success: false,
@@ -399,13 +421,27 @@ export async function executeRegistrarVentaRapida(args: {
       };
     }
 
-    // Deduct stock atomically
-    const stockBefore = product.stock;
-    const stockAfter = stockBefore - qty;
-    await Product.updateOne(
-      { _id: product._id },
-      { $set: { stock: stockAfter, isHidden: stockAfter <= 0 } }
+    // Deduct stock atomically with $inc to prevent concurrent race conditions
+    const updatedProduct = await Product.findOneAndUpdate(
+      { _id: product._id, stock: { $gte: qty } },
+      { $inc: { stock: -qty } },
+      { new: true }
     );
+
+    if (!updatedProduct) {
+      return {
+        success: false,
+        message: `⚠️ *Conflicto de Inventario para ${product.marca} ${product.modelo}*\n\nOtra operación se procesó al mismo tiempo y ya no queda stock suficiente.`,
+      };
+    }
+
+    if (updatedProduct.stock <= 0 && !updatedProduct.isHidden) {
+      updatedProduct.isHidden = true;
+      await updatedProduct.save();
+    }
+
+    const stockBefore = product.stock;
+    const stockAfter = updatedProduct.stock;
 
     // Record stock movement
     await StockHistory.create({
@@ -420,8 +456,6 @@ export async function executeRegistrarVentaRapida(args: {
 
     // Calculate totals
     const subtotalUSD = parseFloat((product.precio * qty).toFixed(2));
-    const rateDoc = await ExchangeRate.findOne().lean() as { rate: number } | null;
-    const rate = rateDoc?.rate ?? 300;
     const totalCUP = parseFloat((subtotalUSD * rate).toFixed(2));
 
     // Generate unique order number

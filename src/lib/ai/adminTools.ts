@@ -605,7 +605,13 @@ export async function executeCrearOrdenMulti(input: {
     const { findProductSmart } = await import('@/lib/whatsapp/tools');
 
     const rateDoc = await ExchangeRate.findOne().sort({ updatedAt: -1 }).lean() as { rate: number } | null;
-    const exchangeRate = rateDoc?.rate ?? 300;
+    if (!rateDoc || typeof rateDoc.rate !== 'number') {
+      return {
+        success: false,
+        message: '❌ *Error Crítico:* No se ha configurado la Tasa de Cambio en el sistema. Configura la tasa primero para crear esta orden.',
+      };
+    }
+    const exchangeRate = rateDoc.rate;
 
     const resolvedItems: Array<{
       productId: string;

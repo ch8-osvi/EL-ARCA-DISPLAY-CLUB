@@ -296,7 +296,7 @@ export async function POST(req: NextRequest) {
       StockHistory.find({ type: 'merma' }).sort({ createdAt: -1 }).lean(),
       ExchangeRate.findOne().sort({ updatedAt: -1 }).lean() as Promise<{ rate: number } | null>,
     ]);
-    const currentExchangeRate = rateDoc?.rate ?? 300;
+    const currentExchangeRate = rateDoc?.rate || 'No configurada (⚠️ AVISO: El sistema requiere configurar la tasa primero)';
 
     // ── 2. Compute date boundaries (Cuba timezone) ────────────────────────────
 

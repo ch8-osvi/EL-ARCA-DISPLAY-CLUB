@@ -25,6 +25,7 @@ import {
   Clock,
   CheckCircle2,
   Edit3,
+  Copy,
 } from 'lucide-react';
 
 interface ChatMessage {
@@ -100,6 +101,14 @@ const PRESET_PROMPTS: PresetPrompt[] = [
     description: 'Modelos en cero o con existencias bajas.',
     prompt: '¿Qué modelos están agotados o con bajo stock?',
     tag: 'Inventario',
+    type: 'query',
+  },
+  {
+    icon: Copy,
+    label: 'Detectar duplicados',
+    description: 'Encuentra pantallas multi-compatibles registradas con nombres diferentes.',
+    prompt: '¿Qué pantallas están duplicadas en el inventario?',
+    tag: 'Catálogo',
     type: 'query',
   },
   {
@@ -578,7 +587,24 @@ export default function AIAssistantPage() {
                 </em>
               );
             }
-            return iPart;
+
+            const linkParts = iPart.split(/(\[[^\]]+\]\([^)]+\))/g);
+            return linkParts.map((lPart, lIdx) => {
+              const linkMatch = lPart.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+              if (linkMatch) {
+                const [, label, url] = linkMatch;
+                return (
+                  <Link
+                    key={`link-${cIdx}-${bIdx}-${iIdx}-${lIdx}`}
+                    href={url}
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 mx-1 rounded-lg bg-[#D4AF37]/15 hover:bg-[#D4AF37]/25 text-[#E5C158] font-semibold text-xs border border-[#D4AF37]/30 transition-all underline decoration-[#D4AF37]/40 hover:scale-[1.02] shadow-sm shadow-black/40"
+                  >
+                    {label} ↗
+                  </Link>
+                );
+              }
+              return lPart;
+            });
           });
         });
       });

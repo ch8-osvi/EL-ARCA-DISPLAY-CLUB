@@ -97,6 +97,42 @@ function extractActionTags(text: string): Array<{ full: string; type: string; js
   return results;
 }
 
+/** Detects if the prompt is asking about duplicate or repeated displays */
+function isDuplicateQuery(prompt: string): boolean {
+  const p = prompt.toLowerCase().trim();
+  if (/^(mostrar\s+|ver\s+|listar\s+)?duplicad[ao]s?$/i.test(p)) return true;
+  if (/^(pantallas?|displays?|repuestos?|productos?|modelos?)\s+duplicad[ao]s?$/i.test(p)) return true;
+  if (/^duplicad[ao]s?\s+(de\s+)?(pantallas?|displays?|repuestos?|productos?|modelos?)$/i.test(p)) return true;
+  if (/^lista\s+de\s+duplicad[ao]s?$/i.test(p)) return true;
+
+  const hasDup = /duplicad[ao]s?|repetid[ao]s?|multi-?compatibles?\s+duplicad/i.test(p);
+  const isQuestion = /(qu[eé]|cu[aá]les?|hay|detectas?|tienes?|existen?|mostrar?|listar?|ver|revisar?|buscar?)/i.test(p);
+  return hasDup && (isQuestion || /^(qu[eé]\s+)?(pantallas?|displays?|repuestos?|productos?)/i.test(p));
+}
+
+/** Parses explicit requests to merge a specific duplicate pair by index (e.g., 'une el par 1') */
+function parseMergeCommand(prompt: string, detectedPairs: any[]): { pairIndex: number; queryPrincipal: string; querySecundario: string; nuevoModelo: string; nuevoPrecio: number } | null {
+  const p = prompt.toLowerCase().trim();
+  const parMatch = p.match(/(?:une|unir|fusiona|fusionar)\s+(?:el\s+)?par\s+(\d+)/i);
+  if (parMatch) {
+    const idx = parseInt(parMatch[1], 10) - 1;
+    if (idx >= 0 && idx < detectedPairs.length) {
+      const pair = detectedPairs[idx];
+      const prefersB = /deja(?:ndo)?\s+(?:el\s+)?(?:segundo|b|opci[oó]n\s*b)/i.test(p);
+      const primary = prefersB ? pair.productB : pair.productA;
+      const secondary = prefersB ? pair.productA : pair.productB;
+      return {
+        pairIndex: idx + 1,
+        queryPrincipal: primary.id || primary.modelo,
+        querySecundario: secondary.id || secondary.modelo,
+        nuevoModelo: primary.modelo,
+        nuevoPrecio: Math.max(primary.precio || 0, secondary.precio || 0),
+      };
+    }
+  }
+  return null;
+}
+
 async function executeActions(
   response: string
 ): Promise<{ cleanedResponse: string; actionResults: string[] }> {
@@ -325,6 +361,66 @@ export async function POST(req: NextRequest) {
     ]);
     const currentExchangeRate = rateDoc?.rate || 'No configurada (⚠️ AVISO: El sistema requiere configurar la tasa primero)';
 
+    // ── FAST-PATH: Instant Duplicate Detection (< 20ms, zero AI tokens) ──────
+    if (isDuplicateQuery(cleanPrompt)) {
+      const detected = detectDuplicates(products as any, 75);
+      if (detected.length === 0) {
+        return NextResponse.json({
+          success: true,
+          answer: `✅ **Inventario Verificado y Libre de Duplicados**\n\nRevisé todo el catálogo activo (${products.length} productos) y no se detectan repuestos multi-compatibles ni pantallas duplicadas sin unificar.\n\nTodo el stock está completamente limpio y al día.`,
+          source: 'duplicate-detection-fastpath',
+          hasActions: false,
+        });
+      }
+
+      const lines = [
+        `🔍 **He detectado ${detected.length} posible${detected.length === 1 ? '' : 's'} par${detected.length === 1 ? '' : 'es'} de repuestos multi-compatibles duplicados:**\n`,
+      ];
+
+      detected.forEach((dp, idx) => {
+        const pA = dp.productA;
+        const pB = dp.productB;
+        const combinedStock = (pA.stock || 0) + (pB.stock || 0);
+        lines.push(
+          `**${idx + 1}. [${pA.marca}] Coincidencia: ${dp.score}%**\n` +
+          `   • **Opción A:** \`${pA.modelo}\` (${pA.calidad}) — **${pA.stock} uds** disponibles ($${pA.precio} USD)\n` +
+          `   • **Opción B:** \`${pB.modelo}\` (${pB.calidad}) — **${pB.stock} uds** disponibles ($${pB.precio} USD)\n` +
+          `   • *Stock unificado total:* **${combinedStock} unidades** | *Motivo:* ${dp.reasons.join(', ')}\n`
+        );
+      });
+
+      lines.push(
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+        `💡 **¿Qué deseas hacer?**\n` +
+        `• **Unir aquí en el chat:** Respóndeme por ejemplo *"une el par 1"* o *"fusiona el par 2 dejando la opción B"*.\n` +
+        `• **O en el gestor visual:** Puedes revisarlos con comparación lado a lado en [/admin/duplicados](/admin/duplicados).`
+      );
+
+      return NextResponse.json({
+        success: true,
+        answer: lines.join('\n'),
+        source: 'duplicate-detection-fastpath',
+        hasActions: false,
+      });
+    }
+
+    // ── FAST-PATH: Direct Duplicate Merge Command (< 50ms) ───────────────────
+    const mergeCmd = parseMergeCommand(cleanPrompt, detectDuplicates(products as any, 75));
+    if (mergeCmd) {
+      const res = await executeFusionarProductos({
+        queryPrincipal: mergeCmd.queryPrincipal,
+        querySecundario: mergeCmd.querySecundario,
+        nuevoModelo: mergeCmd.nuevoModelo,
+        nuevoPrecio: mergeCmd.nuevoPrecio,
+      });
+      return NextResponse.json({
+        success: true,
+        answer: res.message,
+        source: 'duplicate-merge-fastpath',
+        hasActions: true,
+      });
+    }
+
     // ── 2. Compute date boundaries (Cuba timezone) ────────────────────────────
 
     const now = new Date();
@@ -472,13 +568,13 @@ export async function POST(req: NextRequest) {
       tasaCambioActualUSD_CUP: currentExchangeRate,
       hoy: { fecha: havanaTodayKey, ventasUSD: todayTot.usd, ventasCUP: todayTot.cup, ordenes: todayTot.count, repuestosVendidos: todayTot.itemsCount, pendienteUSD: todayTot.pendingUSD },
       ayer: { fecha: havanaYesterdayKey, ventasUSD: yesterdayTot.usd, ventasCUP: yesterdayTot.cup, ordenes: yesterdayTot.count, repuestosVendidos: yesterdayTot.itemsCount },
-      desgloseDiarioUltimos14Dias: last14DaysSummary,
-      ultimasVentasRegistradas: recentSalesDetails,
+      desgloseDiarioUltimos7Dias: last14DaysSummary.slice(0, 7),
+      ultimasVentasRegistradas: recentSalesDetails.slice(0, 10),
       ultimos7DiasAcumulado: { ventasUSD: weekTot.usd, ventasCUP: weekTot.cup, ordenes: weekTot.count },
       esteMesAcumulado: { ventasUSD: monthTot.usd, ventasCUP: monthTot.cup, ordenes: monthTot.count },
       historicoTotal: { ventasUSD: allTot.usd, ventasCUP: allTot.cup, ordenesTotales: allTot.count },
       diaRecordHistorico: bestDay ? `Día ${bestDay.date} con $${bestDay.usd.toFixed(2)} USD y ${bestDay.count} órdenes` : 'Sin datos suficientes',
-      ordenesPendientesCobro: debtorsSummary,
+      ordenesPendientesCobro: debtorsSummary.slice(0, 12),
       top3ModelosMasVendidos: topModels.slice(0, 5),
       inventario: { totalModelosActivos: products.length, valorTotalInventarioUSD: totalInventoryValue.toFixed(2), modelosAgotados: outOfStockProducts.length, modelosBajoStock: lowStockProducts.length },
       duplicadosDetectados: (() => {
@@ -486,7 +582,7 @@ export async function POST(req: NextRequest) {
           const detected = detectDuplicates(products as any, 75);
           return {
             totalParesDetectados: detected.length,
-            pares: detected.slice(0, 10).map((dp) => ({
+            pares: detected.slice(0, 8).map((dp) => ({
               marca: dp.productA.marca,
               productoA: { id: dp.productA.id || String((dp.productA as any)._id || ''), modelo: dp.productA.modelo, calidad: dp.productA.calidad, stock: dp.productA.stock, precio: dp.productA.precio },
               productoB: { id: dp.productB.id || String((dp.productB as any)._id || ''), modelo: dp.productB.modelo, calidad: dp.productB.calidad, stock: dp.productB.stock, precio: dp.productB.precio },
@@ -502,8 +598,8 @@ export async function POST(req: NextRequest) {
       })(),
       mermasYGarantias: {
         totalBajasMermasUds: totalMermaUnits,
-        rankingModelosConProblemas: topMermas.map((m) => ({ modelo: m.producto, unidadesEnMerma: m.units, motivosRegistrados: m.reasons, fechaUltimaBaja: m.lastDate })),
-        ultimosRegistrosDetallados: (mermasHistory || []).slice(0, 15).map((m) => ({ producto: m.productName, cantidad: m.qty, motivo: m.reason, fecha: m.createdAt ? new Date(m.createdAt).toLocaleDateString('es-ES') : '' })),
+        rankingModelosConProblemas: topMermas.slice(0, 8).map((m) => ({ modelo: m.producto, unidadesEnMerma: m.units, motivosRegistrados: m.reasons, fechaUltimaBaja: m.lastDate })),
+        ultimosRegistrosDetallados: (mermasHistory || []).slice(0, 8).map((m) => ({ producto: m.productName, cantidad: m.qty, motivo: m.reason, fecha: m.createdAt ? new Date(m.createdAt).toLocaleDateString('es-ES') : '' })),
       },
     };
 
@@ -781,7 +877,7 @@ DIRECTRICES DE TONO Y ESTILO (OBLIGATORIO)
     
     for (const model of candidateModels) {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const timeoutId = setTimeout(() => controller.abort(), 18000);
       try {
         const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
         const geminiRes = await fetch(geminiUrl, {

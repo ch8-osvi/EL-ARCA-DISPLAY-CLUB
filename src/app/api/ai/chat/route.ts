@@ -884,8 +884,15 @@ DIRECTRICES DE TONO Y ESTILO (OBLIGATORIO)
 
     let candidateText = '';
     const allErrors: string[] = [];
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
     
-    for (const model of candidateModels) {
+    for (let i = 0; i < candidateModels.length; i++) {
+      const model = candidateModels[i];
+      if (i > 0) {
+        // Añadir retraso de 1.5s entre reintentos para no detonar el Anti-Spam Burst Limit de Google
+        await sleep(1500);
+      }
+      
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 35000);
       try {
@@ -942,7 +949,7 @@ DIRECTRICES DE TONO Y ESTILO (OBLIGATORIO)
     if (!candidateText) {
       if (isQuotaExceeded) {
         return NextResponse.json(
-          { success: false, isQuotaExceeded: true, error: 'Google Gemini está procesando con alta demanda en este momento. Por favor espera unos segundos y repite tu pregunta.' },
+          { success: false, isQuotaExceeded: true, error: '⚠️ Límite de cuota excedido (Error 429). Has alcanzado el límite de consultas (RPM) de tu clave API gratuita de Google. Por favor espera 1 minuto y vuelve a intentar.' },
           { status: 429 }
         );
       }

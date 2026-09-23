@@ -452,7 +452,11 @@ Si es una consulta normal de información (precios, stock, ventas, etc.), respon
       `MENSAJE ACTUAL DE OSVALDO:\n"${cleanPrompt}"`;
 
     const candidateModels = ['gemini-3.6-flash', 'gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-flash-latest'];
-    for (const model of candidateModels) {
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    
+    for (let i = 0; i < candidateModels.length; i++) {
+      const model = candidateModels[i];
+      if (i > 0) await sleep(1500);
       try {
         const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
         const res = await fetch(geminiUrl, {
@@ -587,7 +591,11 @@ REGLAS DE SEGURIDAD Y PRIVACIDAD ESTRICTAS (OBLIGATORIAS):
     `PREGUNTA DEL CLIENTE:\n"${cleanPrompt}"`;
 
   const candidateModels = ['gemini-3.6-flash', 'gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-flash-latest'];
-  for (const model of candidateModels) {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  for (let i = 0; i < candidateModels.length; i++) {
+    const model = candidateModels[i];
+    if (i > 0) await sleep(1500);
     try {
       const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
       const res = await fetch(geminiUrl, {

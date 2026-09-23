@@ -34,7 +34,7 @@ import {
   matchBrandFilter,
   sortProductsByPopularity,
 } from '@/lib/brandUtils';
-import { fuzzyMatchProduct } from '@/lib/searchUtils';
+import { fuzzyMatchProduct, roundCupPrice } from '@/lib/searchUtils';
 
 interface CartItem {
   productId: string;
@@ -250,7 +250,7 @@ export default function PosPage() {
 
   const totalUSD = subtotalUSD;
   const totalCUP = useMemo(() => {
-    return subtotalUSD * exchangeRate;
+    return roundCupPrice(subtotalUSD, exchangeRate);
   }, [subtotalUSD, exchangeRate]);
 
   const totalItemsCount = useMemo(() => {
@@ -438,6 +438,36 @@ export default function PosPage() {
 
           {/* Quick links & Exchange rate pill */}
           <div className="flex items-center gap-2.5">
+            {/* Live Currency Selector [ USD | CUP ] */}
+            <div className="flex items-center bg-[#10131E] border border-[#D4AF37]/30 rounded-xl p-0.5 shadow-inner">
+              <button
+                type="button"
+                id="btn-pos-currency-usd"
+                onClick={() => setCurrency('USD')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all duration-200 ${
+                  currency === 'USD'
+                    ? 'bg-gradient-to-r from-[#D4AF37] to-[#AA8826] text-black shadow-sm'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+                title="Ver precios y facturar en USD"
+              >
+                USD
+              </button>
+              <button
+                type="button"
+                id="btn-pos-currency-cup"
+                onClick={() => setCurrency('CUP')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all duration-200 ${
+                  currency === 'CUP'
+                    ? 'bg-gradient-to-r from-[#D4AF37] to-[#AA8826] text-black shadow-sm'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+                title={`Ver precios y facturar en CUP (Tasa: 1 USD = ${exchangeRate} CUP)`}
+              >
+                CUP
+              </button>
+            </div>
+
             {/* Exchange Rate Badge */}
             <div className="flex items-center bg-[#10131E] border border-[#D4AF37]/30 rounded-xl px-3 py-1.5 gap-2">
               <Banknote className="w-4 h-4 text-emerald-400" />
@@ -558,11 +588,13 @@ export default function PosPage() {
               {filteredProducts.map((prod) => {
                 const inCart = cart.find((c) => c.productId === prod.id);
                 const availableAfterCart = prod.stock - (inCart ? inCart.qty : 0);
+                const cupRounded = roundCupPrice(prod.precio, exchangeRate);
+                const formattedCUP = cupRounded.toLocaleString();
 
                 return (
                   <div
                     key={prod.id}
-                    className={`glass-card rounded-2xl p-4 border transition-all duration-200 flex flex-col justify-between min-h-[125px] ${
+                    className={`glass-card rounded-2xl p-4 border transition-all duration-200 flex flex-col justify-between min-h-[135px] ${
                       inCart
                         ? 'border-[#D4AF37]/50 bg-[#121626]'
                         : 'border-white/10 hover:border-white/20'
@@ -585,13 +617,24 @@ export default function PosPage() {
 
                     <div className="mt-3 pt-2.5 border-t border-white/5 flex items-center justify-between">
                       <div>
-                        <span className="text-[10px] text-gray-400 block">
+                        <span className="text-[10px] text-gray-400 block mb-0.5">
                           Stock: <strong className="text-gray-200">{availableAfterCart}</strong>
                         </span>
-                        <span className="text-base font-extrabold text-[#F3E0A9]">
-                          ${prod.precio.toFixed(2)}{' '}
-                          <span className="text-[10px] text-gray-400 font-normal">USD</span>
-                        </span>
+                        <div className="flex flex-col">
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-base font-extrabold text-[#F3E0A9]">
+                              {currency === 'CUP' ? `${formattedCUP} CUP` : `$${prod.precio.toFixed(2)}`}
+                            </span>
+                            {currency === 'USD' && (
+                              <span className="text-[10px] text-gray-400 font-semibold">USD</span>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-gray-400 font-medium">
+                            {currency === 'CUP'
+                              ? `≈ $${prod.precio.toFixed(2)} USD`
+                              : `≈ ${formattedCUP} CUP`}
+                          </span>
+                        </div>
                       </div>
 
                       <button

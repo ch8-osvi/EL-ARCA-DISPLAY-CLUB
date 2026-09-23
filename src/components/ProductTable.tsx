@@ -98,7 +98,7 @@ export default function ProductTable({
                           {isLowStock && (
                             <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-[#1E1215] border border-rose-500/30 text-rose-300 text-[9px] font-extrabold uppercase">
                               <AlertCircle className="w-2.5 h-2.5 text-rose-400" />
-                              {product.stock === 1 ? 'ÚLTIMA UD' : `ÚLTIMAS ${product.stock}`}
+                              BAJO STOCK
                             </span>
                           )}
                           {isNewArrival && (

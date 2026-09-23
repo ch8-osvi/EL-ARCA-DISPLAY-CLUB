@@ -55,7 +55,7 @@ export default function AdminProductCard({ product, onDelete, onEdit }: AdminPro
             )}
             {product.stock > 0 && product.stock <= 2 && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#1E1215] border border-rose-500/30 text-rose-300 text-[9px] font-extrabold uppercase tracking-wider">
-                {product.stock === 1 ? 'ÚLTIMA UD' : `ÚLTIMAS ${product.stock} UDS`}
+                BAJO STOCK
               </span>
             )}
           </div>

@@ -144,6 +144,7 @@ export default function AdminPage() {
     setIsAuthenticated(false);
     sessionStorage.removeItem('el_arca_admin_auth');
     document.cookie = "el_arca_admin_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    window.location.href = '/';
   };
 
   // Trigger Toast Notification with custom duration
@@ -826,6 +827,15 @@ export default function AdminPage() {
               Ingresar al Panel
             </button>
           </form>
+
+          <div className="pt-2 text-center">
+            <Link
+              href="/"
+              className="text-xs text-gray-400 hover:text-[#D4AF37] transition-colors inline-flex items-center gap-1.5 font-medium"
+            >
+              <span>←</span> Volver al Catálogo Público
+            </Link>
+          </div>
         </div>
       </div>
     );

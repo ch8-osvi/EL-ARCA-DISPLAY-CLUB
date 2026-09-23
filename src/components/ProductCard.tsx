@@ -98,7 +98,7 @@ export default function ProductCard({
             {isLowStock && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#1E1215] border border-rose-500/30 text-rose-300 text-[10px] font-extrabold tracking-wider uppercase">
                 <AlertCircle className="w-3 h-3 text-rose-400" />
-                <span>{product.stock === 1 ? 'ÚLTIMA UNIDAD' : `ÚLTIMAS ${product.stock} UDS`}</span>
+                <span>BAJO STOCK</span>
               </span>
             )}
             {isNewArrival && (

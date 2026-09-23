@@ -5,6 +5,27 @@
  */
 
 export const BRAND_ALIASES: Record<string, string> = {
+  // Common technician abbreviations
+  rm: 'redmi',
+  rn: 'redmi note',
+  sm: 'samsung',
+  sam: 'samsung',
+  ip: 'iphone',
+  iph: 'iphone',
+  mot: 'motorola',
+  moto: 'motorola',
+  alc: 'alcatel',
+  inf: 'infinix',
+  tec: 'tecno',
+  tek: 'tecno',
+  itl: 'itel',
+  hw: 'huawei',
+  hua: 'huawei',
+  hon: 'honor',
+  pco: 'poco',
+  rlm: 'realme',
+  zt: 'zte',
+
   // Samsung variants & typos
   sansun: 'samsung',
   sansung: 'samsung',
@@ -12,7 +33,6 @@ export const BRAND_ALIASES: Record<string, string> = {
   samsumg: 'samsung',
   samsum: 'samsung',
   samgun: 'samsung',
-  sam: 'samsung',
   sammsung: 'samsung',
 
   // iPhone / Apple typos
@@ -21,7 +41,6 @@ export const BRAND_ALIASES: Record<string, string> = {
   ifon: 'iphone',
   ifone: 'iphone',
   iphon: 'iphone',
-  iph: 'iphone',
   apple: 'iphone',
 
   // Xiaomi / Redmi / Poco typos
@@ -30,12 +49,9 @@ export const BRAND_ALIASES: Record<string, string> = {
   xaomi: 'xiaomi',
   xiami: 'xiaomi',
   xiomi: 'xiaomi',
-  pco: 'poco',
 
   // Motorola typos
   motog: 'moto g',
-  moto: 'motorola',
-  mot: 'motorola',
   motorla: 'motorola',
 
   // Alcatel typos
@@ -128,14 +144,21 @@ export function fuzzyMatchProduct(
     return { match: true, score: isExact ? 1000 : 800 };
   }
 
-  // 2. Expand known brand typos/aliases in query
+  // 2. Expand known brand typos, abbreviations and prefixes in query
   let expandedQuery = rawQ;
+
+  // Prefixes joined to numbers (e.g. motog22 -> motorola g 22, rn11 -> redmi note 11, rm9a -> redmi 9a, sm03 -> samsung 03)
+  expandedQuery = expandedQuery.replace(/\bmotog(\d+)/g, 'motorola g $1');
+  expandedQuery = expandedQuery.replace(/\brm(\d+)/g, 'redmi $1');
+  expandedQuery = expandedQuery.replace(/\brn(\d+)/g, 'redmi note $1');
+  expandedQuery = expandedQuery.replace(/\bsm(\d+)/g, 'samsung $1');
+  expandedQuery = expandedQuery.replace(/\bip(\d+)/g, 'iphone $1');
+  expandedQuery = expandedQuery.replace(/\bmoto(\d+)/g, 'motorola $1');
+  expandedQuery = expandedQuery.replace(/\bredminote/g, 'redmi note ');
+
   for (const [alias, rep] of Object.entries(BRAND_ALIASES)) {
     const regex = new RegExp(`\\b${alias}\\b`, 'g');
     expandedQuery = expandedQuery.replace(regex, rep);
-    if (expandedQuery.includes(alias)) {
-      expandedQuery = expandedQuery.replace(alias, `${rep} `);
-    }
   }
 
   const compExpandedQ = compactSearchText(expandedQuery);
@@ -228,6 +251,14 @@ export function fuzzyMatchGeneric(
 
   // Tokenize & expand aliases
   let expandedQuery = rawQ;
+  expandedQuery = expandedQuery.replace(/\bmotog(\d+)/g, 'motorola g $1');
+  expandedQuery = expandedQuery.replace(/\brm(\d+)/g, 'redmi $1');
+  expandedQuery = expandedQuery.replace(/\brn(\d+)/g, 'redmi note $1');
+  expandedQuery = expandedQuery.replace(/\bsm(\d+)/g, 'samsung $1');
+  expandedQuery = expandedQuery.replace(/\bip(\d+)/g, 'iphone $1');
+  expandedQuery = expandedQuery.replace(/\bmoto(\d+)/g, 'motorola $1');
+  expandedQuery = expandedQuery.replace(/\bredminote/g, 'redmi note ');
+
   for (const [alias, rep] of Object.entries(BRAND_ALIASES)) {
     const regex = new RegExp(`\\b${alias}\\b`, 'g');
     expandedQuery = expandedQuery.replace(regex, rep);

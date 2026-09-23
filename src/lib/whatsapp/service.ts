@@ -451,7 +451,7 @@ Si es una consulta normal de información (precios, stock, ventas, etc.), respon
       `${historyBlock}` +
       `MENSAJE ACTUAL DE OSVALDO:\n"${cleanPrompt}"`;
 
-    const candidateModels = ['gemini-3-flash-preview', 'gemini-flash-latest', 'gemini-3.6-flash', 'gemini-3.5-flash'];
+    const candidateModels = ['gemini-3.6-flash', 'gemini-3-flash-preview'];
     for (const model of candidateModels) {
       try {
         const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
@@ -586,7 +586,7 @@ REGLAS DE SEGURIDAD Y PRIVACIDAD ESTRICTAS (OBLIGATORIAS):
     `${clientHistoryBlock}` +
     `PREGUNTA DEL CLIENTE:\n"${cleanPrompt}"`;
 
-  const candidateModels = ['gemini-3-flash-preview', 'gemini-flash-latest', 'gemini-3.6-flash', 'gemini-3.5-flash'];
+  const candidateModels = ['gemini-3.6-flash', 'gemini-3-flash-preview'];
   for (const model of candidateModels) {
     try {
       const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;

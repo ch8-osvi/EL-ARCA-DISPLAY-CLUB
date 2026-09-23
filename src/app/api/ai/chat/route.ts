@@ -21,7 +21,6 @@ import {
   executeFusionarProductos,
 } from '@/lib/ai/adminTools';
 import {
-  findProductSmart,
   executeMarcarOrdenPagada,
   executeMarcarOrdenPendiente,
   executeActualizarPrecioProducto,
@@ -133,18 +132,7 @@ function parseMergeCommand(prompt: string, detectedPairs: any[]): { pairIndex: n
   return null;
 }
 
-/** Detects if the user is asking for the price of a specific phone model */
-function extractPriceQueryModel(prompt: string): string | null {
-  const p = prompt.toLowerCase().trim();
-  const match = p.match(/(?:qu[eé]\s+precio\s+tiene|precio\s+(?:de|del)|cu[aá]nto\s+(?:cuesta|vale|sale))\s+(?:la|el|los|las|un|una|display|pantalla)?\s*(.+)/i);
-  if (match && match[1]) {
-    const raw = match[1].replace(/[?¿!¡]/g, '').trim();
-    if (raw.length >= 2 && !/^(hoy|ayer|este mes|la tienda|todo|el negocio)$/i.test(raw)) {
-      return raw;
-    }
-  }
-  return null;
-}
+
 
 /** Detects follow-up questions asking for price in CUP (e.g. 'en cup precio', 'cuanto es en cup', 'en pesos') */
 function isCupConversionQuery(prompt: string): boolean {
@@ -424,20 +412,23 @@ export async function POST(req: NextRequest) {
     }
 
     // ── FAST-PATH: Direct Duplicate Merge Command (< 50ms) ───────────────────
-    const mergeCmd = parseMergeCommand(cleanPrompt, detectDuplicates(products as any, 75));
-    if (mergeCmd) {
-      const res = await executeFusionarProductos({
-        queryPrincipal: mergeCmd.queryPrincipal,
-        querySecundario: mergeCmd.querySecundario,
-        nuevoModelo: mergeCmd.nuevoModelo,
-        nuevoPrecio: mergeCmd.nuevoPrecio,
-      });
-      return NextResponse.json({
-        success: true,
-        answer: res.message,
-        source: 'duplicate-merge-fastpath',
-        hasActions: true,
-      });
+    const looksLikeMerge = /(?:une|unir|fusiona|fusionar)\s+(?:el\s+)?par\s+\d+/i.test(cleanPrompt);
+    if (looksLikeMerge) {
+      const mergeCmd = parseMergeCommand(cleanPrompt, detectDuplicates(products as any, 75));
+      if (mergeCmd) {
+        const res = await executeFusionarProductos({
+          queryPrincipal: mergeCmd.queryPrincipal,
+          querySecundario: mergeCmd.querySecundario,
+          nuevoModelo: mergeCmd.nuevoModelo,
+          nuevoPrecio: mergeCmd.nuevoPrecio,
+        });
+        return NextResponse.json({
+          success: true,
+          answer: res.message,
+          source: 'duplicate-merge-fastpath',
+          hasActions: true,
+        });
+      }
     }
 
     // ── FAST-PATH: Instant Conversational CUP Price Conversion (< 5ms) ───────
@@ -455,22 +446,6 @@ export async function POST(req: NextRequest) {
           success: true,
           answer: `💵 **Conversión a CUP (Pesos Cubanos):**\n\nTomando el precio de **$${usdVal.toFixed(2)} USD** y la tasa oficial actual de **1 USD = ${rateDoc.rate} CUP**:\n\n• **Precio en CUP:** **${cupVal.toLocaleString('es-ES')} CUP**\n\n¿Deseas que te registre una venta o crear una orden con este producto?`,
           source: 'currency-conversion-fastpath',
-          hasActions: false,
-        });
-      }
-    }
-
-    // ── FAST-PATH: Direct Single Product Price & Stock Query (< 15ms) ─────────
-    const priceQueryModel = extractPriceQueryModel(cleanPrompt);
-    if (priceQueryModel) {
-      const foundProduct = await findProductSmart(priceQueryModel);
-      if (foundProduct) {
-        const rate = typeof rateDoc?.rate === 'number' ? rateDoc.rate : null;
-        const cupStr = rate ? ` (o **${Math.round(foundProduct.precio * rate).toLocaleString('es-ES')} CUP** a tasa 1 USD = ${rate} CUP)` : '';
-        return NextResponse.json({
-          success: true,
-          answer: `📱 **${foundProduct.marca} ${foundProduct.modelo}** (${foundProduct.calidad})\n\n• **Precio:** **$${foundProduct.precio.toFixed(2)} USD**${cupStr}\n• **Stock disponible:** **${foundProduct.stock} unidades** en almacén\n\n¿Deseas registrar una venta o realizar algún ajuste con este modelo?`,
-          source: 'product-price-fastpath',
           hasActions: false,
         });
       }
@@ -637,18 +612,13 @@ export async function POST(req: NextRequest) {
           const detected = detectDuplicates(products as any, 75);
           return {
             totalParesDetectados: detected.length,
-            pares: detected.slice(0, 8).map((dp) => ({
-              marca: dp.productA.marca,
-              productoA: { id: dp.productA.id || String((dp.productA as any)._id || ''), modelo: dp.productA.modelo, calidad: dp.productA.calidad, stock: dp.productA.stock, precio: dp.productA.precio },
-              productoB: { id: dp.productB.id || String((dp.productB as any)._id || ''), modelo: dp.productB.modelo, calidad: dp.productB.calidad, stock: dp.productB.stock, precio: dp.productB.precio },
-              coincidencia: `${dp.score}%`,
-              motivo: dp.reasons.join(', '),
-              stockSuma: (dp.productA.stock || 0) + (dp.productB.stock || 0),
-            })),
+            nota: detected.length > 0
+              ? `Hay ${detected.length} pares de posibles duplicados en el inventario.`
+              : 'Sin duplicados detectados. Inventario limpio.',
           };
         } catch (dupErr) {
           console.error('[Duplicate Detector Context Error]:', dupErr);
-          return { totalParesDetectados: 0, pares: [] };
+          return { totalParesDetectados: 0, nota: 'No disponible.' };
         }
       })(),
       mermasYGarantias: {
@@ -728,25 +698,13 @@ Si el usuario solicita una ACCIÓN MUTABLE (vender, cambiar precio, cambiar cali
    Las calidades estándar son: "ORIGINAL C/M", "INCELL C/M", "OLED C/M", "AMOLED C/M", "ORIGINAL S/M", "INCELL S/M", etc.
 
 ═══════════════════════════════════════════════════════════════
-🔀 REGLA DE DETECCIÓN Y FUSIÓN INTERACTIVA DE DUPLICADOS
+🔀 REGLA DE DETECCIÓN Y FUSIÓN DE DUPLICADOS
 ═══════════════════════════════════════════════════════════════
-• Si el usuario te pregunta "¿detectas algún duplicado?", "¿hay duplicados en el inventario?" o similar:
-  1. Revisa "duplicadosDetectados" del contexto.
-  2. Si hay duplicados detectados:
-     - Muestra un resumen claro, profesional y numerado de los pares detectados (mostrando marca, los dos nombres que entraron diferentes, sus stocks individuales y precios).
-     - Pregúntale al usuario interactivamente si desea unirlos:
-       "Detecto X posibles repuestos multi-compatibles duplicados:
-       1. [Marca] [Modelo A] (Stock: X uds, $Y) vs [Modelo B] (Stock: Z uds, $W)
-          • Coincidencia: N%
-          • Motivo: [...]
-          • Stock combinado total: (X + Z) unidades
-       ¿Deseas que los una? Puedo unificarlos manteniendo el precio de $Y USD y sumando el stock a (X+Z) uds. ¿Cuál de los dos nombres prefieres conservar?"
-  3. Si el usuario confirma o te indica cuál conservar (ej: "Sí, únelos", "Une el A02S con el A04E", "fusiona dejando el nombre del segundo"):
-     - Emite DE INMEDIATO:
-       [ACCION:FUSIONAR_PRODUCTOS:{"queryPrincipal":"...","querySecundario":"...","nuevoModelo":"...","nuevoPrecio":...}]
-     - Explica que el stock se unificó, el historial de movimientos y ventas se conservó al 100% y el registro duplicado fue eliminado.
-  4. Si no hay duplicados detectados:
-     - Responde con total seguridad: "Revisé todo el catálogo activo y no detecto repuestos duplicados ni multi-compatibles sin unificar. El inventario está completamente limpio y al día."
+• Revisa "duplicadosDetectados" en el contexto. Si hay pares duplicados y el usuario te pregunta por ellos de forma conversacional (ej: "hay algún duplicado?") puedes indicarle cuántos hay. La lista detallada se mostrará automáticamente por sistema si el usuario hace una petición directa de listarlos.
+• Si el usuario te ordena explícitamente fusionar dos modelos específicos (ej: "Une el modelo A02S con el A04E"):
+  - Emite DE INMEDIATO:
+    [ACCION:FUSIONAR_PRODUCTOS:{"queryPrincipal":"...","querySecundario":"...","nuevoModelo":"...","nuevoPrecio":...}]
+  - Explica que el stock se unificó, el historial de movimientos y ventas se conservó al 100% y el registro duplicado fue eliminado.
 
 ═══════════════════════════════════════════════════════════════
 🔄 REGLA DE REINGRESO / SUMA INTELIGENTE DE STOCK EN PRODUCTOS EXISTENTES
@@ -886,7 +844,7 @@ DIRECTRICES DE TONO Y ESTILO (OBLIGATORIO)
       .slice(-6) // Keep last 6 turns to keep prompt compact and fast
       .map((h: ChatHistoryEntry) => ({
         role: h.role,
-        parts: [{ text: (h.parts?.[0]?.text || '').slice(0, 450) }],
+        parts: [{ text: (h.parts?.[0]?.text || '').slice(0, 600) }],
       }));
 
     // Sanitize history: ensure it starts with 'user' and alternates strictly

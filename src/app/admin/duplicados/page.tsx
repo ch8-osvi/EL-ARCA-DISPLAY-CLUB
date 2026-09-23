@@ -33,7 +33,7 @@ export default function DuplicadosPage() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [mergedCount, setMergedCount] = useState(0);
-  const [activeTab, setActiveTab] = useState<'suggestions' | 'manual'>('suggestions');
+  const [activeTab, setActiveTab] = useState<'suggestions' | 'ignored' | 'manual'>('suggestions');
 
   // Manual Merge state
   const [manualProdA, setManualProdA] = useState<Product | null>(null);
@@ -66,7 +66,6 @@ export default function DuplicadosPage() {
     }
   }, []);
 
-  // Fetch all active products
   const fetchProducts = async () => {
     setLoading(true);
     try {
@@ -75,8 +74,16 @@ export default function DuplicadosPage() {
         const data = await res.json();
         setProducts(data.products || []);
       }
+      
+      const ignoredRes = await fetch('/api/duplicados/ignored');
+      if (ignoredRes.ok) {
+        const ignoredData = await ignoredRes.json();
+        if (ignoredData.success && Array.isArray(ignoredData.ignoredIds)) {
+          setIgnoredPairs(new Set(ignoredData.ignoredIds));
+        }
+      }
     } catch (err) {
-      console.error('Error fetching products:', err);
+      console.error('Error fetching data:', err);
       triggerToast('Error cargando catálogo');
     } finally {
       setLoading(false);
@@ -111,14 +118,63 @@ export default function DuplicadosPage() {
     });
   }, [allDetectedPairs, ignoredPairs, searchTerm]);
 
-  // Ignore a pair for this session
-  const handleIgnorePair = (pairId: string) => {
-    setIgnoredPairs((prev) => {
-      const next = new Set(prev);
-      next.add(pairId);
-      return next;
+  const ignoredVisiblePairs = useMemo(() => {
+    return allDetectedPairs.filter((pair) => {
+      if (!ignoredPairs.has(pair.pairId)) return false;
+
+      if (!searchTerm.trim()) return true;
+
+      const q = searchTerm.toLowerCase();
+      const matchBrand = pair.productA.marca.toLowerCase().includes(q);
+      const matchModelA = pair.productA.modelo.toLowerCase().includes(q);
+      const matchModelB = pair.productB.modelo.toLowerCase().includes(q);
+
+      return matchBrand || matchModelA || matchModelB;
     });
-    triggerToast('Sugerencia descartada');
+  }, [allDetectedPairs, ignoredPairs, searchTerm]);
+
+  // Ignore a pair for this session
+  const handleIgnorePair = async (pair: DuplicatePair) => {
+    try {
+      const res = await fetch('/api/duplicados/ignored', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pairId: pair.pairId, productAId: pair.productA.id, productBId: pair.productB.id }),
+      });
+      if (res.ok) {
+        setIgnoredPairs((prev) => {
+          const next = new Set(prev);
+          next.add(pair.pairId);
+          return next;
+        });
+        triggerToast('Sugerencia descartada (movida a Ignoradas)');
+      } else {
+        triggerToast('Error al ignorar sugerencia');
+      }
+    } catch (e) {
+      triggerToast('Error de red al ignorar');
+    }
+  };
+
+  // Restore a pair to automatic suggestions
+  const handleRestorePair = async (pairId: string) => {
+    try {
+      const res = await fetch(`/api/duplicados/ignored?pairId=${encodeURIComponent(pairId)}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setIgnoredPairs((prev) => {
+          const next = new Set(prev);
+          next.delete(pairId);
+          return next;
+        });
+        triggerToast('Sugerencia restaurada a Automáticas');
+      } else {
+        triggerToast('Error al restaurar sugerencia');
+      }
+    } catch (e) {
+      triggerToast('Error de red al restaurar');
+    }
   };
 
   // Open merge modal from detected pair or manual selection
@@ -335,7 +391,7 @@ export default function DuplicadosPage() {
         </section>
 
         {/* Tab Selector */}
-        <div className="flex items-center gap-3 border-b border-white/10 pb-2">
+        <div className="flex items-center gap-3 border-b border-white/10 pb-2 flex-wrap">
           <button
             onClick={() => setActiveTab('suggestions')}
             className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 transition-all ${
@@ -348,6 +404,21 @@ export default function DuplicadosPage() {
             <span>Sugerencias Automáticas</span>
             <span className="px-2 py-0.5 rounded-md bg-[#10131E] border border-white/10 text-[10px]">
               {visiblePairs.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('ignored')}
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 transition-all ${
+              activeTab === 'ignored'
+                ? 'bg-red-500/10 text-red-400 border border-red-500/30 shadow-sm'
+                : 'text-gray-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <AlertTriangle className="w-4 h-4" />
+            <span>Sugerencias Ignoradas</span>
+            <span className="px-2 py-0.5 rounded-md bg-[#10131E] border border-white/10 text-[10px]">
+              {ignoredVisiblePairs.length}
             </span>
           </button>
 
@@ -498,10 +569,101 @@ export default function DuplicadosPage() {
                         </button>
 
                         <button
-                          onClick={() => handleIgnorePair(pair.pairId)}
+                          onClick={() => handleIgnorePair(pair)}
                           className="w-full sm:w-auto lg:w-44 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-gray-200 text-xs font-semibold transition-colors"
                         >
                           Ignorar sugerencia
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 1.5: IGNORED SUGGESTIONS */}
+        {activeTab === 'ignored' && (
+          <div className="space-y-6">
+            <div className="relative w-full max-w-md">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
+                <Search className="w-4 h-4 text-red-400" />
+              </div>
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Filtrar pares ignorados..."
+                className="w-full pl-10 pr-4 py-2.5 bg-[#10131E] border border-white/10 rounded-xl text-white placeholder-gray-500 text-xs sm:text-sm focus:outline-none focus:border-red-400/50"
+              />
+            </div>
+
+            {loading ? (
+              <div className="py-24 text-center space-y-3">
+                <RefreshCw className="w-6 h-6 animate-spin text-red-400 mx-auto" />
+                <p className="text-xs text-gray-400">Cargando sugerencias ignoradas...</p>
+              </div>
+            ) : ignoredVisiblePairs.length === 0 ? (
+              <div className="glass-panel rounded-3xl p-12 text-center border border-white/10 max-w-xl mx-auto space-y-4">
+                <div className="w-14 h-14 mx-auto rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-gray-400">
+                  <CheckCircle2 className="w-7 h-7" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-lg font-bold text-white">
+                    {searchTerm ? 'No hay resultados' : 'No has ignorado sugerencias'}
+                  </h3>
+                  <p className="text-xs sm:text-sm text-gray-400">
+                    Las sugerencias que decidas ignorar en la pestaña automática aparecerán aquí.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-5">
+                {ignoredVisiblePairs.map((pair) => {
+                  const combinedStock = (pair.productA.stock || 0) + (pair.productB.stock || 0);
+                  return (
+                    <div
+                      key={pair.pairId}
+                      className="glass-card rounded-2xl p-5 border border-red-500/20 hover:border-red-500/40 transition-all duration-200 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-6 opacity-75 hover:opacity-100"
+                    >
+                      <div className="flex-1 space-y-4">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="px-2.5 py-1 rounded-lg bg-[#171B2B] border border-white/10 text-[11px] font-bold text-gray-400 uppercase flex items-center gap-1.5">
+                            <Tag className="w-3 h-3 text-gray-500" />
+                            {pair.productA.marca}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-lg bg-[#10131E] border border-white/10 text-[10px] font-bold text-gray-400 uppercase">
+                            {pair.productA.calidad}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div className="p-3.5 rounded-xl bg-[#10131E] border border-white/5 space-y-2">
+                            <span className="text-[10px] uppercase font-bold text-gray-500 block">
+                              Producto 1 (ID: {pair.productA.id})
+                            </span>
+                            <p className="text-sm font-bold text-gray-300 leading-snug">
+                              {pair.productA.modelo}
+                            </p>
+                          </div>
+                          <div className="p-3.5 rounded-xl bg-[#10131E] border border-white/5 space-y-2">
+                            <span className="text-[10px] uppercase font-bold text-gray-500 block">
+                              Producto 2 (ID: {pair.productB.id})
+                            </span>
+                            <p className="text-sm font-bold text-gray-300 leading-snug">
+                              {pair.productB.modelo}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row lg:flex-col items-center gap-2.5 shrink-0 justify-center">
+                        <button
+                          onClick={() => handleRestorePair(pair.pairId)}
+                          className="w-full sm:w-auto lg:w-44 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-extrabold text-xs flex items-center justify-center gap-2 transition-all"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span>Restaurar a Automáticas</span>
                         </button>
                       </div>
                     </div>

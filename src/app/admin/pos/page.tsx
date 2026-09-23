@@ -34,6 +34,7 @@ import {
   matchBrandFilter,
   sortProductsByPopularity,
 } from '@/lib/brandUtils';
+import { fuzzyMatchProduct } from '@/lib/searchUtils';
 
 interface CartItem {
   productId: string;
@@ -153,24 +154,31 @@ export default function PosPage() {
     return ['ALL', ...getSortedBrands(availableProducts)];
   }, [availableProducts]);
 
-  // Filtered & Sorted products (sorted by brand popularity then model)
+  // Filtered & Sorted products with Intelligent Fuzzy Search
   const filteredProducts = useMemo(() => {
-    const filtered = availableProducts.filter((p) => {
-      if (!matchBrandFilter(p.marca, selectedBrand)) {
-        return false;
-      }
-      if (searchTerm.trim() !== '') {
-        const q = searchTerm.toLowerCase().trim();
-        const matchMarca = p.marca.toLowerCase().includes(q);
-        const matchModelo = p.modelo.toLowerCase().includes(q);
-        const matchCalidad = p.calidad.toLowerCase().includes(q);
-        const matchPrecio = p.precio.toString().includes(q);
-        return matchMarca || matchModelo || matchCalidad || matchPrecio;
-      }
-      return true;
-    });
+    const scoredList = availableProducts
+      .map((p) => {
+        if (!matchBrandFilter(p.marca, selectedBrand)) {
+          return null;
+        }
+        if (searchTerm.trim() !== '') {
+          const { match, score } = fuzzyMatchProduct(p, searchTerm);
+          if (!match) return null;
+          return { product: p, score };
+        }
+        return { product: p, score: 0 };
+      })
+      .filter((item): item is { product: Product; score: number } => item !== null);
 
-    return sortProductsByPopularity(filtered, brandCounts);
+    if (searchTerm.trim() !== '') {
+      scoredList.sort((a, b) => b.score - a.score);
+      return scoredList.map((item) => item.product);
+    }
+
+    return sortProductsByPopularity(
+      scoredList.map((item) => item.product),
+      brandCounts
+    );
   }, [availableProducts, selectedBrand, searchTerm, brandCounts]);
 
   // Cart operations

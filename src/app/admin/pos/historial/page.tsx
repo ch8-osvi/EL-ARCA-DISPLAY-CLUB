@@ -44,6 +44,7 @@ import {
   getHavanaDaysAgoKey,
   formatHavanaDateTime,
 } from '@/lib/dateUtils';
+import { fuzzyMatchGeneric } from '@/lib/searchUtils';
 
 interface SaleItem {
   productId:   string;
@@ -406,19 +407,17 @@ export default function SalesHistoryPage() {
         if (!hasBrand) return false;
       }
 
-      // Search term
+      // Search term with Intelligent Fuzzy Matching
       if (searchTerm.trim() !== '') {
-        const q = searchTerm.toLowerCase().trim();
-        const matchOrder = s.orderNumber.toLowerCase().includes(q);
-        const matchClient = (s.clientName || '').toLowerCase().includes(q);
-        const matchItems = s.items.some(
-          (i) =>
-            i.modelo.toLowerCase().includes(q) ||
-            i.marca.toLowerCase().includes(q) ||
-            i.calidad.toLowerCase().includes(q)
-        );
-        const matchReason = (s.refunds || []).some((r) => r.reason.toLowerCase().includes(q));
-        return matchOrder || matchClient || matchItems || matchReason;
+        const itemFields = s.items.flatMap((i) => [i.modelo, i.marca, i.calidad]);
+        const refundReasons = (s.refunds || []).map((r) => r.reason);
+        const allFields = [
+          s.orderNumber,
+          s.clientName,
+          ...itemFields,
+          ...refundReasons,
+        ];
+        return fuzzyMatchGeneric(allFields, searchTerm);
       }
       return true;
     });

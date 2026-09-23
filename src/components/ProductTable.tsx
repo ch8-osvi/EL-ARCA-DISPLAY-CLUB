@@ -1,14 +1,21 @@
 'use client';
 
 import React from 'react';
-import { Product } from '@/lib/types';
-import { MessageSquare, Tag, Smartphone, Search } from 'lucide-react';
+import { Product, Currency } from '@/lib/types';
+import { MessageSquare, Tag, Smartphone, Search, TrendingUp, AlertCircle, Sparkles } from 'lucide-react';
+import { roundCupPrice } from '@/lib/searchUtils';
 
 interface ProductTableProps {
   products: Product[];
+  currency?: Currency;
+  exchangeRate?: number;
 }
 
-export default function ProductTable({ products }: ProductTableProps) {
+export default function ProductTable({
+  products,
+  currency = 'USD',
+  exchangeRate = 300,
+}: ProductTableProps) {
   const whatsappNumber = '5352031972';
 
   const getQualityBadgeClass = (calidad: string) => {
@@ -29,14 +36,28 @@ export default function ProductTable({ products }: ProductTableProps) {
               <th className="py-4 px-6 font-bold">Marca</th>
               <th className="py-4 px-6 font-bold">Modelo Display</th>
               <th className="py-4 px-6 font-bold">Calidad</th>
-              <th className="py-4 px-6 font-bold text-right">Precio USD</th>
+              <th className="py-4 px-6 font-bold text-right">
+                Precio {currency}
+              </th>
               <th className="py-4 px-6 font-bold text-center">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5 text-gray-200">
             {products.map((product) => {
+              const cupPrice = roundCupPrice(product.precio, exchangeRate);
+              const formattedCUP = cupPrice.toLocaleString('es-CU');
+
+              const isTopSeller = Boolean(product.isTopSeller);
+              const isLowStock = product.stock > 0 && product.stock <= 2;
+              const isNewArrival = (() => {
+                if (!product.createdAt) return false;
+                const createdTime = new Date(product.createdAt).getTime();
+                if (isNaN(createdTime)) return false;
+                return Date.now() - createdTime <= 14 * 24 * 60 * 60 * 1000;
+              })();
+
               const whatsappText = encodeURIComponent(
-                `Hola! Deseo consultar la disponibilidad del display: ${product.marca} ${product.modelo} (${product.calidad}) - $${product.precio} USD en EL ARCA DISPLAY CLUB.`
+                `Hola! Deseo consultar la disponibilidad del display: ${product.marca} ${product.modelo} (${product.calidad}) - $${product.precio} USD (${formattedCUP} CUP) en EL ARCA DISPLAY CLUB.`
               );
               const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${whatsappText}`;
 
@@ -60,9 +81,34 @@ export default function ProductTable({ products }: ProductTableProps) {
 
                   {/* Modelo */}
                   <td className="py-3.5 px-6 font-medium text-white group-hover:text-[#F3E0A9] transition-colors">
-                    <div className="flex items-center gap-2">
-                      <Smartphone className="w-4 h-4 text-gray-400 shrink-0" />
-                      <span>{product.modelo}</span>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <Smartphone className="w-4 h-4 text-gray-400 shrink-0" />
+                        <span>{product.modelo}</span>
+                      </div>
+                      {/* Sub-badges in table */}
+                      {(isTopSeller || isLowStock || isNewArrival) && (
+                        <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                          {isTopSeller && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-[#171B2B] border border-[#D4AF37]/40 text-[#F3E0A9] text-[9px] font-extrabold uppercase">
+                              <TrendingUp className="w-2.5 h-2.5 text-[#D4AF37]" />
+                              MÁS VENDIDO
+                            </span>
+                          )}
+                          {isLowStock && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-[#1E1215] border border-rose-500/30 text-rose-300 text-[9px] font-extrabold uppercase">
+                              <AlertCircle className="w-2.5 h-2.5 text-rose-400" />
+                              {product.stock === 1 ? 'ÚLTIMA UD' : `ÚLTIMAS ${product.stock}`}
+                            </span>
+                          )}
+                          {isNewArrival && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-[#101926] border border-cyan-500/30 text-cyan-300 text-[9px] font-extrabold uppercase">
+                              <Sparkles className="w-2.5 h-2.5 text-cyan-400" />
+                              NUEVO
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </td>
 
@@ -75,10 +121,19 @@ export default function ProductTable({ products }: ProductTableProps) {
 
                   {/* Precio */}
                   <td className="py-3.5 px-6 font-bold text-right whitespace-nowrap">
-                    <span className="text-base gold-gradient-text">
-                      ${product.precio}
-                    </span>
-                    <span className="text-xs text-gray-400 ml-1">USD</span>
+                    <div className="flex flex-col items-end">
+                      <div>
+                        <span className="text-base gold-gradient-text">
+                          {currency === 'CUP' ? formattedCUP : `$${product.precio}`}
+                        </span>
+                        <span className="text-xs text-gray-400 ml-1">{currency}</span>
+                      </div>
+                      <span className="text-[10px] text-gray-400 font-normal">
+                        {currency === 'CUP'
+                          ? `≈ $${product.precio} USD`
+                          : `≈ ${formattedCUP} CUP`}
+                      </span>
+                    </div>
                   </td>
 
                   {/* Actions */}
@@ -114,3 +169,4 @@ export default function ProductTable({ products }: ProductTableProps) {
     </div>
   );
 }
+

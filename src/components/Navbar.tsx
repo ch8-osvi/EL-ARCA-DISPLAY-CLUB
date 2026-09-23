@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ViewMode } from '@/lib/types';
+import { ViewMode, Currency } from '@/lib/types';
 import { LayoutGrid, List, Lock, Users, Eye } from 'lucide-react';
 
 interface NavbarProps {
@@ -12,6 +12,9 @@ interface NavbarProps {
   isAdmin?: boolean;
   onLogout?: () => void;
   onRestoreCatalog?: () => void;
+  currency?: Currency;
+  onCurrencyChange?: (currency: Currency) => void;
+  exchangeRate?: number;
 }
 
 export default function Navbar({
@@ -20,6 +23,9 @@ export default function Navbar({
   totalProducts,
   isAdmin = false,
   onLogout,
+  currency,
+  onCurrencyChange,
+  exchangeRate,
 }: NavbarProps) {
   const [visitorStats, setVisitorStats] = useState<{
     totalVisits: number;
@@ -64,7 +70,47 @@ export default function Navbar({
         </Link>
 
         {/* Center/Right Actions */}
-        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+          {/* Live Currency Selector [ USD | CUP ] */}
+          {currency && onCurrencyChange && (
+            <div className="flex items-center gap-1.5">
+              <div className="flex items-center bg-[#10131E] border border-[#D4AF37]/30 rounded-xl p-0.5 shadow-inner">
+                <button
+                  id="btn-currency-usd"
+                  type="button"
+                  onClick={() => onCurrencyChange('USD')}
+                  className={`px-2 sm:px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-bold transition-all duration-200 ${
+                    currency === 'USD'
+                      ? 'bg-gradient-to-r from-[#D4AF37] to-[#AA8826] text-black shadow-sm'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                  title="Ver precios en Dólares Estadounidenses (USD)"
+                >
+                  USD
+                </button>
+                <button
+                  id="btn-currency-cup"
+                  type="button"
+                  onClick={() => onCurrencyChange('CUP')}
+                  className={`px-2 sm:px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-bold transition-all duration-200 ${
+                    currency === 'CUP'
+                      ? 'bg-gradient-to-r from-[#D4AF37] to-[#AA8826] text-black shadow-sm'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                  title={`Ver precios en Pesos Cubanos (CUP) - Tasa 1 USD = ${exchangeRate || 300} CUP`}
+                >
+                  CUP
+                </button>
+              </div>
+
+              {exchangeRate && exchangeRate > 0 && (
+                <span className="hidden xl:inline-flex items-center text-[10px] font-semibold text-gray-400 bg-[#10131E] px-2 py-1 rounded-lg border border-white/5">
+                  1 USD = {exchangeRate} CUP
+                </span>
+              )}
+            </div>
+          )}
+
           {/* Total Modelos Badge */}
           {typeof totalProducts === 'number' && (
             <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full bg-[#171B2B] border border-[#D4AF37]/20 text-[11px] sm:text-xs text-[#E5DFD9]">

@@ -24,6 +24,7 @@ import {
   matchBrandFilter,
   sortProductsByPopularity,
 } from '@/lib/brandUtils';
+import { fuzzyMatchProduct, fuzzyMatchGeneric } from '@/lib/searchUtils';
 
 interface ProductWithHidden extends Product {
   isHidden?: boolean;
@@ -262,38 +263,43 @@ export default function InventoryPage() {
     return ['ALL', ...getSortedBrands(products)];
   }, [products]);
 
-  // Filtered & Sorted Products
+  // Filtered & Sorted Products with Intelligent Fuzzy Search
   const filtered = useMemo(() => {
-    const filteredList = products.filter((p) => {
-      if (filterStock === 'OUT' && p.stock > 0) return false;
-      if (filterStock === 'LOW' && (p.stock <= 0 || p.stock > 2)) return false;
+    const scoredList = products
+      .map((p) => {
+        if (filterStock === 'OUT' && p.stock > 0) return null;
+        if (filterStock === 'LOW' && (p.stock <= 0 || p.stock > 2)) return null;
 
-      if (!matchBrandFilter(p.marca, selectedBrand)) {
-        return false;
-      }
+        if (!matchBrandFilter(p.marca, selectedBrand)) {
+          return null;
+        }
 
-      if (searchTerm.trim() !== '') {
-        const q = searchTerm.toLowerCase().trim();
-        const matchModel = p.modelo.toLowerCase().includes(q);
-        const matchBrand = p.marca.toLowerCase().includes(q);
-        const matchQuality = p.calidad.toLowerCase().includes(q);
-        return matchModel || matchBrand || matchQuality;
-      }
+        if (searchTerm.trim() !== '') {
+          const { match, score } = fuzzyMatchProduct(p, searchTerm);
+          if (!match) return null;
+          return { product: p, score };
+        }
 
-      return true;
-    });
+        return { product: p, score: 0 };
+      })
+      .filter((item): item is { product: ProductWithHidden; score: number } => item !== null);
 
-    return sortProductsByPopularity(filteredList, brandCounts);
+    if (searchTerm.trim() !== '') {
+      scoredList.sort((a, b) => b.score - a.score);
+      return scoredList.map((item) => item.product);
+    }
+
+    return sortProductsByPopularity(
+      scoredList.map((item) => item.product),
+      brandCounts
+    );
   }, [products, filterStock, selectedBrand, searchTerm, brandCounts]);
 
-  // Filtered Mermas
+  // Filtered Mermas with Fuzzy Search
   const filteredMermas = useMemo(() => {
     if (searchTerm.trim() === '') return mermas;
-    const q = searchTerm.toLowerCase().trim();
-    return mermas.filter(
-      (m) =>
-        m.productName.toLowerCase().includes(q) ||
-        m.reason.toLowerCase().includes(q)
+    return mermas.filter((m) =>
+      fuzzyMatchGeneric([m.productName, m.reason, m.productId], searchTerm)
     );
   }, [mermas, searchTerm]);
 

@@ -1,13 +1,13 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import Navbar from '../components/Navbar';
-import SearchBar from '../components/SearchBar';
-import BrandFilter from '../components/BrandFilter';
-import ProductCard from '../components/ProductCard';
-import ProductTable from '../components/ProductTable';
-import seedProducts from '../data/products_seed.json';
-import { Product, ViewMode, SortOption } from '../lib/types';
+import Navbar from '@/components/Navbar';
+import SearchBar from '@/components/SearchBar';
+import BrandFilter from '@/components/BrandFilter';
+import ProductCard from '@/components/ProductCard';
+import ProductTable from '@/components/ProductTable';
+import seedProducts from '@/data/products_seed.json';
+import { Product, ViewMode, SortOption, Currency } from '@/lib/types';
 import { Sparkles, SearchX, MessageSquare, Users, ShieldCheck } from 'lucide-react';
 import {
   getCanonicalBrand,
@@ -16,8 +16,9 @@ import {
   matchBrandFilter,
   sortProductsByPopularity,
 } from '@/lib/brandUtils';
+import { fuzzyMatchProduct } from '@/lib/searchUtils';
 
-export default function CatalogPage() {
+export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -25,6 +26,8 @@ export default function CatalogPage() {
   const [selectedQuality, setSelectedQuality] = useState('ALL');
   const [sortOption, setSortOption] = useState<SortOption>('default');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [currency, setCurrency] = useState<Currency>('USD');
+  const [exchangeRate, setExchangeRate] = useState<number>(300);
 
   const whatsappNumber = '5352031972';
   const whatsappGroupUrl =
@@ -62,7 +65,27 @@ export default function CatalogPage() {
     }
 
     loadData();
+
+    // Load saved currency preference and live exchange rate
+    const savedCurrency = localStorage.getItem('el_arca_currency');
+    if (savedCurrency === 'USD' || savedCurrency === 'CUP') {
+      setCurrency(savedCurrency as Currency);
+    }
+
+    fetch('/api/exchange-rate')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success && d.rate) {
+          setExchangeRate(d.rate);
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  const handleCurrencyChange = (c: Currency) => {
+    setCurrency(c);
+    localStorage.setItem('el_arca_currency', c);
+  };
 
   // Sync state to local storage for offline fallback
   useEffect(() => {
@@ -89,38 +112,45 @@ export default function CatalogPage() {
     return Array.from(set).sort();
   }, [products]);
 
-  // Filter & Sort Products Instantaneously
+  // Filter & Sort Products Instantaneously with Intelligent Fuzzy/Token Matching
   const filteredProducts = useMemo(() => {
-    const filtered = products.filter((p) => {
-      // Brand filter with flexible matching for consolidated groups
-      if (!matchBrandFilter(p.marca, selectedBrand)) {
-        return false;
-      }
+    const scoredList = products
+      .map((p) => {
+        // Brand filter with flexible matching for consolidated groups
+        if (!matchBrandFilter(p.marca, selectedBrand)) {
+          return null;
+        }
 
-      // Quality filter
-      if (selectedQuality !== 'ALL' && p.calidad !== selectedQuality) {
-        return false;
-      }
+        // Quality filter
+        if (selectedQuality !== 'ALL' && p.calidad !== selectedQuality) {
+          return null;
+        }
 
-      // Search term filter (Brand, Model, Quality, Price)
-      if (searchTerm.trim() !== '') {
-        const query = searchTerm.toLowerCase().trim();
-        const matchMarca = p.marca.toLowerCase().includes(query);
-        const matchModelo = p.modelo.toLowerCase().includes(query);
-        const matchCalidad = p.calidad.toLowerCase().includes(query);
-        const matchPrecio = p.precio.toString().includes(query);
-        return matchMarca || matchModelo || matchCalidad || matchPrecio;
-      }
+        // Fuzzy & Token search
+        if (searchTerm.trim() !== '') {
+          const { match, score } = fuzzyMatchProduct(p, searchTerm);
+          if (!match) return null;
+          return { product: p, score };
+        }
 
-      return true;
-    });
+        return { product: p, score: 0 };
+      })
+      .filter((item): item is { product: Product; score: number } => item !== null);
 
-    if (sortOption === 'price-asc') return [...filtered].sort((a, b) => a.precio - b.precio);
-    if (sortOption === 'price-desc') return [...filtered].sort((a, b) => b.precio - a.precio);
-    if (sortOption === 'brand-asc') return [...filtered].sort((a, b) => a.marca.localeCompare(b.marca));
-    if (sortOption === 'model-asc') return [...filtered].sort((a, b) => a.modelo.localeCompare(b.modelo));
+    // If active search without explicit sort, rank by fuzzy match score first, then popularity
+    if (searchTerm.trim() !== '' && sortOption === 'default') {
+      scoredList.sort((a, b) => b.score - a.score);
+      return scoredList.map((item) => item.product);
+    }
 
-    return sortProductsByPopularity(filtered, brandCounts);
+    const list = scoredList.map((item) => item.product);
+
+    if (sortOption === 'price-asc') return [...list].sort((a, b) => a.precio - b.precio);
+    if (sortOption === 'price-desc') return [...list].sort((a, b) => b.precio - a.precio);
+    if (sortOption === 'brand-asc') return [...list].sort((a, b) => a.marca.localeCompare(b.marca));
+    if (sortOption === 'model-asc') return [...list].sort((a, b) => a.modelo.localeCompare(b.modelo));
+
+    return sortProductsByPopularity(list, brandCounts);
   }, [products, searchTerm, selectedBrand, selectedQuality, sortOption, brandCounts]);
 
   return (
@@ -130,6 +160,9 @@ export default function CatalogPage() {
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         totalProducts={filteredProducts.length}
+        currency={currency}
+        onCurrencyChange={handleCurrencyChange}
+        exchangeRate={exchangeRate}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -245,11 +278,20 @@ export default function CatalogPage() {
           viewMode === 'grid' ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
               {filteredProducts.map((product) => (
-                <ProductCard key={product.id} product={product} />
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  currency={currency}
+                  exchangeRate={exchangeRate}
+                />
               ))}
             </div>
           ) : (
-            <ProductTable products={filteredProducts} />
+            <ProductTable
+              products={filteredProducts}
+              currency={currency}
+              exchangeRate={exchangeRate}
+            />
           )
         ) : (
           /* Empty Search State */

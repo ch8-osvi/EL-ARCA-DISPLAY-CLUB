@@ -35,6 +35,7 @@ import {
   matchBrandFilter,
   sortProductsByPopularity,
 } from '@/lib/brandUtils';
+import { fuzzyMatchProduct } from '@/lib/searchUtils';
 
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -743,27 +744,35 @@ export default function AdminPage() {
     return ['ALL', ...getSortedBrands(products)];
   }, [products]);
 
-  // Filtered list inside admin
+  // Filtered list inside admin with Intelligent Fuzzy Search
   const filteredProducts = useMemo(() => {
-    let filtered = products;
+    const scoredList = products
+      .map((p) => {
+        // Filter by selected brand
+        if (selectedBrand !== 'ALL' && !matchBrandFilter(p.marca, selectedBrand)) {
+          return null;
+        }
 
-    // Filter by selected brand
-    if (selectedBrand !== 'ALL') {
-      filtered = filtered.filter((p) => matchBrandFilter(p.marca, selectedBrand));
-    }
+        // Filter by search term with fuzzy search
+        if (searchTerm.trim()) {
+          const { match, score } = fuzzyMatchProduct(p, searchTerm);
+          if (!match) return null;
+          return { product: p, score };
+        }
 
-    // Filter by search term
+        return { product: p, score: 0 };
+      })
+      .filter((item): item is { product: Product; score: number } => item !== null);
+
     if (searchTerm.trim()) {
-      const query = searchTerm.toLowerCase().trim();
-      filtered = filtered.filter(
-        (p) =>
-          p.marca.toLowerCase().includes(query) ||
-          p.modelo.toLowerCase().includes(query) ||
-          p.calidad.toLowerCase().includes(query)
-      );
+      scoredList.sort((a, b) => b.score - a.score);
+      return scoredList.map((item) => item.product);
     }
 
-    return sortProductsByPopularity(filtered, brandCounts);
+    return sortProductsByPopularity(
+      scoredList.map((item) => item.product),
+      brandCounts
+    );
   }, [products, selectedBrand, searchTerm, brandCounts]);
 
   // Login Screen Render

@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, EyeOff, RotateCcw, ShieldAlert, X, Plus, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, EyeOff, RotateCcw, ShieldAlert, X, Plus, CheckCircle2, Search } from 'lucide-react';
 import { sortProductsByPopularity } from '@/lib/brandUtils';
+import { fuzzyMatchProduct } from '@/lib/searchUtils';
 
 interface HiddenProduct {
   _id?: string;
@@ -18,6 +19,7 @@ interface HiddenProduct {
 
 export default function OcultosPage() {
   const [hiddenProducts, setHiddenProducts] = useState<HiddenProduct[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -61,6 +63,20 @@ export default function OcultosPage() {
   useEffect(() => {
     if (isAuthenticated) fetchHidden();
   }, [isAuthenticated]);
+
+  const filteredHiddenProducts = useMemo(() => {
+    if (!searchTerm.trim()) return hiddenProducts;
+    const scored = hiddenProducts
+      .map((p) => {
+        const { match, score } = fuzzyMatchProduct(p, searchTerm);
+        if (!match) return null;
+        return { product: p, score };
+      })
+      .filter((item): item is { product: HiddenProduct; score: number } => item !== null);
+
+    scored.sort((a, b) => b.score - a.score);
+    return scored.map((item) => item.product);
+  }, [hiddenProducts, searchTerm]);
 
   const handleOpenRestore = (product: HiddenProduct) => {
     setRestoreModal({ open: true, product });
@@ -225,6 +241,33 @@ export default function OcultosPage() {
           </div>
         </section>
 
+        {/* Search Bar for Hidden Products */}
+        {!loading && hiddenProducts.length > 0 && (
+          <div className="relative w-full max-w-xl">
+            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+              <Search className="w-4 h-4 text-rose-400" />
+            </div>
+            <input
+              id="input-search-hidden"
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Buscar por modelo, marca o código... (ej. sansun a03, redminote11, a04e)"
+              className="w-full pl-11 pr-10 py-3 bg-[#10131E] border border-rose-500/25 rounded-2xl text-white placeholder-gray-400 text-sm focus:outline-none focus:border-rose-400 focus:ring-1 focus:ring-rose-400/20 transition-all shadow-inner"
+            />
+            {searchTerm && (
+              <button
+                id="btn-clear-search-hidden"
+                onClick={() => setSearchTerm('')}
+                className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-400 hover:text-white"
+                title="Limpiar búsqueda"
+              >
+                <X className="w-4 h-4 bg-gray-800 rounded-full p-0.5" />
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Products Grid */}
         {loading ? (
           <div className="py-20 text-center space-y-3">
@@ -239,9 +282,22 @@ export default function OcultosPage() {
             <h3 className="text-xl font-bold text-white">Sin productos ocultos</h3>
             <p className="text-gray-400 text-sm">No hay productos ocultos en este momento. ¡El catálogo está completo!</p>
           </div>
+        ) : filteredHiddenProducts.length === 0 ? (
+          <div className="glass-panel rounded-3xl py-14 px-6 text-center space-y-3 border border-white/10 max-w-md mx-auto">
+            <h3 className="text-base font-bold text-white">No hay coincidencias</h3>
+            <p className="text-gray-400 text-xs">
+              No se encontraron productos ocultos para "{searchTerm}".
+            </p>
+            <button
+              onClick={() => setSearchTerm('')}
+              className="px-4 py-2 rounded-xl bg-[#171B2B] text-rose-300 border border-rose-500/30 text-xs font-bold"
+            >
+              Limpiar búsqueda
+            </button>
+          </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
-            {hiddenProducts.map((product) => (
+            {filteredHiddenProducts.map((product) => (
               <div
                 key={product.id}
                 className="glass-card rounded-2xl p-4 border border-rose-500/20 flex flex-col gap-3 opacity-80 hover:opacity-100 transition-opacity"

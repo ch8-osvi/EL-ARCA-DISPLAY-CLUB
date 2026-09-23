@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongoose';
 import { Product } from '@/lib/models/Product';
 import { StockHistory } from '@/lib/models/StockHistory';
+import { Sale } from '@/lib/models/Sale';
 import seedProducts from '@/data/products_seed.json';
 
 export const dynamic = 'force-dynamic'; // Evita que Next.js guarde la respuesta en caché
@@ -12,16 +13,38 @@ export async function GET() {
     await connectToDatabase();
 
     // Fetch all active products
-    const activeProducts = await Product.find({ isHidden: false }).sort({ createdAt: -1 }).lean();
-    
-    // Count how many are hidden (soft deleted)
-    const deletedCount = await Product.countDocuments({ isHidden: true });
+    const [activeProducts, deletedCount, topSales] = await Promise.all([
+      Product.find({ isHidden: false }).sort({ createdAt: -1 }).lean(),
+      Product.countDocuments({ isHidden: true }),
+      Sale.aggregate([
+        { $match: { status: { $ne: 'CANCELLED' } } },
+        { $unwind: '$items' },
+        { $group: { _id: '$items.productId', totalSold: { $sum: '$items.qty' } } },
+        { $sort: { totalSold: -1 } },
+        { $limit: 15 },
+      ]).catch(() => []),
+    ]);
+
+    const topSoldMap = new Map<string, number>();
+    if (Array.isArray(topSales)) {
+      for (const item of topSales) {
+        if (item._id && item.totalSold > 0) {
+          topSoldMap.set(String(item._id), item.totalSold);
+        }
+      }
+    }
+
+    const enrichedProducts = activeProducts.map((p) => ({
+      ...p,
+      salesCount: topSoldMap.get(p.id) || 0,
+      isTopSeller: topSoldMap.has(p.id),
+    }));
 
     return NextResponse.json({
       success: true,
-      count: activeProducts.length,
+      count: enrichedProducts.length,
       deletedCount,
-      products: activeProducts,
+      products: enrichedProducts,
     });
   } catch (error) {
     console.error('API GET Error:', error);

@@ -10,6 +10,7 @@ import {
   executeActualizarPrecioProducto,
   executeAjustarStockProducto,
   executeRegistrarVentaRapida,
+  executeAgregarOActualizarProductoWhatsApp,
 } from './tools';
 
 /** Standardizes phone numbers to digits only */
@@ -412,6 +413,10 @@ Si Osvaldo te pide cambiar un precio, registrar venta, ajustar stock o marcar co
 - Para marcar orden pendiente: [ACCION:MARCAR_PENDIENTE:CODIGO_ORDEN]
 - Para sumar o restar stock: [ACCION:AJUSTAR_STOCK:MODELO:CANTIDAD] (ej: [ACCION:AJUSTAR_STOCK:Redmi 9A:10])
 - Para registrar venta rápida: [ACCION:VENTA_RAPIDA:CLIENTE:MODELO:CANTIDAD:MONEDA:PAGADO] (ej: [ACCION:VENTA_RAPIDA:Ivan:Redmi 9A:1:USD:true])
+- Para agregar o reingresar pantallas: [ACCION:AGREGAR_PRODUCTO:MARCA:MODELO:CALIDAD:PRECIO:CANTIDAD] (ej: [ACCION:AGREGAR_PRODUCTO:SAMSUNG:A04:ORIGINAL C/M:14:5]). Si la pantalla ya existe en el catálogo, el sistema sumará automáticamente el stock al existente y la reactivará si estaba en 0 o agotada.
+
+REGLA ESTRICTA DE FORMATO:
+Tanto la MARCA como el MODELO y la CALIDAD deben estar SIEMPRE 100% EN MAYÚSCULAS en cualquier acción.
 
 Si es una consulta normal de información (precios, stock, ventas, etc.), responde directamente sin etiquetas de acción.`;
 
@@ -491,6 +496,20 @@ Si es una consulta normal de información (precios, stock, ventas, etc.), respon
                 cantidad: parseInt(matchVenta[3], 10),
                 moneda: matchVenta[4].trim().toUpperCase() as 'USD' | 'CUP',
                 pagado: matchVenta[5].toLowerCase() === 'true',
+              });
+              appendChatHistory(senderPhone, 'Osvaldo', cleanPrompt);
+              appendChatHistory(senderPhone, 'Asistente', result.message);
+              return result.message;
+            }
+
+            const matchAgregar = candidateText.match(/\[ACCION:AGREGAR_PRODUCTO\s*:\s*([^:]+?)\s*:\s*([^:]+?)\s*:\s*([^:]+?)\s*:\s*([0-9]+(?:\.[0-9]+)?)\s*:\s*([0-9]+)\s*\]/i);
+            if (matchAgregar) {
+              const result = await executeAgregarOActualizarProductoWhatsApp({
+                marca: matchAgregar[1].trim().toUpperCase(),
+                modelo: matchAgregar[2].trim().toUpperCase(),
+                calidad: matchAgregar[3].trim().toUpperCase(),
+                precio: parseFloat(matchAgregar[4]),
+                cantidad: parseInt(matchAgregar[5], 10),
               });
               appendChatHistory(senderPhone, 'Osvaldo', cleanPrompt);
               appendChatHistory(senderPhone, 'Asistente', result.message);

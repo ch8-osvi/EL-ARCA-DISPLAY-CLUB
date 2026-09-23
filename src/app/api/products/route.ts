@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongoose';
 import { Product } from '@/lib/models/Product';
+import { StockHistory } from '@/lib/models/StockHistory';
 import seedProducts from '@/data/products_seed.json';
 
 export const dynamic = 'force-dynamic'; // Evita que Next.js guarde la respuesta en caché
@@ -102,15 +103,21 @@ export async function POST(request: Request) {
       // Clear entire collection
       await Product.deleteMany({});
       
-      // Insert Seed Data
-      const newProducts = seedProducts.map((p: any) => ({ ...p, isHidden: false }));
+      // Insert Seed Data enforcing uppercase
+      const newProducts = seedProducts.map((p: any) => ({
+        ...p,
+        marca: (p.marca || 'VARIOS').toUpperCase().trim(),
+        modelo: (p.modelo || '').toUpperCase().trim(),
+        calidad: (p.calidad || 'ORIGINAL').toUpperCase().trim(),
+        isHidden: false,
+      }));
       await Product.insertMany(newProducts);
 
       const activeProducts = await Product.find({ isHidden: false }).sort({ createdAt: -1 }).lean();
       
       return NextResponse.json({
         success: true,
-        message: 'Catálogo restaurado al estado original en la base de datos',
+        message: 'Catálogo restaurado al estado original en la base de datos (con marcas y modelos en mayúsculas)',
         count: activeProducts.length,
         deletedCount: 0,
         products: activeProducts,
@@ -118,26 +125,86 @@ export async function POST(request: Request) {
     }
 
     // -----------------------------------------
-    // ACTION: ADD
+    // ACTION: ADD (with smart duplicate stock sum & auto-unhide)
     // -----------------------------------------
     if (action === 'add' && product) {
-      const newProductDoc = await Product.create({
-        id: `display-custom-${Date.now()}`,
-        marca: (product.marca || 'VARIOS').toUpperCase().trim(),
-        modelo: product.modelo?.trim() || 'Nuevo Modelo',
-        calidad: product.calidad?.toUpperCase().trim() || 'ORIGINAL',
-        precio: Number(product.precio) || 0,
-        stock: Number(product.stock) || 1,
-        isHidden: false
+      const marcaUp = (product.marca || 'VARIOS').toUpperCase().trim();
+      const modeloUp = (product.modelo || 'NUEVO MODELO').toUpperCase().trim();
+      const calidadUp = (product.calidad || 'ORIGINAL').toUpperCase().trim();
+      const newStock = Math.max(0, Number(product.stock) || 1);
+      const newPrecio = Math.max(0, Number(product.precio) || 0);
+
+      // Check if product already exists (including hidden or stock 0 ones)
+      const existingProduct = await Product.findOne({
+        marca: marcaUp,
+        modelo: { $regex: new RegExp(`^${modeloUp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+        calidad: calidadUp,
       });
+
+      let savedProduct;
+      let wasUpdated = false;
+
+      if (existingProduct) {
+        wasUpdated = true;
+        const stockBefore = existingProduct.stock || 0;
+        const stockAfter = stockBefore + newStock;
+        
+        existingProduct.stock = stockAfter;
+        if (newPrecio > 0) {
+          existingProduct.precio = newPrecio;
+        }
+        // If stock > 0, make sure it exits agotados / ocultos
+        if (stockAfter > 0) {
+          existingProduct.isHidden = false;
+        }
+        savedProduct = await existingProduct.save();
+
+        if (newStock > 0) {
+          await StockHistory.create({
+            productId: existingProduct.id,
+            productName: `${existingProduct.marca} ${existingProduct.modelo} (${existingProduct.calidad})`,
+            type: 'entrada',
+            qty: newStock,
+            stockBefore,
+            stockAfter,
+            reason: 'Reingreso de producto existente (Suma automática de stock)',
+          });
+        }
+      } else {
+        const customId = `display-custom-${Date.now()}`;
+        savedProduct = await Product.create({
+          id: customId,
+          marca: marcaUp,
+          modelo: modeloUp,
+          calidad: calidadUp,
+          precio: newPrecio,
+          stock: newStock,
+          isHidden: newStock === 0,
+        });
+
+        if (newStock > 0) {
+          await StockHistory.create({
+            productId: customId,
+            productName: `${marcaUp} ${modeloUp} (${calidadUp})`,
+            type: 'entrada',
+            qty: newStock,
+            stockBefore: 0,
+            stockAfter: newStock,
+            reason: 'Alta de nuevo producto en catálogo',
+          });
+        }
+      }
 
       const activeProducts = await Product.find({ isHidden: false }).sort({ createdAt: -1 }).lean();
       const deletedCount = await Product.countDocuments({ isHidden: true });
 
       return NextResponse.json({
         success: true,
-        message: 'Producto agregado globalmente a la base de datos',
-        product: newProductDoc,
+        message: wasUpdated
+          ? `Producto existente reconocido: se sumaron +${newStock} uds al stock (Total: ${savedProduct.stock} uds) y se reactivó en el catálogo activo.`
+          : 'Nuevo producto agregado globalmente a la base de datos',
+        product: savedProduct,
+        wasUpdated,
         count: activeProducts.length,
         deletedCount,
         products: activeProducts,
@@ -150,9 +217,13 @@ export async function POST(request: Request) {
     if (action === 'update' && id) {
       const updateData: Record<string, any> = {};
       if (body.precio !== undefined) updateData.precio = Math.max(0, Number(body.precio));
-      if (body.stock !== undefined) updateData.stock = Math.max(0, Number(body.stock));
+      if (body.stock !== undefined) {
+        const s = Math.max(0, Number(body.stock));
+        updateData.stock = s;
+        if (s > 0) updateData.isHidden = false;
+      }
       if (body.calidad) updateData.calidad = String(body.calidad).toUpperCase().trim();
-      if (body.modelo) updateData.modelo = String(body.modelo).trim();
+      if (body.modelo) updateData.modelo = String(body.modelo).toUpperCase().trim();
       if (body.marca) updateData.marca = String(body.marca).toUpperCase().trim();
 
       const updatedDoc = await Product.findOneAndUpdate(
@@ -188,8 +259,14 @@ export async function POST(request: Request) {
       // Hard delete old database to completely refresh catalog based on Excel
       await Product.deleteMany({});
       
-      // Prepare mapping
-      const toInsert = initialList.map((p) => ({ ...p, isHidden: false }));
+      // Prepare mapping enforcing uppercase
+      const toInsert = initialList.map((p) => ({
+        ...p,
+        marca: (p.marca || 'VARIOS').toUpperCase().trim(),
+        modelo: (p.modelo || '').toUpperCase().trim(),
+        calidad: (p.calidad || 'ORIGINAL').toUpperCase().trim(),
+        isHidden: (p.stock || 0) === 0 ? false : false,
+      }));
       await Product.insertMany(toInsert);
 
       const activeProducts = await Product.find({ isHidden: false }).sort({ createdAt: -1 }).lean();

@@ -180,9 +180,9 @@ async function executeActions(
       }
       case 'AGREGAR_PRODUCTO': {
         result = await executeAgregarProducto({
-          marca: String(payload.marca ?? ''),
-          modelo: String(payload.modelo ?? ''),
-          calidad: String(payload.calidad ?? 'ORIGINAL C/M'),
+          marca: String(payload.marca ?? '').toUpperCase().trim(),
+          modelo: String(payload.modelo ?? '').toUpperCase().trim(),
+          calidad: String(payload.calidad ?? 'ORIGINAL C/M').toUpperCase().trim(),
           precio: Number(payload.precio ?? 0),
           stock: payload.stock ? Number(payload.stock) : undefined,
         });
@@ -192,9 +192,9 @@ async function executeActions(
         const lote = Array.isArray(payload.productos) ? payload.productos : [];
         result = await executeAgregarProductosLote(
           lote.map((p: Record<string, unknown>) => ({
-            marca:   String(p.marca   ?? ''),
-            modelo:  String(p.modelo  ?? ''),
-            calidad: String(p.calidad ?? 'ORIGINAL C/M'),
+            marca:   String(p.marca   ?? '').toUpperCase().trim(),
+            modelo:  String(p.modelo  ?? '').toUpperCase().trim(),
+            calidad: String(p.calidad ?? 'ORIGINAL C/M').toUpperCase().trim(),
             precio:  Number(p.precio  ?? 0),
             stock:   p.stock ? Number(p.stock) : undefined,
           }))
@@ -206,9 +206,9 @@ async function executeActions(
         const lote = Array.isArray(payload.productos) ? payload.productos : [];
         result = await executeAgregarLoteBulk(
           lote.map((p: Record<string, unknown>) => ({
-            marca:   String(p.marca   ?? ''),
-            modelo:  String(p.modelo  ?? ''),
-            calidad: String(p.calidad ?? 'ORIGINAL C/M'),
+            marca:   String(p.marca   ?? '').toUpperCase().trim(),
+            modelo:  String(p.modelo  ?? '').toUpperCase().trim(),
+            calidad: String(p.calidad ?? 'ORIGINAL C/M').toUpperCase().trim(),
             precio:  Number(p.precio  ?? 0),
             stock:   p.stock ? Number(p.stock) : undefined,
           }))
@@ -222,9 +222,9 @@ async function executeActions(
       case 'MODIFICAR_PRODUCTO': {
         result = await executeModificarProducto({
           queryProducto: String(payload.queryProducto ?? ''),
-          nuevaMarca: payload.nuevaMarca ? String(payload.nuevaMarca) : undefined,
-          nuevoModelo: payload.nuevoModelo ? String(payload.nuevoModelo) : undefined,
-          nuevaCalidad: payload.nuevaCalidad ? String(payload.nuevaCalidad) : undefined,
+          nuevaMarca: payload.nuevaMarca ? String(payload.nuevaMarca).toUpperCase().trim() : undefined,
+          nuevoModelo: payload.nuevoModelo ? String(payload.nuevoModelo).toUpperCase().trim() : undefined,
+          nuevaCalidad: payload.nuevaCalidad ? String(payload.nuevaCalidad).toUpperCase().trim() : undefined,
           nuevoPrecio: payload.nuevoPrecio ? Number(payload.nuevoPrecio) : undefined,
         });
         break;
@@ -518,6 +518,16 @@ Si el usuario solicita una ACCIÓN MUTABLE (vender, cambiar precio, cambiar cali
   Revisa "ordenesPendientesCobro" o "ultimasVentasRegistradas" del contexto, muéstrale las órdenes más recientes con su código (#...) y cliente, y pregúntale cuál desea marcar o anular.
 • Si el usuario dice "ajustar stock" o "cambiar precio" sin decir qué producto o cuánto:
   Pregúntale qué modelo y qué cantidad o nuevo precio desea aplicar.
+
+═══════════════════════════════════════════════════════════════
+🔠 REGLA ESTRICTA DE MAYÚSCULAS PARA PRODUCTOS
+═══════════════════════════════════════════════════════════════
+Tanto la MARCA como el MODELO y la CALIDAD de cualquier producto deben escribirse SIEMPRE Y OBLIGATORIAMENTE 100% EN MAYÚSCULAS (ejemplos: "SAMSUNG", "REDMI NOTE 11", "IPHONE 13 PRO MAX", "MOTO G22", "INFINIX HOT 12 PLAY"). Nunca uses minúsculas en marcas ni modelos al agregarlos o modificarlos.
+
+═══════════════════════════════════════════════════════════════
+🔄 REGLA DE REINGRESO / SUMA INTELIGENTE DE STOCK EN PRODUCTOS EXISTENTES
+═══════════════════════════════════════════════════════════════
+Si el usuario solicita agregar un producto que ya existe en el catálogo, el sistema NO lo rechaza ni crea un duplicado: SUMA automáticamente las unidades al stock existente y reactiva el producto si estaba en stock 0 o en estado agotado/oculto. Explícale al usuario con total claridad y profesionalismo que el sistema sumará el stock al producto existente.
 
 ═══════════════════════════════════════════════════════════════
 ⚠️ REGLA OBLIGATORIA: CONFIRMACIÓN ANTES DE AGREGAR PRODUCTOS

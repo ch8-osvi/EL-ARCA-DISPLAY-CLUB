@@ -44,32 +44,123 @@ export async function POST(req: NextRequest) {
 
     const { mm, dd } = getHavanaMonthDay();
 
-    // ━ Single pre-scan for all existing products (one DB call, not N)
-    const existingProducts = await Product.find({ isHidden: false })
-      .select('marca modelo calidad')
-      .lean() as Array<{ marca: string; modelo: string; calidad: string }>;
+    // ━ Scan ALL existing products (including hidden ones to reactivate them)
+    const existingProducts = await Product.find({})
+      .select('_id id marca modelo calidad stock precio isHidden')
+      .lean() as Array<{
+        _id: any;
+        id: string;
+        marca: string;
+        modelo: string;
+        calidad: string;
+        stock: number;
+        precio: number;
+        isHidden: boolean;
+      }>;
 
-    const existingSet = new Set(
-      existingProducts.map((p) => `${p.marca}|${p.modelo.toLowerCase()}|${p.calidad}`)
-    );
+    const existingMap = new Map<string, {
+      _id: any;
+      id: string;
+      marca: string;
+      modelo: string;
+      calidad: string;
+      stock: number;
+      precio: number;
+      isHidden: boolean;
+    }>();
+
+    existingProducts.forEach((p) => {
+      const k = `${(p.marca || '').toUpperCase().trim()}|${(p.modelo || '').toUpperCase().trim()}|${(p.calidad || '').toUpperCase().trim()}`;
+      existingMap.set(k, p);
+    });
 
     const toInsert: BulkProductItem[] = [];
-    const duplicatesFound: string[]   = [];
+    const toIncrement: Array<{
+      existingId: string;
+      productMongoId: any;
+      marca: string;
+      modelo: string;
+      calidad: string;
+      stockBefore: number;
+      qtyToAdd: number;
+      stockAfter: number;
+      newPrecio?: number;
+    }> = [];
 
     for (const item of productos) {
-      const marcaUp    = (item.marca   || '').toUpperCase().trim();
-      const modeloTrim = (item.modelo  || '').trim();
-      const calidadUp  = (item.calidad || '').toUpperCase().trim();
+      const marcaUp   = (item.marca   || '').toUpperCase().trim();
+      const modeloUp  = (item.modelo  || '').toUpperCase().trim();
+      const calidadUp = (item.calidad || '').toUpperCase().trim();
+      const qty       = Math.max(0, item.stock !== undefined ? Number(item.stock) : 1);
+      const precio    = Math.max(0, Number(item.precio) || 0);
 
-      if (!marcaUp || !modeloTrim || !calidadUp) continue; // skip invalid rows
+      if (!marcaUp || !modeloUp || !calidadUp) continue; // skip invalid rows
 
-      const key = `${marcaUp}|${modeloTrim.toLowerCase()}|${calidadUp}`;
+      const key = `${marcaUp}|${modeloUp}|${calidadUp}`;
 
-      if (existingSet.has(key)) {
-        duplicatesFound.push(`${marcaUp} ${modeloTrim} ${calidadUp}`);
+      if (existingMap.has(key)) {
+        const existing = existingMap.get(key)!;
+        const stockBefore = existing.stock || 0;
+        const stockAfter = stockBefore + qty;
+
+        toIncrement.push({
+          existingId: existing.id,
+          productMongoId: existing._id,
+          marca: marcaUp,
+          modelo: modeloUp,
+          calidad: calidadUp,
+          stockBefore,
+          qtyToAdd: qty,
+          stockAfter,
+          newPrecio: precio > 0 ? precio : undefined,
+        });
+
+        // Update in-memory so subsequent duplicates in the same payload accumulate
+        existing.stock = stockAfter;
+        existing.isHidden = false;
       } else {
-        existingSet.add(key); // prevent in-batch self-duplicates
-        toInsert.push({ ...item, marca: marcaUp, modelo: modeloTrim, calidad: calidadUp });
+        toInsert.push({ ...item, marca: marcaUp, modelo: modeloUp, calidad: calidadUp, stock: qty, precio });
+        // Register in existingMap to prevent duplicate inserts within the same batch
+        existingMap.set(key, {
+          _id: null,
+          id: '',
+          marca: marcaUp,
+          modelo: modeloUp,
+          calidad: calidadUp,
+          stock: qty,
+          precio,
+          isHidden: false,
+        });
+      }
+    }
+
+    // ━ Process updates for existing products (sum stock & pull out of agotados / ocultos)
+    for (const inc of toIncrement) {
+      const updateFields: any = {
+        $inc: { stock: inc.qtyToAdd },
+        $set: { isHidden: false }, // Reactivates if it was hidden/agotado
+      };
+      if (inc.newPrecio) {
+        updateFields.$set.precio = inc.newPrecio;
+      }
+      await Product.updateOne({ _id: inc.productMongoId }, updateFields);
+    }
+
+    if (toIncrement.length > 0) {
+      const stockEntries = toIncrement
+        .filter((inc) => inc.qtyToAdd > 0)
+        .map((inc) => ({
+          productId:   inc.existingId,
+          productName: `${inc.marca} ${inc.modelo} (${inc.calidad})`,
+          type:        'entrada' as const,
+          qty:         inc.qtyToAdd,
+          stockBefore: inc.stockBefore,
+          stockAfter:  inc.stockAfter,
+          reason:      'Reingreso/Suma de stock vía alta masiva (/api/products/bulk-add)',
+        }));
+
+      if (stockEntries.length > 0) {
+        await StockHistory.insertMany(stockEntries, { ordered: false });
       }
     }
 
@@ -77,9 +168,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: true,
         inserted: 0,
-        duplicates: duplicatesFound.length,
+        incremented: toIncrement.length,
         errors: 0,
-        message: 'Todos los productos ya existían en el catálogo. No se insertó ninguno.',
+        message: toIncrement.length > 0
+          ? `Todos los productos ya existían en el catálogo. Se sumó el stock a ${toIncrement.length} productos existentes y se reactivaron.`
+          : 'No se encontraron productos válidos para procesar.',
       });
     }
 
@@ -140,13 +233,13 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      inserted:   totalInserted,
-      duplicates: duplicatesFound.length,
-      errors:     totalErrors,
+      inserted:    totalInserted,
+      incremented: toIncrement.length,
+      errors:      totalErrors,
       message:
-        `Se insertaron ${totalInserted} productos correctamente.` +
-        (duplicatesFound.length > 0 ? ` ${duplicatesFound.length} duplicados omitidos.` : '') +
-        (totalErrors > 0            ? ` ${totalErrors} errores.`                        : ''),
+        `Alta masiva completada: ${totalInserted} producto(s) nuevo(s) insertado(s)` +
+        (toIncrement.length > 0 ? ` y se sumó stock a ${toIncrement.length} producto(s) existente(s) (reactivados del catálogo).` : '.') +
+        (totalErrors > 0        ? ` ${totalErrors} errores.` : ''),
     });
   } catch (error) {
     console.error('[bulk-add] Critical error:', error);

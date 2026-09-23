@@ -116,6 +116,36 @@ export const ADMIN_TOOL_DECLARATIONS = [
       required: ['cliente', 'modeloProducto', 'cantidad'],
     },
   },
+  {
+    name: 'agregar_producto',
+    description: 'Agrega una nueva pantalla al catálogo o suma stock si ya existe (reactivándola de agotados si es necesario).',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        marca: {
+          type: 'STRING',
+          description: 'Marca del teléfono (ej: SAMSUNG, XIAOMI, IPHONE, MOTOROLA)',
+        },
+        modelo: {
+          type: 'STRING',
+          description: 'Modelo de la pantalla (ej: A04, REDMI 9A, 11 PRO)',
+        },
+        calidad: {
+          type: 'STRING',
+          description: 'Calidad de la pantalla (ej: ORIGINAL C/M, INCELL C/M, OLED)',
+        },
+        precio: {
+          type: 'NUMBER',
+          description: 'Precio de venta en USD (opcional si ya existe)',
+        },
+        cantidad: {
+          type: 'INTEGER',
+          description: 'Cantidad de unidades que entraron a almacén (mínimo 1)',
+        },
+      },
+      required: ['marca', 'modelo', 'cantidad'],
+    },
+  },
 ];
 
 /**
@@ -510,5 +540,111 @@ export async function executeRegistrarVentaRapida(args: {
       success: false,
       message: `❌ Error al registrar la venta: ${err.message || 'Error en base de datos'}`,
     };
+  }
+}
+
+export async function executeAgregarOActualizarProductoWhatsApp(args: {
+  marca: string;
+  modelo: string;
+  calidad?: string;
+  precio?: number;
+  cantidad: number;
+}) {
+  try {
+    await connectToDatabase();
+    const marcaUp = (args.marca || 'VARIOS').toUpperCase().trim();
+    const modeloUp = (args.modelo || '').toUpperCase().trim();
+    const calidadUp = (args.calidad || 'ORIGINAL C/M').toUpperCase().trim();
+    const qty = parseInt(String(args.cantidad), 10) || 1;
+    const precio = args.precio && args.precio > 0 ? parseFloat(args.precio.toFixed(2)) : undefined;
+
+    if (!modeloUp) {
+      return { success: false, message: '❌ Debes especificar el modelo de la pantalla.' };
+    }
+
+    // Check if it already exists (including hidden ones)
+    const existing = await Product.findOne({
+      marca: marcaUp,
+      modelo: { $regex: new RegExp(`^${modeloUp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+      calidad: calidadUp,
+    });
+
+    if (existing) {
+      const stockBefore = existing.stock || 0;
+      const stockAfter = stockBefore + qty;
+      const wasHidden = existing.isHidden || stockBefore === 0;
+
+      existing.stock = stockAfter;
+      if (precio !== undefined) {
+        existing.precio = precio;
+      }
+      if (stockAfter > 0) {
+        existing.isHidden = false;
+      }
+      await existing.save();
+
+      if (qty > 0) {
+        await StockHistory.create({
+          productId: existing.id,
+          productName: `${existing.marca} ${existing.modelo} (${existing.calidad})`,
+          type: 'entrada',
+          qty,
+          stockBefore,
+          stockAfter,
+          reason: `Reingreso/Alta vía Asistente WhatsApp Admin (+${qty} uds)`,
+        });
+      }
+
+      return {
+        success: true,
+        message:
+          `📦 *Stock Incrementado con Éxito (Producto Existente)*\n\n` +
+          `• Producto: *${existing.marca} ${existing.modelo} (${existing.calidad})*\n` +
+          `• Stock anterior: ${stockBefore} uds\n` +
+          `• Unidades sumadas: *+${qty} unidades*\n` +
+          `• Nuevo stock en almacén: *${stockAfter} unidades* ${wasHidden && stockAfter > 0 ? '✅ *(Reactivado en catálogo activo)*' : '✅'}\n` +
+          `• Precio de venta: *$${existing.precio.toFixed(2)} USD*`,
+      };
+    }
+
+    // Create new product
+    const { mm, dd } = getHavanaMonthDay();
+    const rnd = Math.random().toString(36).slice(2, 6).toUpperCase();
+    const customId = `${mm}${dd}-${rnd}`;
+
+    const newProd = await Product.create({
+      id: customId,
+      marca: marcaUp,
+      modelo: modeloUp,
+      calidad: calidadUp,
+      precio: precio || 0,
+      stock: qty,
+      isHidden: qty === 0,
+    });
+
+    if (qty > 0) {
+      await StockHistory.create({
+        productId: customId,
+        productName: `${newProd.marca} ${newProd.modelo} (${newProd.calidad})`,
+        type: 'entrada',
+        qty,
+        stockBefore: 0,
+        stockAfter: qty,
+        reason: 'Alta nuevo producto vía Asistente WhatsApp Admin',
+      });
+    }
+
+    return {
+      success: true,
+      message:
+        `✨ *Nuevo Producto Agregado con Éxito*\n\n` +
+        `• Producto: *${newProd.marca} ${newProd.modelo} (${newProd.calidad})*\n` +
+        `• Precio: *$${newProd.precio.toFixed(2)} USD*\n` +
+        `• Stock inicial: *${newProd.stock} unidades* ✅\n` +
+        `• ID generado: \`${customId}\``,
+    };
+  } catch (err: any) {
+    console.error('[executeAgregarOActualizarProductoWhatsApp error]', err);
+    return { success: false, message: `❌ Error al agregar producto: ${err.message || 'Error en base de datos'}` };
   }
 }

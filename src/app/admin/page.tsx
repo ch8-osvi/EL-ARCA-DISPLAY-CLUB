@@ -214,43 +214,71 @@ export default function AdminPage() {
         : newCalidadSelect.trim().toUpperCase();
 
     const marcaTrimmed = (newMarca || 'VARIOS').toUpperCase().trim();
-    const modeloTrimmed = newModelo.trim();
+    const modeloTrimmed = newModelo.toUpperCase().trim();
+    const parsedStock = Math.max(0, parseInt(newStock, 10) || 1);
+    const parsedPrecio = parseFloat(newPrecio) || 0;
 
-    // Check for duplicates (same brand, same model, same quality)
-    const isDuplicate = products.some(
+    // Check if duplicate exists in local state
+    const existingIndex = products.findIndex(
       (p) => 
         p.marca.toUpperCase() === marcaTrimmed &&
-        p.modelo.toUpperCase() === modeloTrimmed.toUpperCase() &&
+        p.modelo.toUpperCase() === modeloTrimmed &&
         p.calidad.toUpperCase() === finalCalidad
     );
 
-    if (isDuplicate) {
-      triggerToast('Error: Ya existe un display con la misma Marca, Modelo y Calidad.');
-      return;
+    let updated: Product[];
+    if (existingIndex !== -1) {
+      const existing = products[existingIndex];
+      const newTotalStock = (existing.stock || 0) + parsedStock;
+      const updatedProduct = {
+        ...existing,
+        stock: newTotalStock,
+        precio: parsedPrecio > 0 ? parsedPrecio : existing.precio,
+      };
+      updated = [...products];
+      updated[existingIndex] = updatedProduct;
+    } else {
+      const newProd: Product = {
+        id: `prod-custom-${Date.now()}`,
+        marca: marcaTrimmed,
+        modelo: modeloTrimmed,
+        calidad: finalCalidad,
+        precio: parsedPrecio,
+        stock: parsedStock,
+      };
+      updated = [newProd, ...products];
     }
 
-    const newProd: Product = {
-      id: `prod-custom-${Date.now()}`,
-      marca: marcaTrimmed,
-      modelo: modeloTrimmed,
-      calidad: finalCalidad,
-      precio: parseFloat(newPrecio) || 0,
-      stock: Math.max(0, parseInt(newStock, 10) || 0),
-    };
-
-    const updated = [newProd, ...products];
     setProducts(updated);
     localStorage.setItem('el_arca_products', JSON.stringify(updated));
 
     try {
-      await fetch('/api/products', {
+      const res = await fetch('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'add', product: newProd }),
+        body: JSON.stringify({
+          action: 'add',
+          product: {
+            marca: marcaTrimmed,
+            modelo: modeloTrimmed,
+            calidad: finalCalidad,
+            precio: parsedPrecio,
+            stock: parsedStock,
+          },
+        }),
       });
-      triggerToast('Nuevo producto agregado con éxito');
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (data.wasUpdated) {
+          triggerToast(`Producto existente reconocido: se sumaron +${parsedStock} uds al stock (Total: ${data.product.stock} uds)`);
+        } else {
+          triggerToast('Nuevo producto agregado con éxito');
+        }
+      } else {
+        triggerToast(data.message || 'Producto procesado');
+      }
     } catch {
-      triggerToast('Producto agregado localmente');
+      triggerToast(existingIndex !== -1 ? 'Stock sumado localmente' : 'Producto agregado localmente');
     }
 
     setNewMarca('');
@@ -321,7 +349,7 @@ export default function AdminPage() {
         : editCalidadSelect.trim().toUpperCase();
 
     const marcaTrimmed = (editMarca || 'VARIOS').toUpperCase().trim();
-    const modeloTrimmed = editModelo.trim();
+    const modeloTrimmed = editModelo.toUpperCase().trim();
 
     setIsSubmittingEdit(true);
 
@@ -649,13 +677,14 @@ export default function AdminPage() {
             zeroStockCount++;
           }
 
-          const finalBrand = (rawMarca || currentBrand || 'VARIOS').toUpperCase();
+          const finalBrand = (rawMarca || currentBrand || 'VARIOS').toUpperCase().trim();
+          const finalModel = rawModelo.toUpperCase().trim();
 
           parsedProducts.push({
             id: `display-excel-${String(parsedProducts.length + 1).padStart(3, '0')}`,
             marca: finalBrand,
-            modelo: rawModelo,
-            calidad: (rawCalidad || 'ORIGINAL').toUpperCase(),
+            modelo: finalModel,
+            calidad: (rawCalidad || 'ORIGINAL').toUpperCase().trim(),
             precio: priceNum,
             stock: stockNum,
           });
@@ -1098,9 +1127,9 @@ export default function AdminPage() {
                 <input
                   type="text"
                   value={newMarca}
-                  onChange={(e) => setNewMarca(e.target.value)}
-                  placeholder="ej. SAMSUNG, iPHONE, XIAOMI"
-                  className="w-full px-4 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-sm focus:border-[#D4AF37] focus:outline-none"
+                  onChange={(e) => setNewMarca(e.target.value.toUpperCase())}
+                  placeholder="ej. SAMSUNG, IPHONE, XIAOMI"
+                  className="w-full px-4 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-sm focus:border-[#D4AF37] focus:outline-none uppercase font-mono"
                   required
                 />
               </div>
@@ -1112,9 +1141,9 @@ export default function AdminPage() {
                 <input
                   type="text"
                   value={newModelo}
-                  onChange={(e) => setNewModelo(e.target.value)}
-                  placeholder="ej. Galaxy A55 5G / A556"
-                  className="w-full px-4 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-sm focus:border-[#D4AF37] focus:outline-none"
+                  onChange={(e) => setNewModelo(e.target.value.toUpperCase())}
+                  placeholder="ej. GALAXY A55 5G / A556"
+                  className="w-full px-4 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-sm focus:border-[#D4AF37] focus:outline-none uppercase font-mono"
                   required
                 />
               </div>
@@ -1245,9 +1274,9 @@ export default function AdminPage() {
                 <input
                   type="text"
                   value={editMarca}
-                  onChange={(e) => setEditMarca(e.target.value)}
+                  onChange={(e) => setEditMarca(e.target.value.toUpperCase())}
                   placeholder="ej. SAMSUNG, XIAOMI"
-                  className="w-full px-4 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-sm focus:border-[#D4AF37] focus:outline-none"
+                  className="w-full px-4 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-sm focus:border-[#D4AF37] focus:outline-none uppercase font-mono"
                   required
                 />
               </div>
@@ -1259,9 +1288,9 @@ export default function AdminPage() {
                 <input
                   type="text"
                   value={editModelo}
-                  onChange={(e) => setEditModelo(e.target.value)}
-                  placeholder="ej. Galaxy A02 / A022"
-                  className="w-full px-4 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-sm focus:border-[#D4AF37] focus:outline-none"
+                  onChange={(e) => setEditModelo(e.target.value.toUpperCase())}
+                  placeholder="ej. GALAXY A02 / A022"
+                  className="w-full px-4 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-sm focus:border-[#D4AF37] focus:outline-none uppercase font-mono"
                   required
                 />
               </div>

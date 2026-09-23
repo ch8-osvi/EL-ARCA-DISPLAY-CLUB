@@ -46,27 +46,56 @@ export async function executeAgregarProducto(input: {
   try {
     await connectToDatabase();
 
-    const marcaUp    = input.marca.toUpperCase().trim();
-    const modeloTrim = input.modelo.trim();
-    const calidadUp  = input.calidad.toUpperCase().trim();
-    const stock      = input.stock ?? 1;
+    const marcaUp   = input.marca.toUpperCase().trim();
+    const modeloUp  = input.modelo.toUpperCase().trim();
+    const calidadUp = input.calidad.toUpperCase().trim();
+    const stock     = Math.max(0, input.stock ?? 1);
+    const precio    = Math.max(0, input.precio || 0);
 
-    // ━ Deduplication check — same marca + modelo + calidad (case-insensitive)
+    // ━ Check if product already exists (including hidden / agotados)
     const existing = await Product.findOne({
       marca: marcaUp,
-      modelo: { $regex: new RegExp(`^${modeloTrim.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+      modelo: { $regex: new RegExp(`^${modeloUp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
       calidad: calidadUp,
-      isHidden: false,
-    }).lean();
+    });
 
     if (existing) {
+      const stockBefore = existing.stock || 0;
+      const stockAfter = stockBefore + stock;
+      const wasHidden = existing.isHidden || stockBefore === 0;
+
+      existing.stock = stockAfter;
+      if (precio > 0) {
+        existing.precio = precio;
+      }
+      if (stockAfter > 0) {
+        existing.isHidden = false; // Auto-unhide from agotados / ocultos!
+      }
+      await existing.save();
+
+      if (stock > 0) {
+        await StockHistory.create({
+          productId: existing.id,
+          productName: `${existing.marca} ${existing.modelo} (${existing.calidad})`,
+          type: 'entrada',
+          qty: stock,
+          stockBefore,
+          stockAfter,
+          reason: 'Suma automática de stock por Asistente IA (Reingreso/Alta)',
+        });
+      }
+
       return {
-        success: false,
-        isDuplicate: true,
+        success: true,
+        isExistingUpdated: true,
         message:
-          `⚠️ **Ya existe en el catálogo:** ${marcaUp} ${modeloTrim} ${calidadUp}\n` +
-          `• ID actual: ${existing.id} | Stock: ${existing.stock} uds | Precio: $${(existing.precio as number).toFixed(2)} USD\n\n` +
-          `¿Deseas en cambio **actualizar su stock** o **cambiar su precio**?`,
+          `🔄 **Producto existente reconocido — Stock incrementado**\n\n` +
+          `📱 **${existing.marca} ${existing.modelo} ${existing.calidad}**\n` +
+          `📦 Stock anterior: ${stockBefore} uds\n` +
+          `➕ Unidades sumadas: +${stock} uds\n` +
+          `📦 **Nuevo stock total: ${stockAfter} unidades** ${wasHidden && stockAfter > 0 ? '✨ *(Reactivado de agotados)*' : ''}\n` +
+          `💰 Precio: $${existing.precio.toFixed(2)} USD\n` +
+          `🆔 ID: ${existing.id}`,
       };
     }
 
@@ -78,9 +107,9 @@ export async function executeAgregarProducto(input: {
     const product = await Product.create({
       id: customId,
       marca: marcaUp,
-      modelo: modeloTrim,
+      modelo: modeloUp,
       calidad: calidadUp,
-      precio: input.precio,
+      precio: precio,
       stock,
       isHidden: stock === 0,
     });
@@ -102,7 +131,7 @@ export async function executeAgregarProducto(input: {
       message:
         `✅ **Producto agregado al catálogo**\n\n` +
         `📱 **${product.marca} ${product.modelo} ${product.calidad}**\n` +
-        `💰 Precio: $${input.precio.toFixed(2)} USD\n` +
+        `💰 Precio: $${precio.toFixed(2)} USD\n` +
         `📦 Stock inicial: ${stock} unidades\n` +
         `🆔 ID: ${customId}`,
     };
@@ -112,7 +141,7 @@ export async function executeAgregarProducto(input: {
   }
 }
 
-// ─── Alta en Lote (hasta ~50 productos) — con insertMany bulk y deduplicación ────────
+// ─── Alta en Lote (hasta ~50 productos) — con acumulación de stock y reactivación ───
 
 export async function executeAgregarProductosLote(
   items: Array<{ marca: string; modelo: string; calidad: string; precio: number; stock?: number }>
@@ -126,43 +155,125 @@ export async function executeAgregarProductosLote(
 
     const { mm, dd } = getHavanaMonthDay();
 
-    // ━ Single bulk dedup scan (one DB call)
-    const existingProducts = await Product.find({ isHidden: false })
-      .select('marca modelo calidad')
-      .lean() as Array<{ marca: string; modelo: string; calidad: string }>;
+    // ━ Scan ALL existing products (including hidden ones to reactivate them)
+    const existingProducts = await Product.find({})
+      .select('_id id marca modelo calidad stock precio isHidden')
+      .lean() as Array<{
+        _id: any;
+        id: string;
+        marca: string;
+        modelo: string;
+        calidad: string;
+        stock: number;
+        precio: number;
+        isHidden: boolean;
+      }>;
 
-    const existingSet = new Set(
-      existingProducts.map((p) => `${p.marca}|${p.modelo.toLowerCase()}|${p.calidad}`)
-    );
+    const existingMap = new Map<string, {
+      _id: any;
+      id: string;
+      marca: string;
+      modelo: string;
+      calidad: string;
+      stock: number;
+      precio: number;
+      isHidden: boolean;
+    }>();
+
+    existingProducts.forEach((p) => {
+      const k = `${(p.marca || '').toUpperCase().trim()}|${(p.modelo || '').toUpperCase().trim()}|${(p.calidad || '').toUpperCase().trim()}`;
+      existingMap.set(k, p);
+    });
 
     const toInsert: typeof items = [];
-    const duplicates: string[] = [];
+    const toIncrement: Array<{
+      existingId: string;
+      productMongoId: any;
+      marca: string;
+      modelo: string;
+      calidad: string;
+      stockBefore: number;
+      qtyToAdd: number;
+      stockAfter: number;
+      newPrecio?: number;
+    }> = [];
 
     for (const item of items) {
-      const marcaUp    = (item.marca   || '').toUpperCase().trim();
-      const modeloTrim = (item.modelo  || '').trim();
-      const calidadUp  = (item.calidad || '').toUpperCase().trim();
-      const key = `${marcaUp}|${modeloTrim.toLowerCase()}|${calidadUp}`;
-      if (existingSet.has(key)) {
-        duplicates.push(`${marcaUp} ${modeloTrim} ${calidadUp}`);
+      const marcaUp   = (item.marca   || '').toUpperCase().trim();
+      const modeloUp  = (item.modelo  || '').toUpperCase().trim();
+      const calidadUp = (item.calidad || '').toUpperCase().trim();
+      const qty       = Math.max(0, item.stock !== undefined ? Number(item.stock) : 1);
+      const precio    = Math.max(0, Number(item.precio) || 0);
+
+      if (!marcaUp || !modeloUp || !calidadUp) continue;
+
+      const key = `${marcaUp}|${modeloUp}|${calidadUp}`;
+
+      if (existingMap.has(key)) {
+        const existing = existingMap.get(key)!;
+        const stockBefore = existing.stock || 0;
+        const stockAfter = stockBefore + qty;
+
+        toIncrement.push({
+          existingId: existing.id,
+          productMongoId: existing._id,
+          marca: marcaUp,
+          modelo: modeloUp,
+          calidad: calidadUp,
+          stockBefore,
+          qtyToAdd: qty,
+          stockAfter,
+          newPrecio: precio > 0 ? precio : undefined,
+        });
+
+        existing.stock = stockAfter;
+        existing.isHidden = false;
       } else {
-        existingSet.add(key);
-        toInsert.push({ ...item, marca: marcaUp, modelo: modeloTrim, calidad: calidadUp });
+        toInsert.push({ ...item, marca: marcaUp, modelo: modeloUp, calidad: calidadUp, stock: qty, precio });
+        existingMap.set(key, {
+          _id: null,
+          id: '',
+          marca: marcaUp,
+          modelo: modeloUp,
+          calidad: calidadUp,
+          stock: qty,
+          precio,
+          isHidden: false,
+        });
       }
     }
 
-    if (toInsert.length === 0) {
-      return {
-        success: false,
-        message:
-          `⚠️ **Todos los productos ya existen en el catálogo:**\n` +
-          `${duplicates.slice(0, 10).map((d) => `• ${d}`).join('\n')}` +
-          `${duplicates.length > 10 ? `\n... y ${duplicates.length - 10} más` : ''}\n\n` +
-          `No se insertó ningún producto nuevo.`,
+    // ━ Execute updates for existing products (sum stock & reactivate if hidden)
+    for (const inc of toIncrement) {
+      const updateFields: any = {
+        $inc: { stock: inc.qtyToAdd },
+        $set: { isHidden: false },
       };
+      if (inc.newPrecio) {
+        updateFields.$set.precio = inc.newPrecio;
+      }
+      await Product.updateOne({ _id: inc.productMongoId }, updateFields);
     }
 
-    // ━ Build documents with consistent IDs
+    if (toIncrement.length > 0) {
+      const stockEntries = toIncrement
+        .filter((inc) => inc.qtyToAdd > 0)
+        .map((inc) => ({
+          productId:   inc.existingId,
+          productName: `${inc.marca} ${inc.modelo} (${inc.calidad})`,
+          type:        'entrada' as const,
+          qty:         inc.qtyToAdd,
+          stockBefore: inc.stockBefore,
+          stockAfter:  inc.stockAfter,
+          reason:      'Suma de stock en lote por Asistente IA',
+        }));
+
+      if (stockEntries.length > 0) {
+        await StockHistory.insertMany(stockEntries, { ordered: false });
+      }
+    }
+
+    // ━ Insert new documents
     const insertDocs = toInsert.map((item) => {
       const rnd      = Math.random().toString(36).slice(2, 6).toUpperCase();
       const customId = `${mm}${dd}-${rnd}`;
@@ -183,52 +294,57 @@ export async function executeAgregarProductosLote(
       };
     });
 
-    // ━ Bulk insert products (one DB round-trip)
-    await Product.insertMany(insertDocs.map((d) => d.doc), { ordered: false });
+    if (insertDocs.length > 0) {
+      await Product.insertMany(insertDocs.map((d) => d.doc), { ordered: false });
 
-    // ━ Bulk insert StockHistory for products with stock > 0
-    const stockEntries = insertDocs
-      .filter((d) => d.stock > 0)
-      .map((d) => ({
-        productId:   d.customId,
-        productName: d.productName,
-        type:        'entrada' as const,
-        qty:         d.stock,
-        stockBefore: 0,
-        stockAfter:  d.stock,
-        reason:      'Alta masiva por Asistente IA',
-      }));
+      const stockEntries = insertDocs
+        .filter((d) => d.stock > 0)
+        .map((d) => ({
+          productId:   d.customId,
+          productName: d.productName,
+          type:        'entrada' as const,
+          qty:         d.stock,
+          stockBefore: 0,
+          stockAfter:  d.stock,
+          reason:      'Alta en lote por Asistente IA',
+        }));
 
-    if (stockEntries.length > 0) {
-      await StockHistory.insertMany(stockEntries, { ordered: false });
+      if (stockEntries.length > 0) {
+        await StockHistory.insertMany(stockEntries, { ordered: false });
+      }
     }
 
-    // ━ Build response summary
-    const listPreview = insertDocs
-      .slice(0, 12)
+    const insertedPreview = insertDocs
+      .slice(0, 8)
       .map((d) => `• ${d.doc.marca} ${d.doc.modelo} ${d.doc.calidad} — $${d.doc.precio.toFixed(2)} USD — Stock: ${d.stock} uds`)
       .join('\n');
-    const moreText   = insertDocs.length > 12 ? `\n... y ${insertDocs.length - 12} más` : '';
-    const dupSection = duplicates.length > 0
-      ? `\n\n⚠️ **${duplicates.length} omitido(s) por duplicado:**\n` +
-        duplicates.slice(0, 5).map((d) => `• ${d}`).join('\n') +
-        (duplicates.length > 5 ? `\n... y ${duplicates.length - 5} más` : '')
-      : '';
+    const insertedMore = insertDocs.length > 8 ? `\n... y ${insertDocs.length - 8} más` : '';
+
+    const incrementedPreview = toIncrement
+      .slice(0, 8)
+      .map((d) => `• ${d.marca} ${d.modelo} ${d.calidad} ➔ +${d.qtyToAdd} uds (Total: ${d.stockAfter} uds)`)
+      .join('\n');
+    const incrementedMore = toIncrement.length > 8 ? `\n... y ${toIncrement.length - 8} más` : '';
+
+    let summary = `📦 **Operación en Lote Completada**\n\n`;
+    if (insertDocs.length > 0) {
+      summary += `✅ **${insertDocs.length} producto(s) nuevo(s) agregado(s):**\n${insertedPreview}${insertedMore}\n\n`;
+    }
+    if (toIncrement.length > 0) {
+      summary += `🔄 **${toIncrement.length} producto(s) existente(s) con stock sumado (reactivados si estaban agotados):**\n${incrementedPreview}${incrementedMore}\n\n`;
+    }
 
     return {
       success: true,
-      message:
-        `📦 **Alta masiva completada** — ${insertDocs.length} producto(s) agregado(s)` +
-        `${duplicates.length > 0 ? ` (${duplicates.length} duplicados omitidos)` : ''}\n\n` +
-        `**Insertados:**\n${listPreview}${moreText}${dupSection}`,
+      message: summary.trim(),
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    return { success: false, message: `❌ Error en alta masiva: ${msg}` };
+    return { success: false, message: `❌ Error en alta en lote: ${msg}` };
   }
 }
 
-// ─── Alta Masiva Grande (50–500 productos) — batches de 50 con métricas ───────
+// ─── Alta Masiva Grande (50–500 productos) — batches de 50 con acumulación ─────
 
 export async function executeAgregarLoteBulk(
   items: Array<{ marca: string; modelo: string; calidad: string; precio: number; stock?: number }>
@@ -245,32 +361,125 @@ export async function executeAgregarLoteBulk(
 
     const { mm, dd } = getHavanaMonthDay();
 
-    // ━ Single pre-scan for deduplication (one DB call)
-    const existingProducts = await Product.find({ isHidden: false })
-      .select('marca modelo calidad')
-      .lean() as Array<{ marca: string; modelo: string; calidad: string }>;
+    // ━ Scan ALL existing products (including hidden ones)
+    const existingProducts = await Product.find({})
+      .select('_id id marca modelo calidad stock precio isHidden')
+      .lean() as Array<{
+        _id: any;
+        id: string;
+        marca: string;
+        modelo: string;
+        calidad: string;
+        stock: number;
+        precio: number;
+        isHidden: boolean;
+      }>;
 
-    const existingSet = new Set(
-      existingProducts.map((p) => `${p.marca}|${p.modelo.toLowerCase()}|${p.calidad}`)
-    );
+    const existingMap = new Map<string, {
+      _id: any;
+      id: string;
+      marca: string;
+      modelo: string;
+      calidad: string;
+      stock: number;
+      precio: number;
+      isHidden: boolean;
+    }>();
+
+    existingProducts.forEach((p) => {
+      const k = `${(p.marca || '').toUpperCase().trim()}|${(p.modelo || '').toUpperCase().trim()}|${(p.calidad || '').toUpperCase().trim()}`;
+      existingMap.set(k, p);
+    });
 
     const toInsert: typeof items = [];
-    let dupCount = 0;
+    const toIncrement: Array<{
+      existingId: string;
+      productMongoId: any;
+      marca: string;
+      modelo: string;
+      calidad: string;
+      stockBefore: number;
+      qtyToAdd: number;
+      stockAfter: number;
+      newPrecio?: number;
+    }> = [];
 
     for (const item of items) {
-      const marcaUp    = (item.marca   || '').toUpperCase().trim();
-      const modeloTrim = (item.modelo  || '').trim();
-      const calidadUp  = (item.calidad || '').toUpperCase().trim();
-      const key = `${marcaUp}|${modeloTrim.toLowerCase()}|${calidadUp}`;
-      if (existingSet.has(key)) {
-        dupCount++;
+      const marcaUp   = (item.marca   || '').toUpperCase().trim();
+      const modeloUp  = (item.modelo  || '').toUpperCase().trim();
+      const calidadUp = (item.calidad || '').toUpperCase().trim();
+      const qty       = Math.max(0, item.stock !== undefined ? Number(item.stock) : 1);
+      const precio    = Math.max(0, Number(item.precio) || 0);
+
+      if (!marcaUp || !modeloUp || !calidadUp) continue;
+
+      const key = `${marcaUp}|${modeloUp}|${calidadUp}`;
+
+      if (existingMap.has(key)) {
+        const existing = existingMap.get(key)!;
+        const stockBefore = existing.stock || 0;
+        const stockAfter = stockBefore + qty;
+
+        toIncrement.push({
+          existingId: existing.id,
+          productMongoId: existing._id,
+          marca: marcaUp,
+          modelo: modeloUp,
+          calidad: calidadUp,
+          stockBefore,
+          qtyToAdd: qty,
+          stockAfter,
+          newPrecio: precio > 0 ? precio : undefined,
+        });
+
+        existing.stock = stockAfter;
+        existing.isHidden = false;
       } else {
-        existingSet.add(key);
-        toInsert.push({ ...item, marca: marcaUp, modelo: modeloTrim, calidad: calidadUp });
+        toInsert.push({ ...item, marca: marcaUp, modelo: modeloUp, calidad: calidadUp, stock: qty, precio });
+        existingMap.set(key, {
+          _id: null,
+          id: '',
+          marca: marcaUp,
+          modelo: modeloUp,
+          calidad: calidadUp,
+          stock: qty,
+          precio,
+          isHidden: false,
+        });
       }
     }
 
-    // ━ Build all insert docs
+    // ━ Process increments on existing items
+    for (const inc of toIncrement) {
+      const updateFields: any = {
+        $inc: { stock: inc.qtyToAdd },
+        $set: { isHidden: false },
+      };
+      if (inc.newPrecio) {
+        updateFields.$set.precio = inc.newPrecio;
+      }
+      await Product.updateOne({ _id: inc.productMongoId }, updateFields);
+    }
+
+    if (toIncrement.length > 0) {
+      const stockEntries = toIncrement
+        .filter((inc) => inc.qtyToAdd > 0)
+        .map((inc) => ({
+          productId:   inc.existingId,
+          productName: `${inc.marca} ${inc.modelo} (${inc.calidad})`,
+          type:        'entrada' as const,
+          qty:         inc.qtyToAdd,
+          stockBefore: inc.stockBefore,
+          stockAfter:  inc.stockAfter,
+          reason:      'Suma de stock (lote grande) por Asistente IA',
+        }));
+
+      if (stockEntries.length > 0) {
+        await StockHistory.insertMany(stockEntries, { ordered: false });
+      }
+    }
+
+    // ━ Build and insert new items in batches of 50
     const insertDocs = toInsert.map((item) => {
       const rnd      = Math.random().toString(36).slice(2, 6).toUpperCase();
       const customId = `${mm}${dd}-${rnd}`;
@@ -291,7 +500,6 @@ export async function executeAgregarLoteBulk(
       };
     });
 
-    // ━ Process in batches of 50 for reliability
     const BATCH = 50;
     let totalInserted = 0;
     let totalErrors   = 0;
@@ -325,11 +533,11 @@ export async function executeAgregarLoteBulk(
     return {
       success: totalErrors === 0,
       message:
-        `📦 **Alta masiva completada**\n\n` +
-        `✅ ${totalInserted} producto(s) insertado(s) exitosamente\n` +
-        `${dupCount > 0      ? `⚠️ ${dupCount} omitido(s) por duplicado\n`       : ''}` +
-        `${totalErrors > 0   ? `❌ ${totalErrors} fallido(s) por error\n`        : ''}\n` +
-        `El catálogo ha sido actualizado. Puedes consultarlo en el panel de administración.`,
+        `📦 **Alta masiva grande completada**\n\n` +
+        `✅ ${totalInserted} producto(s) nuevo(s) insertado(s)\n` +
+        (toIncrement.length > 0 ? `🔄 ${toIncrement.length} producto(s) existente(s) con stock sumado (reactivados de agotados)\n` : '') +
+        (totalErrors > 0        ? `❌ ${totalErrors} producto(s) con error\n` : '') +
+        `\nEl catálogo ha sido actualizado en la base de datos.`,
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -402,7 +610,7 @@ export async function executeModificarProducto(input: {
       changes.push(`Marca: ${product.marca} ➔ **${updates.marca}**`);
     }
     if (input.nuevoModelo) {
-      updates.modelo = input.nuevoModelo.trim();
+      updates.modelo = input.nuevoModelo.toUpperCase().trim();
       changes.push(`Modelo: ${product.modelo} ➔ **${updates.modelo}**`);
     }
     if (input.nuevaCalidad) {

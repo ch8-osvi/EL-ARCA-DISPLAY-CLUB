@@ -28,6 +28,7 @@ import {
   executeRegistrarVentaRapida,
 } from '@/lib/whatsapp/tools';
 import { ExchangeRate } from '@/lib/models/ExchangeRate';
+import { parseBatchProductsFromText } from '@/lib/ai/batchParser';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -288,6 +289,21 @@ export async function POST(req: NextRequest) {
 
     const cleanPrompt = prompt.trim();
 
+    // ── FAST-PATH: Instant Deterministic Batch Ingestion (2 to 500+ items) ────
+    // If the administrator pastes a list with items, prices and quantities,
+    // process it immediately without consuming LLM token limits or risking cutoffs.
+    const parsedBatch = parseBatchProductsFromText(cleanPrompt);
+    if (parsedBatch.length >= 2) {
+      console.log(`[AI Chat] Fast-Path: Processing ${parsedBatch.length} batch products directly`);
+      const result = await executeAgregarLoteBulk(parsedBatch);
+      return NextResponse.json({
+        success: true,
+        answer: result.message,
+        source: 'bulk-batch-engine',
+        hasActions: true,
+      });
+    }
+
     // ── 1. Fetch live data ────────────────────────────────────────────────────
 
     const [sales, products, mermasHistory, rateDoc] = await Promise.all([
@@ -530,28 +546,16 @@ Tanto la MARCA como el MODELO y la CALIDAD de cualquier producto deben escribirs
 Si el usuario solicita agregar un producto que ya existe en el catálogo, el sistema NO lo rechaza ni crea un duplicado: SUMA automáticamente las unidades al stock existente y reactiva el producto si estaba en stock 0 o en estado agotado/oculto. Explícale al usuario con total claridad y profesionalismo que el sistema sumará el stock al producto existente.
 
 ═══════════════════════════════════════════════════════════════
-⚠️ REGLA OBLIGATORIA: CONFIRMACIÓN ANTES DE AGREGAR PRODUCTOS
+📦 REGLA PARA AGREGAR PRODUCTOS Y LOTES AL INVENTARIO
 ═══════════════════════════════════════════════════════════════
-Esta regla aplica a AGREGAR_PRODUCTO, AGREGAR_LOTE y AGREGAR_LOTE_BULK.
-
-**PASO 1 — MOSTRAR RESUMEN ANTES DE EJECUTAR**
-Antes de emitir cualquier etiqueta [ACCION:AGREGAR_...], muestra siempre un resumen:
-
-  📦 PRODUCTOS A AGREGAR:
-  • [Marca] [Modelo] [Calidad] — $[Precio] USD — Stock: [N] uds
-  • ...
-  Total: N producto(s)
-
-  ¿Confirmas el alta de estos productos? (responde 'sí' para proceder)
-
-**PASO 2 — EJECUTAR SOLO CON CONFIRMACIÓN**
-Solo cuando el usuario responda afirmativamente emite la etiqueta [ACCION:...].
-
-**REGLA DE TAMAÑO DE LOTE:**
-  • 1 producto      → usa AGREGAR_PRODUCTO
-  • 2–15 productos  → usa AGREGAR_LOTE
-  • 16–500 productos → usa AGREGAR_LOTE_BULK
-  • >500 productos  → pide al usuario dividir en grupos de máximo 500
+Cuando el usuario proporcione los datos de los productos (marca, modelo, calidad, precio y cantidad):
+1. **EMITE DE INMEDIATO** la etiqueta de acción correspondiente en tu primera respuesta:
+   • 1 producto        → [ACCION:AGREGAR_PRODUCTO:{"marca":"...","modelo":"...","calidad":"...","precio":X,"stock":N}]
+   • 2–15 productos    → [ACCION:AGREGAR_LOTE:{"productos":[...]}]
+   • 16–500 productos  → [ACCION:AGREGAR_LOTE_BULK:{"productos":[...]}]
+   • >500 productos    → pide al usuario dividir en grupos de máximo 500
+2. **NUNCA** listes cada producto individualmente en viñetas de texto largas. Hacerlo satura el límite de tokens y corta la respuesta a la mitad.
+3. Responde de forma concisa, ejecutiva y profesional confirmando el ingreso del lote y emitiendo la etiqueta [ACCION:...] de inmediato para actualizar la base de datos sin fricción.
 
 **REGLA DE EDICIÓN Y UNDO MASIVO:**
 Si el usuario dice "me equivoqué, el producto es marca X o vale Y", **NO** lo borres. Usa 'MODIFICAR_PRODUCTO' para corregir todos sus atributos de una vez.
@@ -730,7 +734,7 @@ DIRECTRICES DE TONO Y ESTILO (OBLIGATORIO)
             ],
             generationConfig: {
               temperature: 0.15,
-              maxOutputTokens: 4096,
+              maxOutputTokens: 8192,
             },
           }),
         });

@@ -12,6 +12,8 @@ import {
   executeRegistrarVentaRapida,
   executeAgregarOActualizarProductoWhatsApp,
 } from './tools';
+import { executeAgregarLoteBulk } from '@/lib/ai/adminTools';
+import { parseBatchProductsFromText } from '@/lib/ai/batchParser';
 
 /** Standardizes phone numbers to digits only */
 export function normalizePhoneNumber(phone: string): string {
@@ -177,6 +179,19 @@ export async function processWhatsAppAiMessage(userMessage: string, senderPhone:
   // PIPELINE A: ADMINISTRADOR / DUEÑO (+53 52031972)
   // =========================================================================
   if (isAdmin) {
+    // -----------------------------------------------------------------------
+    // FAST-PATH 0: BATCH PRODUCT INGESTION (WhatsApp paste of 2 to 500+ items)
+    // Instant execution in < 1s with 0% chance of AI failure or token cutoff
+    // -----------------------------------------------------------------------
+    const parsedBatch = parseBatchProductsFromText(cleanPrompt);
+    if (parsedBatch.length >= 2) {
+      console.log(`[WhatsApp Inbound] Admin Batch Ingestion detected: ${parsedBatch.length} products`);
+      const result = await executeAgregarLoteBulk(parsedBatch);
+      appendChatHistory(senderPhone, 'Osvaldo', cleanPrompt);
+      appendChatHistory(senderPhone, 'Asistente', result.message);
+      return result.message;
+    }
+
     // -----------------------------------------------------------------------
     // FAST-PATH 1: DIRECT PRICE UPDATE COMMAND
     // Instant execution in < 50ms with 0% chance of AI failure

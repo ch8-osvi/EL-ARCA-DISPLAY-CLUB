@@ -30,6 +30,7 @@ import {
 } from '@/lib/whatsapp/tools';
 import { ExchangeRate } from '@/lib/models/ExchangeRate';
 import { parseBatchProductsFromText } from '@/lib/ai/batchParser';
+import { detectDuplicates } from '@/lib/duplicateDetector';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -480,6 +481,20 @@ export async function POST(req: NextRequest) {
       ordenesPendientesCobro: debtorsSummary,
       top3ModelosMasVendidos: topModels.slice(0, 5),
       inventario: { totalModelosActivos: products.length, valorTotalInventarioUSD: totalInventoryValue.toFixed(2), modelosAgotados: outOfStockProducts.length, modelosBajoStock: lowStockProducts.length },
+      duplicadosDetectados: (() => {
+        const detected = detectDuplicates(products as any, 75);
+        return {
+          totalParesDetectados: detected.length,
+          pares: detected.slice(0, 10).map((dp) => ({
+            marca: dp.productA.marca,
+            productoA: { id: dp.productA.id, modelo: dp.productA.modelo, calidad: dp.productA.calidad, stock: dp.productA.stock, precio: dp.productA.precio },
+            productoB: { id: dp.productB.id, modelo: dp.productB.modelo, calidad: dp.productB.calidad, stock: dp.productB.stock, precio: dp.productB.precio },
+            coincidencia: `${dp.score}%`,
+            motivo: dp.reasons.join(', '),
+            stockSuma: (dp.productA.stock || 0) + (dp.productB.stock || 0),
+          })),
+        };
+      })(),
       mermasYGarantias: {
         totalBajasMermasUds: totalMermaUnits,
         rankingModelosConProblemas: topMermas.map((m) => ({ modelo: m.producto, unidadesEnMerma: m.units, motivosRegistrados: m.reasons, fechaUltimaBaja: m.lastDate })),
@@ -546,9 +561,36 @@ Si el usuario solicita una ACCIÓN MUTABLE (vender, cambiar precio, cambiar cali
   Pregúntale qué modelo y qué cantidad o nuevo precio desea aplicar.
 
 ═══════════════════════════════════════════════════════════════
-🔠 REGLA ESTRICTA DE MAYÚSCULAS PARA PRODUCTOS
+🔠 REGLA ESTRICTA DE MAYÚSCULAS Y SEPARACIÓN DE MODELO / CALIDAD
 ═══════════════════════════════════════════════════════════════
-Tanto la MARCA como el MODELO y la CALIDAD de cualquier producto deben escribirse SIEMPRE Y OBLIGATORIAMENTE 100% EN MAYÚSCULAS (ejemplos: "SAMSUNG", "REDMI NOTE 11", "IPHONE 13 PRO MAX", "MOTO G22", "INFINIX HOT 12 PLAY"). Nunca uses minúsculas en marcas ni modelos al agregarlos o modificarlos.
+1. Tanto la MARCA como el MODELO y la CALIDAD de cualquier producto deben escribirse SIEMPRE Y OBLIGATORIAMENTE 100% EN MAYÚSCULAS.
+2. **NUNCA** incluyas la calidad ni paréntesis dentro del nombre del modelo:
+   • INCORRECTO: modelo: "A20/A205F (INCELL)", calidad: "C/M"
+   • CORRECTO:   modelo: "A20/A205F", calidad: "INCELL C/M"
+   • INCORRECTO: modelo: "A30S (INCELL)", calidad: "C/M"
+   • CORRECTO:   modelo: "A30S", calidad: "INCELL C/M"
+   Las calidades estándar son: "ORIGINAL C/M", "INCELL C/M", "OLED C/M", "AMOLED C/M", "ORIGINAL S/M", "INCELL S/M", etc.
+
+═══════════════════════════════════════════════════════════════
+🔀 REGLA DE DETECCIÓN Y FUSIÓN INTERACTIVA DE DUPLICADOS
+═══════════════════════════════════════════════════════════════
+• Si el usuario te pregunta "¿detectas algún duplicado?", "¿hay duplicados en el inventario?" o similar:
+  1. Revisa "duplicadosDetectados" del contexto.
+  2. Si hay duplicados detectados:
+     - Muestra un resumen claro, profesional y numerado de los pares detectados (mostrando marca, los dos nombres que entraron diferentes, sus stocks individuales y precios).
+     - Pregúntale al usuario interactivamente si desea unirlos:
+       "Detecto X posibles repuestos multi-compatibles duplicados:
+       1. [Marca] [Modelo A] (Stock: X uds, $Y) vs [Modelo B] (Stock: Z uds, $W)
+          • Coincidencia: N%
+          • Motivo: [...]
+          • Stock combinado total: (X + Z) unidades
+       ¿Deseas que los una? Puedo unificarlos manteniendo el precio de $Y USD y sumando el stock a (X+Z) uds. ¿Cuál de los dos nombres prefieres conservar?"
+  3. Si el usuario confirma o te indica cuál conservar (ej: "Sí, únelos", "Une el A02S con el A04E", "fusiona dejando el nombre del segundo"):
+     - Emite DE INMEDIATO:
+       [ACCION:FUSIONAR_PRODUCTOS:{"queryPrincipal":"...","querySecundario":"...","nuevoModelo":"...","nuevoPrecio":...}]
+     - Explica que el stock se unificó, el historial de movimientos y ventas se conservó al 100% y el registro duplicado fue eliminado.
+  4. Si no hay duplicados detectados:
+     - Responde con total seguridad: "Revisé todo el catálogo activo y no detecto repuestos duplicados ni multi-compatibles sin unificar. El inventario está completamente limpio y al día."
 
 ═══════════════════════════════════════════════════════════════
 🔄 REGLA DE REINGRESO / SUMA INTELIGENTE DE STOCK EN PRODUCTOS EXISTENTES

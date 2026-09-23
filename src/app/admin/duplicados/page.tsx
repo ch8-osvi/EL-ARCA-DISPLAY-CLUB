@@ -92,7 +92,7 @@ export default function DuplicadosPage() {
   // Detect duplicate pairs using the duplicateDetector engine
   const allDetectedPairs = useMemo(() => {
     if (products.length < 2) return [];
-    return detectDuplicates(products, 55);
+    return detectDuplicates(products, 75);
   }, [products]);
 
   // Filter pairs by search & ignored status
@@ -265,18 +265,18 @@ export default function DuplicadosPage() {
       )}
 
       {/* Header Bar */}
-      <header className="border-b border-white/5 bg-[#0D101A]/80 backdrop-blur-xl sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <header className="sticky top-0 z-40 w-full glass-panel border-b border-[#D4AF37]/15 backdrop-blur-xl bg-[#090A0F]/90">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-4">
           <Link
             href="/admin"
-            className="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold text-gray-400 hover:text-white transition-colors"
+            className="flex items-center gap-2 text-[#D4AF37] hover:text-white transition-colors group"
           >
-            <ArrowLeft className="w-4 h-4 text-[#D4AF37]" />
-            <span>Volver al Catálogo Admin</span>
+            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
+            <span className="text-sm font-bold">Panel Admin</span>
           </Link>
 
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-[11px] font-bold text-amber-300">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-xs font-bold text-amber-300">
               <GitMerge className="w-3.5 h-3.5" />
               Gestión de Duplicados
             </span>

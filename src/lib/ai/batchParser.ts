@@ -41,9 +41,60 @@ const KNOWN_BRANDS = [
 ];
 
 /**
- * Parses raw text containing one or more product entries formatted like:
- * "▪️ ALCATEL 1S 2020/5028 (ORIGINAL) x15 - $14"
- * or newline-separated lists.
+ * Normaliza y separa limpiamente el nombre del modelo de su tecnología de panel y marco.
+ * Garantiza que:
+ * - El modelo nunca contenga paréntesis de calidad como "(INCELL)" o "(ORIGINAL)"
+ * - La calidad se consolide siempre en formato canónico (ej: "INCELL C/M", "ORIGINAL C/M", "OLED C/M")
+ */
+export function cleanModelAndQuality(rawModel: string, rawQuality?: string): { modelo: string; calidad: string } {
+  let model = (rawModel || '').toUpperCase().trim();
+  const qualityInput = (rawQuality || '').toUpperCase().trim();
+
+  // 1. Detectar tecnología de pantalla
+  let tech = '';
+  if (/INCELL/i.test(model) || /INCELL/i.test(qualityInput)) {
+    tech = 'INCELL';
+  } else if (/ORIGINA/i.test(model) || /ORIGINA/i.test(qualityInput)) {
+    tech = 'ORIGINAL';
+  } else if (/AMOLED/i.test(model) || /AMOLED/i.test(qualityInput)) {
+    tech = 'AMOLED';
+  } else if (/OLED/i.test(model) || /OLED/i.test(qualityInput)) {
+    tech = 'OLED';
+  } else if (/\bAAA\b/i.test(model) || /\bAAA\b/i.test(qualityInput)) {
+    tech = 'AAA';
+  } else if (/COMPATIBLE/i.test(model) || /COMPATIBLE/i.test(qualityInput)) {
+    tech = 'COMPATIBLE';
+  } else {
+    tech = 'ORIGINAL';
+  }
+
+  // 2. Detectar marco: C/M (Con Marco) vs S/M (Sin Marco)
+  let frame = 'C/M'; // Estándar predeterminado del negocio
+  if (/\b(S\/M|SIN MARCO|S M|SINMARCO)\b/i.test(model) || /\b(S\/M|SIN MARCO|S M|SINMARCO)\b/i.test(qualityInput)) {
+    frame = 'S/M';
+  } else if (/\b(C\/M|CON MARCO|C M|CONMARCO)\b/i.test(model) || /\b(C\/M|CON MARCO|C M|CONMARCO)\b/i.test(qualityInput)) {
+    frame = 'C/M';
+  }
+
+  // 3. Limpiar modelo: eliminar paréntesis de calidad y palabras de marco
+  model = model
+    .replace(/\s*\((ORIGINAL|INCELL|OLED|AMOLED|AAA|COMPATIBLE|ORIGINA-[^\)]*|[^)]*C\/M[^)]*|[^)]*S\/M[^)]*)\)\s*/gi, ' ')
+    .replace(/\b(INCELL|ORIGINAL|AMOLED|OLED|AAA|COMPATIBLE)\b/gi, ' ')
+    .replace(/\b(C\/M|S\/M|CON MARCO|SIN MARCO|C M|S M)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  model = model.replace(/^[\s/\\-]+|[\s/\\-]+$/g, '').trim();
+
+  return {
+    modelo: model,
+    calidad: `${tech} ${frame}`,
+  };
+}
+
+/**
+ * Parsea texto crudo conteniendo listas de repuestos:
+ * "▪️ SAMSUNG A20/A205F (INCELL) C/M x10 - $15"
  */
 export function parseBatchProductsFromText(text: string): ParsedBatchProduct[] {
   if (!text || typeof text !== 'string') return [];
@@ -58,7 +109,6 @@ export function parseBatchProductsFromText(text: string): ParsedBatchProduct[] {
 
   for (const raw of rawItems) {
     // Pattern: [PRODUCT DESCRIPTION] x[STOCK] - $[PRICE] (or - [PRICE])
-    // Supports: x15 - $14, x 20 - $14.50, x5 - 14, x1 - $17.50, etc.
     const match = raw.match(/^(.*?)\s*x\s*(\d+)\s*[-–:]\s*\$?([0-9]+(?:\.[0-9]+)?)\s*$/i);
     if (!match) continue;
 
@@ -68,22 +118,7 @@ export function parseBatchProductsFromText(text: string): ParsedBatchProduct[] {
 
     if (isNaN(stock) || stock < 0 || isNaN(precio) || precio <= 0) continue;
 
-    // 1. Extract quality inside parentheses if present, e.g. (ORIGINAL), (INCELL), (AAA)
-    let calidad = 'ORIGINAL C/M';
-    const qualityMatch = desc.match(/\((ORIGINAL|INCELL|OLED|AMOLED|AAA|COMPATIBLE|ORIGINA-[^\)]*|[^)]*C\/M[^)]*|[^)]*S\/M[^)]*)\)/i);
-    if (qualityMatch) {
-      const q = qualityMatch[1].toUpperCase().trim();
-      if (q.includes('INCELL')) calidad = 'INCELL';
-      else if (q.includes('ORIGINA')) calidad = 'ORIGINAL';
-      else if (q.includes('AAA')) calidad = 'AAA';
-      else if (q.includes('OLED')) calidad = 'OLED';
-      else calidad = q;
-
-      // Remove quality tag from description
-      desc = desc.replace(qualityMatch[0], '').trim();
-    }
-
-    // 2. Detect Brand
+    // Detectar Marca
     let marca = 'GENERICO';
     const upperDesc = desc.toUpperCase();
 
@@ -92,7 +127,6 @@ export function parseBatchProductsFromText(text: string): ParsedBatchProduct[] {
       desc = desc.replace(/^RM\s*/i, 'REDMI ');
     } else if (/^IPHONE\b/i.test(upperDesc)) {
       marca = 'APPLE';
-      // keep IPHONE in model
     } else {
       for (const b of KNOWN_BRANDS) {
         const regex = new RegExp(`^${b}(?:\\s*\\/\\s*\\w+)?\\s+`, 'i');
@@ -125,10 +159,9 @@ export function parseBatchProductsFromText(text: string): ParsedBatchProduct[] {
       desc = desc.replace(dupRegex, '').trim();
     }
 
-    // Always 100% UPPERCASE as per project strict rule
+    // Aplicar normalización estricta de modelo y calidad
+    const { modelo: finalModelo, calidad: finalCalidad } = cleanModelAndQuality(desc);
     const finalMarca = marca.toUpperCase().trim();
-    const finalModelo = desc.toUpperCase().replace(/\s+/g, ' ').trim();
-    const finalCalidad = calidad.toUpperCase().trim();
 
     if (finalModelo.length > 0) {
       parsed.push({

@@ -12,6 +12,7 @@ import { StockHistory } from '@/lib/models/StockHistory';
 import { ExchangeRate } from '@/lib/models/ExchangeRate';
 import { getHavanaMonthDay } from '@/lib/dateUtils';
 import mongoose from 'mongoose';
+import { cleanModelAndQuality } from '@/lib/ai/batchParser';
 
 // Re-export whatsapp tools that work with the same DB schema
 export {
@@ -47,8 +48,9 @@ export async function executeAgregarProducto(input: {
     await connectToDatabase();
 
     const marcaUp   = input.marca.toUpperCase().trim();
-    const modeloUp  = input.modelo.toUpperCase().trim();
-    const calidadUp = input.calidad.toUpperCase().trim();
+    const { modelo: modeloClean, calidad: calidadClean } = cleanModelAndQuality(input.modelo, input.calidad);
+    const modeloUp  = modeloClean;
+    const calidadUp = calidadClean;
     const stock     = Math.max(0, input.stock ?? 1);
     const precio    = Math.max(0, input.precio || 0);
 
@@ -200,8 +202,9 @@ export async function executeAgregarProductosLote(
 
     for (const item of items) {
       const marcaUp   = (item.marca   || '').toUpperCase().trim();
-      const modeloUp  = (item.modelo  || '').toUpperCase().trim();
-      const calidadUp = (item.calidad || '').toUpperCase().trim();
+      const { modelo: modeloClean, calidad: calidadClean } = cleanModelAndQuality(item.modelo, item.calidad);
+      const modeloUp  = modeloClean;
+      const calidadUp = calidadClean;
       const qty       = Math.max(0, item.stock !== undefined ? Number(item.stock) : 1);
       const precio    = Math.max(0, Number(item.precio) || 0);
 
@@ -408,8 +411,9 @@ export async function executeAgregarLoteBulk(
 
     for (const item of items) {
       const marcaUp   = (item.marca   || '').toUpperCase().trim();
-      const modeloUp  = (item.modelo  || '').toUpperCase().trim();
-      const calidadUp = (item.calidad || '').toUpperCase().trim();
+      const { modelo: modeloClean, calidad: calidadClean } = cleanModelAndQuality(item.modelo, item.calidad);
+      const modeloUp  = modeloClean;
+      const calidadUp = calidadClean;
       const qty       = Math.max(0, item.stock !== undefined ? Number(item.stock) : 1);
       const precio    = Math.max(0, Number(item.precio) || 0);
 
@@ -1170,4 +1174,109 @@ export async function executeFusionarProductos(params: {
     return { success: false, message: `❌ Error al fusionar productos: ${msg}` };
   }
 }
+
+// ─── Normalizar Catálogo Existente (Saneamiento de Modelo y Calidad) ──────────
+
+export async function executeNormalizarCatalogoExistente() {
+  try {
+    await connectToDatabase();
+
+    const candidates = await Product.find({
+      $or: [
+        { modelo: /\((INCELL|ORIGINAL|OLED|AMOLED|AAA|COMPATIBLE)\)/i },
+        { modelo: /\b(INCELL|ORIGINAL|OLED|AMOLED)\b/i },
+        { calidad: 'C/M' },
+        { calidad: 'S/M' },
+      ],
+    });
+
+    let modifiedCount = 0;
+    let mergedCount = 0;
+    const logs: string[] = [];
+
+    for (const prod of candidates) {
+      const { modelo: cleanMod, calidad: cleanCal } = cleanModelAndQuality(prod.modelo, prod.calidad);
+      if (cleanMod === prod.modelo && cleanCal === prod.calidad) continue;
+
+      // Verificar si ya existe otro registro con ese modelo y calidad limpios
+      const existing = await Product.findOne({
+        _id: { $ne: prod._id },
+        marca: prod.marca,
+        modelo: { $regex: new RegExp(`^${cleanMod.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+        calidad: cleanCal,
+      });
+
+      if (existing) {
+        // Fusionar con el existente
+        const stockToAdd = prod.stock || 0;
+        existing.stock = (existing.stock || 0) + stockToAdd;
+        if (prod.precio > 0 && prod.precio !== existing.precio) {
+          existing.precio = prod.precio;
+        }
+        if (existing.stock > 0) existing.isHidden = false;
+        await existing.save();
+
+        // Migrar StockHistory
+        await StockHistory.updateMany(
+          { productId: prod.id },
+          { $set: { productId: existing.id, productName: `${existing.marca} ${cleanMod} (${cleanCal})` } }
+        );
+
+        // Migrar Sale items
+        await Sale.updateMany(
+          { 'items.productId': prod.id },
+          { $set: { 'items.$[elem].productId': existing.id, 'items.$[elem].modelo': cleanMod } },
+          { arrayFilters: [{ 'elem.productId': prod.id }] }
+        );
+
+        if (stockToAdd > 0) {
+          await StockHistory.create({
+            productId: existing.id,
+            productName: `${existing.marca} ${cleanMod} (${cleanCal})`,
+            type: 'entrada',
+            qty: stockToAdd,
+            stockBefore: existing.stock - stockToAdd,
+            stockAfter: existing.stock,
+            reason: `Fusión automática por normalización de calidad: se unificó "${prod.modelo}" en "${cleanMod}"`,
+          });
+        }
+
+        // Eliminar producto viciado
+        await Product.deleteOne({ _id: prod._id });
+        mergedCount++;
+        logs.push(`• Fusionado "${prod.modelo}" en "${cleanMod}" (${cleanCal}) ➔ Stock: ${existing.stock} uds`);
+      } else {
+        // Actualizar registro en su lugar
+        const oldName = `${prod.modelo} [${prod.calidad}]`;
+        prod.modelo = cleanMod;
+        prod.calidad = cleanCal;
+        await prod.save();
+
+        // Actualizar nombres en historiales si aplica
+        await StockHistory.updateMany(
+          { productId: prod.id },
+          { $set: { productName: `${prod.marca} ${cleanMod} (${cleanCal})` } }
+        );
+
+        modifiedCount++;
+        logs.push(`• Saneado "${oldName}" ➔ "${cleanMod}" (${cleanCal})`);
+      }
+    }
+
+    return {
+      success: true,
+      modifiedCount,
+      mergedCount,
+      message:
+        `🧹 **Normalización de Catálogo Ejecutada con Éxito**\n\n` +
+        `✅ **${modifiedCount} repuesto(s) corregidos** (calidad y modelo limpiados)\n` +
+        `🔀 **${mergedCount} repuesto(s) duplicados fusionados** a sus registros oficiales con stock sumado\n\n` +
+        (logs.length > 0 ? logs.slice(0, 15).join('\n') : 'El catálogo ya se encontraba 100% normalizado.'),
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { success: false, message: `❌ Error al normalizar catálogo: ${msg}` };
+  }
+}
+
 

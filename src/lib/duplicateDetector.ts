@@ -169,7 +169,9 @@ export function detectDuplicates(products: Product[], minScore = 75): DuplicateP
         const prodA = brandProducts[i];
         const prodB = brandProducts[j];
 
-        const pairKey = [prodA.id, prodB.id].sort().join(':::');
+        const idA = String(prodA.id || (prodA as any)._id || `idx-${i}`);
+        const idB = String(prodB.id || (prodB as any)._id || `idx-${j}`);
+        const pairKey = [idA, idB].sort().join(':::');
         if (seenPairKeys.has(pairKey)) continue;
 
         const { score, matchingTokens, reasons } = calculateDuplicateScore(prodA, prodB);

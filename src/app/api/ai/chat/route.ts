@@ -482,18 +482,23 @@ export async function POST(req: NextRequest) {
       top3ModelosMasVendidos: topModels.slice(0, 5),
       inventario: { totalModelosActivos: products.length, valorTotalInventarioUSD: totalInventoryValue.toFixed(2), modelosAgotados: outOfStockProducts.length, modelosBajoStock: lowStockProducts.length },
       duplicadosDetectados: (() => {
-        const detected = detectDuplicates(products as any, 75);
-        return {
-          totalParesDetectados: detected.length,
-          pares: detected.slice(0, 10).map((dp) => ({
-            marca: dp.productA.marca,
-            productoA: { id: dp.productA.id, modelo: dp.productA.modelo, calidad: dp.productA.calidad, stock: dp.productA.stock, precio: dp.productA.precio },
-            productoB: { id: dp.productB.id, modelo: dp.productB.modelo, calidad: dp.productB.calidad, stock: dp.productB.stock, precio: dp.productB.precio },
-            coincidencia: `${dp.score}%`,
-            motivo: dp.reasons.join(', '),
-            stockSuma: (dp.productA.stock || 0) + (dp.productB.stock || 0),
-          })),
-        };
+        try {
+          const detected = detectDuplicates(products as any, 75);
+          return {
+            totalParesDetectados: detected.length,
+            pares: detected.slice(0, 10).map((dp) => ({
+              marca: dp.productA.marca,
+              productoA: { id: dp.productA.id || String((dp.productA as any)._id || ''), modelo: dp.productA.modelo, calidad: dp.productA.calidad, stock: dp.productA.stock, precio: dp.productA.precio },
+              productoB: { id: dp.productB.id || String((dp.productB as any)._id || ''), modelo: dp.productB.modelo, calidad: dp.productB.calidad, stock: dp.productB.stock, precio: dp.productB.precio },
+              coincidencia: `${dp.score}%`,
+              motivo: dp.reasons.join(', '),
+              stockSuma: (dp.productA.stock || 0) + (dp.productB.stock || 0),
+            })),
+          };
+        } catch (dupErr) {
+          console.error('[Duplicate Detector Context Error]:', dupErr);
+          return { totalParesDetectados: 0, pares: [] };
+        }
       })(),
       mermasYGarantias: {
         totalBajasMermasUds: totalMermaUnits,
@@ -751,7 +756,7 @@ DIRECTRICES DE TONO Y ESTILO (OBLIGATORIO)
 
     // ── 15. Call Gemini ───────────────────────────────────────────────────────
 
-    const geminiApiKey = process.env.GEMINI_API_KEY;
+    const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     if (!geminiApiKey) {
       return NextResponse.json(
         { success: false, error: 'No se ha configurado la variable GEMINI_API_KEY en el servidor. Agrégala en las variables de entorno de Vercel.' },
@@ -762,24 +767,27 @@ DIRECTRICES DE TONO Y ESTILO (OBLIGATORIO)
     let isQuotaExceeded = false;
     // Model fallback chain: uses Google production high-availability models with multi-tier failover
     const candidateModels = [
-      'gemini-2.5-flash',
-      'gemini-2.0-flash',
-      'gemini-1.5-flash',
-      'gemini-2.5-pro',
-      'gemini-1.5-pro',
+      'gemini-3-flash-preview',
+      'gemini-flash-latest',
       'gemini-3.6-flash',
       'gemini-3.5-flash',
+      'gemini-3.8-flash',
+      'gemini-3.7-flash',
+      'gemini-flash-lite-latest',
     ];
 
     let candidateText = '';
     const allErrors: string[] = [];
     
     for (const model of candidateModels) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
       try {
         const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
         const geminiRes = await fetch(geminiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
           body: JSON.stringify({
             system_instruction: {
               parts: [{ text: systemInstruction }],
@@ -801,6 +809,7 @@ DIRECTRICES DE TONO Y ESTILO (OBLIGATORIO)
             },
           }),
         });
+        clearTimeout(timeoutId);
 
         if (geminiRes.ok) {
           const geminiData = await geminiRes.json();
@@ -817,6 +826,7 @@ DIRECTRICES DE TONO Y ESTILO (OBLIGATORIO)
           console.error(`Gemini API Error for model ${model}:`, errStr);
         }
       } catch (modelErr: any) {
+        clearTimeout(timeoutId);
         const errStr = `Exception for ${model}: ${modelErr.message || String(modelErr)}`;
         allErrors.push(errStr);
         console.warn(`Error querying model ${model}:`, modelErr);

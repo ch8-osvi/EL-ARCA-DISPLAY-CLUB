@@ -412,10 +412,20 @@ export default function AIAssistantPage() {
         }),
       });
 
-      const data = await res.json();
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch {
+        data = {
+          success: false,
+          error: res.status === 504
+            ? 'El servidor tardó demasiado en responder (Timeout 504). Por favor repite la pregunta en unos segundos.'
+            : `El servidor respondió con código ${res.status}. Vuelve a intentar en unos segundos.`
+        };
+      }
       setLoading(false);
 
-      if (res.ok && data.success) {
+      if (res.ok && data?.success) {
         setQuotaAlert(null);
         const assistantMsgId = `assistant-${Date.now()}`;
         const assistantMsg: ChatMessage = {
@@ -468,12 +478,12 @@ export default function AIAssistantPage() {
           );
         }
       }
-    } catch {
+    } catch (err: any) {
       setLoading(false);
       const connErrorMsg: ChatMessage = {
         id: `err-conn-${Date.now()}`,
         sender: 'assistant',
-        text: '⚠️ **Error de conexión:** No se pudo comunicar con el servidor analítico de la tienda.',
+        text: `⚠️ **Error de conexión:** ${err?.message || 'No se pudo comunicar con el servidor analítico de la tienda.'}`,
         time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
       };
       setSessions((prev) =>

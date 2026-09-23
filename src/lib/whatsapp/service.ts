@@ -173,7 +173,7 @@ export async function processWhatsAppAiMessage(userMessage: string, senderPhone:
   const isAdmin = isAdminUser(senderPhone);
   const cleanPrompt = (userMessage || '').trim();
   const promptLower = cleanPrompt.toLowerCase();
-  const geminiApiKey = process.env.GEMINI_API_KEY;
+  const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
 
   // =========================================================================
   // PIPELINE A: ADMINISTRADOR / DUEÑO (+53 52031972)
@@ -451,7 +451,7 @@ Si es una consulta normal de información (precios, stock, ventas, etc.), respon
       `${historyBlock}` +
       `MENSAJE ACTUAL DE OSVALDO:\n"${cleanPrompt}"`;
 
-    const candidateModels = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+    const candidateModels = ['gemini-3-flash-preview', 'gemini-flash-latest', 'gemini-3.6-flash', 'gemini-3.5-flash'];
     for (const model of candidateModels) {
       try {
         const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
@@ -586,7 +586,7 @@ REGLAS DE SEGURIDAD Y PRIVACIDAD ESTRICTAS (OBLIGATORIAS):
     `${clientHistoryBlock}` +
     `PREGUNTA DEL CLIENTE:\n"${cleanPrompt}"`;
 
-  const candidateModels = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+  const candidateModels = ['gemini-3-flash-preview', 'gemini-flash-latest', 'gemini-3.6-flash', 'gemini-3.5-flash'];
   for (const model of candidateModels) {
     try {
       const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;

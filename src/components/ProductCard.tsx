@@ -32,7 +32,7 @@ export default function ProductCard({
 
   // Dynamic Badges without emojis
   const isTopSeller = Boolean(product.isTopSeller);
-  const isLowStock = product.stock > 0 && product.stock <= 2;
+  const isLowStock = product.stock === 1;
   const isNewArrival = useMemo(() => {
     if (!product.createdAt) return false;
     const createdTime = new Date(product.createdAt).getTime();

@@ -48,7 +48,7 @@ export default function ProductTable({
               const formattedCUP = cupPrice.toLocaleString('es-CU');
 
               const isTopSeller = Boolean(product.isTopSeller);
-              const isLowStock = product.stock > 0 && product.stock <= 2;
+              const isLowStock = product.stock === 1;
               const isNewArrival = (() => {
                 if (!product.createdAt) return false;
                 const createdTime = new Date(product.createdAt).getTime();

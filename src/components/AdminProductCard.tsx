@@ -46,14 +46,14 @@ export default function AdminProductCard({ product, onDelete, onEdit }: AdminPro
         </div>
 
         {/* Subtle status badges for admin */}
-        {(product.isTopSeller || (product.stock > 0 && product.stock <= 2)) && (
+        {(product.isTopSeller || product.stock === 1) && (
           <div className="flex items-center gap-1.5 flex-wrap mb-2">
             {product.isTopSeller && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#171B2B] border border-[#D4AF37]/40 text-[#F3E0A9] text-[9px] font-extrabold uppercase tracking-wider">
                 MÁS VENDIDO
               </span>
             )}
-            {product.stock > 0 && product.stock <= 2 && (
+            {product.stock === 1 && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#1E1215] border border-rose-500/30 text-rose-300 text-[9px] font-extrabold uppercase tracking-wider">
                 BAJO STOCK
               </span>

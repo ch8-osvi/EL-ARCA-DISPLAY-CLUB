@@ -27,6 +27,7 @@ import {
   EyeOff,
   Pencil,
   Sparkles,
+  GitMerge,
 } from 'lucide-react';
 import {
   getCanonicalBrand,
@@ -896,6 +897,16 @@ export default function AdminPage() {
             >
               <Sparkles className="w-4 h-4 text-purple-300 animate-pulse shrink-0" />
               <span>Asistente IA ✨</span>
+            </Link>
+
+            {/* Button 4: Merge Duplicates */}
+            <Link
+              id="btn-open-duplicates"
+              href="/admin/duplicados"
+              className="h-12 px-4 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-[#E5C158] border border-[#D4AF37]/40 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-sm w-full sm:w-auto"
+            >
+              <GitMerge className="w-4 h-4 text-[#D4AF37] shrink-0" />
+              <span>Unir Duplicados</span>
             </Link>
           </div>
         </section>

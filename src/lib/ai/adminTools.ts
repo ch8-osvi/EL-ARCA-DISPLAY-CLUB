@@ -1078,3 +1078,96 @@ export async function executeActualizarTasaCambio(nuevaTasa: number) {
   }
 }
 
+// ─── Fusionar Productos Duplicados ──────────────────────────────────────────
+
+export async function executeFusionarProductos(params: {
+  queryPrincipal: string;
+  querySecundario: string;
+  nuevoModelo?: string;
+  nuevoPrecio?: number;
+}) {
+  try {
+    await connectToDatabase();
+    const q1 = params.queryPrincipal.trim();
+    const q2 = params.querySecundario.trim();
+
+    // Buscar primario
+    const primary = await Product.findOne({
+      $or: [
+        { id: q1 },
+        { modelo: { $regex: new RegExp(q1.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') } },
+      ],
+    });
+
+    if (!primary) {
+      return { success: false, message: `❌ No se encontró el producto principal con "${q1}"` };
+    }
+
+    // Buscar secundario
+    const secondary = await Product.findOne({
+      _id: { $ne: primary._id },
+      $or: [
+        { id: q2 },
+        { modelo: { $regex: new RegExp(q2.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') } },
+      ],
+    });
+
+    if (!secondary) {
+      return { success: false, message: `❌ No se encontró el producto secundario con "${q2}"` };
+    }
+
+    const stockBefore = primary.stock || 0;
+    const stockSec = secondary.stock || 0;
+    const combinedStock = stockBefore + stockSec;
+
+    const finalModelo = (params.nuevoModelo || primary.modelo).toUpperCase().trim();
+    const finalPrecio = params.nuevoPrecio !== undefined && params.nuevoPrecio >= 0 ? params.nuevoPrecio : primary.precio;
+
+    primary.modelo = finalModelo;
+    primary.precio = finalPrecio;
+    primary.stock = combinedStock;
+    if (combinedStock > 0) primary.isHidden = false;
+    await primary.save();
+
+    // Migrar StockHistory
+    await StockHistory.updateMany(
+      { productId: secondary.id },
+      { $set: { productId: primary.id, productName: `${primary.marca} ${finalModelo} (${primary.calidad})` } }
+    );
+
+    // Migrar Sale items
+    await Sale.updateMany(
+      { 'items.productId': secondary.id },
+      { $set: { 'items.$[elem].productId': primary.id, 'items.$[elem].modelo': finalModelo } },
+      { arrayFilters: [{ 'elem.productId': secondary.id }] }
+    );
+
+    // Registrar nuevo historial
+    await StockHistory.create({
+      productId: primary.id,
+      productName: `${primary.marca} ${finalModelo} (${primary.calidad})`,
+      type: 'entrada',
+      qty: Math.max(1, stockSec),
+      stockBefore,
+      stockAfter: combinedStock,
+      reason: `Fusión de inventario por Asistente IA: se integraron +${stockSec} uds de "${secondary.modelo}" en "${finalModelo}". Precio: $${finalPrecio} USD`,
+    });
+
+    // Eliminar secundario
+    await Product.deleteOne({ _id: secondary._id });
+
+    return {
+      success: true,
+      message:
+        `🔀 **Fusión de Productos Completada con Éxito**\n\n` +
+        `• **Producto Resultante:** ${primary.marca} ${finalModelo} (${primary.calidad})\n` +
+        `• **Stock Combinado:** ${stockBefore} uds + ${stockSec} uds = **${combinedStock} unidades**\n` +
+        `• **Precio Oficial:** $${finalPrecio} USD\n` +
+        `• **Producto Integrado:** "${secondary.modelo}" (${secondary.id}) eliminado y su historial unificado.`,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { success: false, message: `❌ Error al fusionar productos: ${msg}` };
+  }
+}
+

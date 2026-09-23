@@ -18,6 +18,7 @@ import {
   executeCrearOrdenMulti,
   executeAnularOrden,
   executeActualizarTasaCambio,
+  executeFusionarProductos,
 } from '@/lib/ai/adminTools';
 import {
   findProductSmart,
@@ -233,6 +234,15 @@ async function executeActions(
       case 'OCULTAR_LOTE': {
         const queries = Array.isArray(payload.queries) ? payload.queries.map(String) : [];
         result = await executeOcultarLote(queries);
+        break;
+      }
+      case 'FUSIONAR_PRODUCTOS': {
+        result = await executeFusionarProductos({
+          queryPrincipal: String(payload.queryPrincipal ?? ''),
+          querySecundario: String(payload.querySecundario ?? ''),
+          nuevoModelo: payload.nuevoModelo ? String(payload.nuevoModelo).toUpperCase().trim() : undefined,
+          nuevoPrecio: payload.nuevoPrecio !== undefined ? Number(payload.nuevoPrecio) : undefined,
+        });
         break;
       }
       default:
@@ -652,6 +662,9 @@ ACCIONES DISPONIBLES:
 
 15. OCULTAR_LOTE — Ocultar múltiples productos a la vez (ideal para UNDO de lotes agregados por error):
 [ACCION:OCULTAR_LOTE:{"queries":["SAMSUNG A14", "XIAOMI Redmi 9A"]}]
+
+16. FUSIONAR_PRODUCTOS — Fusionar dos productos duplicados o multi-compatibles (suma stock, migra historial y ventas, y elimina el secundario):
+[ACCION:FUSIONAR_PRODUCTOS:{"queryPrincipal":"A02S","querySecundario":"A04E UNIVERSAL","nuevoModelo":"A02S / A03S / A04E / F04 (UNIVERSAL)","nuevoPrecio":14}]
 
 ═══════════════════════════════════════════════════════════════
 📋 CATÁLOGO ACTUAL (para búsquedas inteligentes de productos)

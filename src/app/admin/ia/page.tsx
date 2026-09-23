@@ -457,11 +457,11 @@ export default function AIAssistantPage() {
       } else {
         const isQuota = data?.isQuotaExceeded || res.status === 429;
         if (isQuota) {
-          setQuotaAlert('⏳ Límite temporal de 15 consultas/min de Gemini alcanzado. Espera unos segundos y vuelve a preguntar.');
+          setQuotaAlert('⏳ Google Gemini está experimentando alta demanda. Espera unos segundos y vuelve a preguntar.');
           const quotaMsg: ChatMessage = {
             id: `quota-${Date.now()}`,
             sender: 'assistant',
-            text: '⏳ **Límite temporal alcanzado (15 consultas por minuto)**\n\nGoogle Gemini está pausado temporalmente para respetar la cuota gratuita. **Tranquilo, no se te cobrará nada.** Por favor espera unos segundos y repite tu pregunta.',
+            text: `⏳ **Google Gemini con alta demanda temporal**\n\n${data?.error || 'Los servidores de IA de Google están procesando muchas solicitudes simultáneas en este momento. Por favor espera unos segundos y repite tu pregunta.'}`,
             time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
           };
           setSessions((prev) =>

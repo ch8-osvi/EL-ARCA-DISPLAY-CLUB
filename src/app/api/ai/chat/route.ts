@@ -133,6 +133,25 @@ function parseMergeCommand(prompt: string, detectedPairs: any[]): { pairIndex: n
   return null;
 }
 
+/** Detects if the user is asking for the price of a specific phone model */
+function extractPriceQueryModel(prompt: string): string | null {
+  const p = prompt.toLowerCase().trim();
+  const match = p.match(/(?:qu[eé]\s+precio\s+tiene|precio\s+(?:de|del)|cu[aá]nto\s+(?:cuesta|vale|sale))\s+(?:la|el|los|las|un|una|display|pantalla)?\s*(.+)/i);
+  if (match && match[1]) {
+    const raw = match[1].replace(/[?¿!¡]/g, '').trim();
+    if (raw.length >= 2 && !/^(hoy|ayer|este mes|la tienda|todo|el negocio)$/i.test(raw)) {
+      return raw;
+    }
+  }
+  return null;
+}
+
+/** Detects follow-up questions asking for price in CUP (e.g. 'en cup precio', 'cuanto es en cup', 'en pesos') */
+function isCupConversionQuery(prompt: string): boolean {
+  const p = prompt.toLowerCase().trim();
+  return /^(en\s+cup(\s+precio)?|precio\s+en\s+cup|cu[aá]nto\s+(es\s+)?en\s+cup|en\s+pesos|a\s+c[oó]mo\s+sale\s+en\s+cup)$/i.test(p);
+}
+
 async function executeActions(
   response: string
 ): Promise<{ cleanedResponse: string; actionResults: string[] }> {
@@ -419,6 +438,42 @@ export async function POST(req: NextRequest) {
         source: 'duplicate-merge-fastpath',
         hasActions: true,
       });
+    }
+
+    // ── FAST-PATH: Instant Conversational CUP Price Conversion (< 5ms) ───────
+    if (isCupConversionQuery(cleanPrompt) && typeof rateDoc?.rate === 'number') {
+      const recentAssistantTexts = (history || [])
+        .slice(-4)
+        .reverse()
+        .map((h) => h.parts?.[0]?.text || '')
+        .join(' ');
+      const usdMatch = recentAssistantTexts.match(/\$(\d+(?:\.\d+)?)/);
+      if (usdMatch) {
+        const usdVal = parseFloat(usdMatch[1]);
+        const cupVal = Math.round(usdVal * rateDoc.rate);
+        return NextResponse.json({
+          success: true,
+          answer: `💵 **Conversión a CUP (Pesos Cubanos):**\n\nTomando el precio de **$${usdVal.toFixed(2)} USD** y la tasa oficial actual de **1 USD = ${rateDoc.rate} CUP**:\n\n• **Precio en CUP:** **${cupVal.toLocaleString('es-ES')} CUP**\n\n¿Deseas que te registre una venta o crear una orden con este producto?`,
+          source: 'currency-conversion-fastpath',
+          hasActions: false,
+        });
+      }
+    }
+
+    // ── FAST-PATH: Direct Single Product Price & Stock Query (< 15ms) ─────────
+    const priceQueryModel = extractPriceQueryModel(cleanPrompt);
+    if (priceQueryModel) {
+      const foundProduct = await findProductSmart(priceQueryModel);
+      if (foundProduct) {
+        const rate = typeof rateDoc?.rate === 'number' ? rateDoc.rate : null;
+        const cupStr = rate ? ` (o **${Math.round(foundProduct.precio * rate).toLocaleString('es-ES')} CUP** a tasa 1 USD = ${rate} CUP)` : '';
+        return NextResponse.json({
+          success: true,
+          answer: `📱 **${foundProduct.marca} ${foundProduct.modelo}** (${foundProduct.calidad})\n\n• **Precio:** **$${foundProduct.precio.toFixed(2)} USD**${cupStr}\n• **Stock disponible:** **${foundProduct.stock} unidades** en almacén\n\n¿Deseas registrar una venta o realizar algún ajuste con este modelo?`,
+          source: 'product-price-fastpath',
+          hasActions: false,
+        });
+      }
     }
 
     // ── 2. Compute date boundaries (Cuba timezone) ────────────────────────────
@@ -828,10 +883,10 @@ DIRECTRICES DE TONO Y ESTILO (OBLIGATORIO)
     // ── 14. Build Gemini history ──────────────────────────────────────────────
 
     const rawHistory = (history || [])
-      .slice(-10) // Keep last 10 turns for context
+      .slice(-6) // Keep last 6 turns to keep prompt compact and fast
       .map((h: ChatHistoryEntry) => ({
         role: h.role,
-        parts: h.parts,
+        parts: [{ text: (h.parts?.[0]?.text || '').slice(0, 450) }],
       }));
 
     // Sanitize history: ensure it starts with 'user' and alternates strictly
@@ -861,15 +916,10 @@ DIRECTRICES DE TONO Y ESTILO (OBLIGATORIO)
     }
 
     let isQuotaExceeded = false;
-    // Model fallback chain: uses Google production high-availability models with multi-tier failover
+    // Uses official production GA models without spamming rate limits
     const candidateModels = [
-      'gemini-3-flash-preview',
-      'gemini-flash-latest',
       'gemini-3.6-flash',
-      'gemini-3.5-flash',
-      'gemini-3.8-flash',
-      'gemini-3.7-flash',
-      'gemini-flash-lite-latest',
+      'gemini-3-flash-preview',
     ];
 
     let candidateText = '';
@@ -877,7 +927,7 @@ DIRECTRICES DE TONO Y ESTILO (OBLIGATORIO)
     
     for (const model of candidateModels) {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 18000);
+      const timeoutId = setTimeout(() => controller.abort(), 35000);
       try {
         const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
         const geminiRes = await fetch(geminiUrl, {
@@ -932,7 +982,7 @@ DIRECTRICES DE TONO Y ESTILO (OBLIGATORIO)
     if (!candidateText) {
       if (isQuotaExceeded) {
         return NextResponse.json(
-          { success: false, isQuotaExceeded: true, error: 'Has alcanzado el límite de 15 consultas por minuto de Google Gemini. Por favor espera unos segundos y vuelve a preguntar.' },
+          { success: false, isQuotaExceeded: true, error: 'Google Gemini está procesando con alta demanda en este momento. Por favor espera unos segundos y repite tu pregunta.' },
           { status: 429 }
         );
       }

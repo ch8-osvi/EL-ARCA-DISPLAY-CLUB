@@ -451,7 +451,7 @@ Si es una consulta normal de información (precios, stock, ventas, etc.), respon
       `${historyBlock}` +
       `MENSAJE ACTUAL DE OSVALDO:\n"${cleanPrompt}"`;
 
-    const candidateModels = ['gemini-3.6-flash', 'gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-flash-latest'];
+    const candidateModels = ['gemini-flash-lite-latest', 'gemini-3.6-flash'];
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
     
     for (let i = 0; i < candidateModels.length; i++) {
@@ -554,7 +554,7 @@ Si es una consulta normal de información (precios, stock, ventas, etc.), respon
   // =========================================================================
   // PIPELINE B: CLIENTES Y TÉCNICOS EXTERNOS (AISLAMIENTO TOTAL DE SEGURIDAD)
   // =========================================================================
-  const activeProducts = await Product.find({ isHidden: false })
+  const activeProducts = await Product.find({ isHidden: false, stock: { $gt: 0 } })
     .select('marca modelo calidad precio stock')
     .lean();
 
@@ -590,7 +590,7 @@ REGLAS DE SEGURIDAD Y PRIVACIDAD ESTRICTAS (OBLIGATORIAS):
     `${clientHistoryBlock}` +
     `PREGUNTA DEL CLIENTE:\n"${cleanPrompt}"`;
 
-  const candidateModels = ['gemini-3.6-flash', 'gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-flash-latest'];
+  const candidateModels = ['gemini-flash-lite-latest', 'gemini-3.6-flash'];
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
   for (let i = 0; i < candidateModels.length; i++) {

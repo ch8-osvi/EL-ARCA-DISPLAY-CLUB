@@ -362,7 +362,7 @@ export async function POST(req: NextRequest) {
 
     const [sales, products, mermasHistory, rateDoc] = await Promise.all([
       Sale.find({}).sort({ createdAt: -1 }).lean(),
-      Product.find({ isHidden: false }).lean(),
+      Product.find({ isHidden: false, stock: { $gt: 0 } }).lean(),
       StockHistory.find({ type: 'merma' }).sort({ createdAt: -1 }).lean(),
       ExchangeRate.findOne().sort({ updatedAt: -1 }).lean() as Promise<{ rate: number } | null>,
     ]);
@@ -876,10 +876,8 @@ DIRECTRICES DE TONO Y ESTILO (OBLIGATORIO)
     let isQuotaExceeded = false;
     // Uses official production GA models without spamming rate limits
     const candidateModels = [
+      'gemini-flash-lite-latest',
       'gemini-3.6-flash',
-      'gemini-3.8-flash',
-      'gemini-3.5-flash',
-      'gemini-flash-latest',
     ];
 
     let candidateText = '';

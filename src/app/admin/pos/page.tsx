@@ -373,7 +373,7 @@ export default function PosPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#090A0F] text-white flex flex-col">
+    <div className="min-h-screen bg-[#090A0F] text-white flex flex-col w-full overflow-x-hidden">
       {/* Toast Notification */}
       {toastMessage && (
         <div
@@ -411,40 +411,42 @@ export default function PosPage() {
 
       {/* POS Top Navbar */}
       <header className="sticky top-0 z-40 w-full glass-panel border-b border-[#D4AF37]/20 backdrop-blur-xl bg-[#090A0F]/90">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-20 flex items-center justify-between gap-2 sm:gap-4">
+          <div className="flex items-center gap-2 sm:gap-4 shrink-0 min-w-0">
             <Link
               href="/admin"
-              className="flex items-center gap-2 text-[#D4AF37] hover:text-white transition-colors group"
+              className="p-1 sm:p-2 -ml-1 flex items-center gap-1.5 text-[#D4AF37] hover:text-white transition-colors group shrink-0"
+              title="Volver al Panel Admin"
             >
               <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
-              <span className="text-sm font-bold hidden sm:inline">Panel Admin</span>
+              <span className="text-sm font-bold hidden md:inline">Panel Admin</span>
             </Link>
-            <div className="h-6 w-px bg-white/10 hidden sm:block" />
-            <div className="flex items-center gap-2">
-              <div className="w-9 h-9 rounded-xl gold-gradient-bg p-[1px] flex items-center justify-center shadow-gold-glow">
+            <div className="h-6 w-px bg-white/10 hidden md:block" />
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl gold-gradient-bg p-[1px] hidden xs:flex items-center justify-center shadow-gold-glow shrink-0">
                 <div className="w-full h-full bg-[#10131E] rounded-[11px] flex items-center justify-center">
-                  <ShoppingCart className="w-4 h-4 text-[#D4AF37]" />
+                  <ShoppingCart className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#D4AF37]" />
                 </div>
               </div>
-              <div>
-                <h1 className="text-base font-extrabold text-white leading-tight">
-                  Punto de Venta <span className="gold-gradient-text">POS</span>
+              <div className="min-w-0">
+                <h1 className="text-sm sm:text-base font-extrabold text-white leading-tight truncate">
+                  <span className="hidden sm:inline">Punto de Venta </span>
+                  <span className="gold-gradient-text">POS</span>
                 </h1>
-                <p className="text-[10px] text-gray-400">Control de Caja & Facturación</p>
+                <p className="text-[10px] text-gray-400 hidden lg:block">Control de Caja & Facturación</p>
               </div>
             </div>
           </div>
 
           {/* Quick links & Exchange rate pill */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
             {/* Live Currency Selector [ USD | CUP ] */}
             <div className="flex items-center bg-[#10131E] border border-[#D4AF37]/30 rounded-xl p-0.5 shadow-inner">
               <button
                 type="button"
                 id="btn-pos-currency-usd"
                 onClick={() => setCurrency('USD')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all duration-200 ${
+                className={`px-2 sm:px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-bold transition-all duration-200 ${
                   currency === 'USD'
                     ? 'bg-gradient-to-r from-[#D4AF37] to-[#AA8826] text-black shadow-sm'
                     : 'text-gray-400 hover:text-white'
@@ -457,7 +459,7 @@ export default function PosPage() {
                 type="button"
                 id="btn-pos-currency-cup"
                 onClick={() => setCurrency('CUP')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all duration-200 ${
+                className={`px-2 sm:px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-bold transition-all duration-200 ${
                   currency === 'CUP'
                     ? 'bg-gradient-to-r from-[#D4AF37] to-[#AA8826] text-black shadow-sm'
                     : 'text-gray-400 hover:text-white'
@@ -469,31 +471,31 @@ export default function PosPage() {
             </div>
 
             {/* Exchange Rate Badge */}
-            <div className="flex items-center bg-[#10131E] border border-[#D4AF37]/30 rounded-xl px-3 py-1.5 gap-2">
-              <Banknote className="w-4 h-4 text-emerald-400" />
+            <div className="flex items-center bg-[#10131E] border border-[#D4AF37]/30 rounded-xl px-2 sm:px-3 py-1 sm:py-1.5 gap-1.5 sm:gap-2">
+              <Banknote className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400 shrink-0" />
               {!isEditingRate ? (
                 <div
                   onClick={() => setIsEditingRate(true)}
-                  className="cursor-pointer flex items-center gap-1.5 text-xs"
+                  className="cursor-pointer flex items-center gap-1 text-[11px] sm:text-xs"
                   title="Clic para modificar tasa CUP"
                 >
-                  <span className="text-gray-400 text-[11px]">1 USD =</span>
-                  <span className="font-extrabold text-emerald-300 underline decoration-dotted">
+                  <span className="text-gray-400 text-[10px] hidden md:inline">1 USD =</span>
+                  <span className="font-extrabold text-emerald-300 underline decoration-dotted whitespace-nowrap">
                     {exchangeRate} CUP
                   </span>
                 </div>
               ) : (
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1">
                   <input
                     type="number"
                     value={tempRate}
                     onChange={(e) => setTempRate(e.target.value)}
-                    className="w-16 px-1.5 py-0.5 bg-black/50 border border-emerald-500/50 rounded text-xs text-white text-center focus:outline-none"
+                    className="w-14 sm:w-16 px-1 py-0.5 bg-black/50 border border-emerald-500/50 rounded text-xs text-white text-center focus:outline-none"
                     autoFocus
                   />
                   <button
                     onClick={handleSaveRate}
-                    className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 text-black font-bold text-[10px] rounded"
+                    className="px-1.5 sm:px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 text-black font-bold text-[10px] rounded"
                   >
                     OK
                   </button>
@@ -504,28 +506,30 @@ export default function PosPage() {
             {/* Inventory Link */}
             <Link
               href="/admin/pos/inventario"
-              className="px-3 py-2 rounded-xl bg-[#10131E] hover:bg-white/5 border border-white/10 text-xs font-bold text-gray-300 hover:text-white flex items-center gap-1.5 transition-all"
+              title="Inventario de Repuestos"
+              className="p-1.5 sm:px-3 sm:py-2 rounded-xl bg-[#10131E] hover:bg-white/5 border border-white/10 text-xs font-bold text-gray-300 hover:text-white flex items-center gap-1.5 transition-all"
             >
               <Boxes className="w-4 h-4 text-[#D4AF37]" />
-              <span className="hidden sm:inline">Inventario</span>
+              <span className="hidden xl:inline">Inventario</span>
             </Link>
 
             {/* Sales History Link */}
             <Link
               href="/admin/pos/historial"
-              className="px-3 py-2 rounded-xl bg-[#10131E] hover:bg-white/5 border border-white/10 text-xs font-bold text-gray-300 hover:text-white flex items-center gap-1.5 transition-all"
+              title="Historial de Ventas"
+              className="p-1.5 sm:px-3 sm:py-2 rounded-xl bg-[#10131E] hover:bg-white/5 border border-white/10 text-xs font-bold text-gray-300 hover:text-white flex items-center gap-1.5 transition-all"
             >
               <History className="w-4 h-4 text-blue-400" />
-              <span className="hidden sm:inline">Historial</span>
+              <span className="hidden xl:inline">Historial</span>
             </Link>
           </div>
         </div>
       </header>
 
       {/* Main 2-Column POS Layout */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 min-w-0">
         {/* Left Column: Product Selection & Catalog (7 Cols) */}
-        <section className="lg:col-span-7 flex flex-col space-y-4">
+        <section className="lg:col-span-7 flex flex-col space-y-4 min-w-0">
           {/* Search & Brand Filter */}
           <div className="glass-panel rounded-2xl p-4 border border-white/10 space-y-3 shrink-0">
             <div className="relative">
@@ -658,7 +662,7 @@ export default function PosPage() {
         </section>
 
         {/* Right Column: Active Cart & Checkout (5 Cols) */}
-        <section className="lg:col-span-5">
+        <section className="lg:col-span-5 min-w-0">
           <div className="glass-panel rounded-3xl p-5 sm:p-6 border border-[#D4AF37]/30 shadow-2xl space-y-5 sticky top-24">
             {/* Cart Header */}
             <div className="flex items-center justify-between border-b border-white/10 pb-3">

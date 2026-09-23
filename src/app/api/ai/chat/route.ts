@@ -878,6 +878,8 @@ DIRECTRICES DE TONO Y ESTILO (OBLIGATORIO)
     const candidateModels = [
       'gemini-3.6-flash',
       'gemini-3-flash-preview',
+      'gemini-1.5-flash',
+      'gemini-1.5-pro',
     ];
 
     let candidateText = '';

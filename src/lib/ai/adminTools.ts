@@ -265,7 +265,9 @@ export async function executeAgregarProductosLote(
           qty:         inc.qtyToAdd,
           stockBefore: inc.stockBefore,
           stockAfter:  inc.stockAfter,
-          reason:      'Suma de stock en lote por Asistente IA',
+          reason:      inc.newPrecio
+            ? `Suma de stock (+${inc.qtyToAdd} uds) y precio actualizado a $${inc.newPrecio} USD por Asistente IA`
+            : 'Suma de stock en lote por Asistente IA',
         }));
 
       if (stockEntries.length > 0) {
@@ -322,7 +324,7 @@ export async function executeAgregarProductosLote(
 
     const incrementedPreview = toIncrement
       .slice(0, 8)
-      .map((d) => `• ${d.marca} ${d.modelo} ${d.calidad} ➔ +${d.qtyToAdd} uds (Total: ${d.stockAfter} uds)`)
+      .map((d) => `• ${d.marca} ${d.modelo} ${d.calidad} ➔ +${d.qtyToAdd} uds (Total: ${d.stockAfter} uds)${d.newPrecio ? ` — Precio: $${d.newPrecio} USD` : ''}`)
       .join('\n');
     const incrementedMore = toIncrement.length > 8 ? `\n... y ${toIncrement.length - 8} más` : '';
 
@@ -331,7 +333,7 @@ export async function executeAgregarProductosLote(
       summary += `✅ **${insertDocs.length} producto(s) nuevo(s) agregado(s):**\n${insertedPreview}${insertedMore}\n\n`;
     }
     if (toIncrement.length > 0) {
-      summary += `🔄 **${toIncrement.length} producto(s) existente(s) con stock sumado (reactivados si estaban agotados):**\n${incrementedPreview}${incrementedMore}\n\n`;
+      summary += `🔄 **${toIncrement.length} producto(s) existente(s) actualizados (stock sumado y precio actualizado al de la lista):**\n${incrementedPreview}${incrementedMore}\n\n`;
     }
 
     return {
@@ -471,7 +473,9 @@ export async function executeAgregarLoteBulk(
           qty:         inc.qtyToAdd,
           stockBefore: inc.stockBefore,
           stockAfter:  inc.stockAfter,
-          reason:      'Suma de stock (lote grande) por Asistente IA',
+          reason:      inc.newPrecio
+            ? `Suma de stock (+${inc.qtyToAdd} uds) y precio actualizado a $${inc.newPrecio} USD (lote grande) por Asistente IA`
+            : 'Suma de stock (lote grande) por Asistente IA',
         }));
 
       if (stockEntries.length > 0) {
@@ -535,9 +539,9 @@ export async function executeAgregarLoteBulk(
       message:
         `📦 **Alta masiva grande completada**\n\n` +
         `✅ ${totalInserted} producto(s) nuevo(s) insertado(s)\n` +
-        (toIncrement.length > 0 ? `🔄 ${toIncrement.length} producto(s) existente(s) con stock sumado (reactivados de agotados)\n` : '') +
+        (toIncrement.length > 0 ? `🔄 ${toIncrement.length} producto(s) existente(s) actualizados (stock sumado y precio actualizado al de la lista)\n` : '') +
         (totalErrors > 0        ? `❌ ${totalErrors} producto(s) con error\n` : '') +
-        `\nEl catálogo ha sido actualizado en la base de datos.`,
+        `\nEl catálogo ha sido actualizado en la base de datos con los nuevos precios y existencias.`,
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

@@ -37,7 +37,7 @@ def scrape_eltoque_from_telegram():
             # Ejemplo: "1 USD 320 CUP" o "USD  320 CUP" o "Dólar estadounidense USD 320 CUP"
             if "USD" in text and "CUP" in text and ("tasas" in text.lower() or "informal" in text.lower()):
                 # Buscamos un número seguido de CUP que esté cerca de USD
-                match = re.search(r'USD.*?(\d{3,4})\s*CUP', text)
+                match = re.search(r'USD[^\d]*(\d{3,4}(?:\.\d{1,2})?)\s*CUP', text)
                 if match:
                     usd_rate = float(match.group(1))
                     break
@@ -47,8 +47,7 @@ def scrape_eltoque_from_telegram():
             for msg in reversed(messages):
                 text = msg.get_text(separator=' ')
                 if "USD" in text and "CUP" in text:
-                    # Busca "USD xxxx CUP" o "1 USD xxxx CUP"
-                    match = re.search(r'USD\D*(\d{3,4})\s*CUP', text)
+                    match = re.search(r'USD[^\d]*(\d{3,4}(?:\.\d{1,2})?)\s*CUP', text)
                     if match:
                         usd_rate = float(match.group(1))
                         break

@@ -10,6 +10,7 @@ MONGODB_URI = os.environ.get('MONGODB_URI')
 if not MONGODB_URI:
     print("Error: MONGODB_URI no está configurado.")
     exit(1)
+MONGODB_URI = MONGODB_URI.strip()
 
 def scrape_eltoque_from_telegram():
     print("Iniciando scraping desde el canal oficial de Telegram de elTOQUE (evadiendo Cloudflare)...")

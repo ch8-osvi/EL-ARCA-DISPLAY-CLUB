@@ -40,6 +40,35 @@ import {
 } from '@/lib/brandUtils';
 import { fuzzyMatchProduct } from '@/lib/searchUtils';
 
+const SkeletonProductCard = () => (
+  <div className="glass-card rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden animate-pulse">
+    <div>
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="h-6 w-16 bg-white/10 rounded-lg"></div>
+        <div className="h-5 w-20 bg-white/10 rounded-full"></div>
+      </div>
+      <div className="h-6 w-3/4 bg-white/10 rounded-lg mt-4"></div>
+      <div className="h-4 w-1/2 bg-white/10 rounded-lg mt-2"></div>
+    </div>
+    <div className="mt-6">
+      <div className="flex items-center justify-between mb-2">
+        <div className="h-4 w-12 bg-white/10 rounded"></div>
+        <div className="h-4 w-10 bg-white/10 rounded"></div>
+      </div>
+      <div className="pt-3 border-t border-white/5 flex items-center justify-between gap-2">
+        <div>
+          <div className="h-3 w-10 bg-white/10 rounded mb-1.5"></div>
+          <div className="h-7 w-16 bg-white/10 rounded-lg"></div>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="h-8 w-8 bg-white/10 rounded-xl"></div>
+          <div className="h-8 w-8 bg-white/10 rounded-xl"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
@@ -1143,7 +1172,11 @@ export default function AdminPage() {
 
         {/* Admin Products List */}
         {loading ? (
-          <div className="py-20 text-center text-gray-400">Cargando catálogo admin...</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+            {[...Array(8)].map((_, i) => (
+              <SkeletonProductCard key={i} />
+            ))}
+          </div>
         ) : filteredProducts.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
             {filteredProducts.map((product) => (

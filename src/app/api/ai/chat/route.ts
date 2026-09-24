@@ -347,8 +347,19 @@ export async function POST(req: NextRequest) {
     // ── FAST-PATH: Instant Deterministic Batch Ingestion (2 to 500+ items) ────
     // If the administrator pastes a list with items, prices and quantities,
     // process it immediately without consuming LLM token limits or risking cutoffs.
+    const isPriceQuery = /precios?|cu[aá]nto|costos?|cotiz/i.test(cleanPrompt);
+    
+    let isPreviousPriceQuery = false;
+    if (history.length >= 2) {
+      // history[-2] is the last user message, history[-1] is the last model message
+      const lastUserMsg = history[history.length - 2]?.parts?.[0]?.text || '';
+      if (/precios?|cu[aá]nto|costos?/i.test(lastUserMsg)) {
+        isPreviousPriceQuery = true;
+      }
+    }
+
     const parsedBatch = parseBatchProductsFromText(cleanPrompt);
-    if (parsedBatch.length >= 2) {
+    if (parsedBatch.length >= 2 && !isPriceQuery && !isPreviousPriceQuery) {
       console.log(`[AI Chat] Fast-Path: Processing ${parsedBatch.length} batch products directly`);
       const result = await executeAgregarLoteBulk(parsedBatch);
       return NextResponse.json({

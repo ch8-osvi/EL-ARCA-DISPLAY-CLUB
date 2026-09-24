@@ -28,6 +28,7 @@ import {
   executeRegistrarVentaRapida,
 } from '@/lib/whatsapp/tools';
 import { ExchangeRate } from '@/lib/models/ExchangeRate';
+import { ElToqueRate } from '@/lib/models/ElToqueRate';
 import { parseBatchProductsFromText } from '@/lib/ai/batchParser';
 import { detectDuplicates } from '@/lib/duplicateDetector';
 
@@ -360,13 +361,15 @@ export async function POST(req: NextRequest) {
 
     // ── 1. Fetch live data ────────────────────────────────────────────────────
 
-    const [sales, products, mermasHistory, rateDoc] = await Promise.all([
+    const [sales, products, mermasHistory, rateDoc, eltoqueDoc] = await Promise.all([
       Sale.find({}).sort({ createdAt: -1 }).lean(),
       Product.find({ isHidden: false, stock: { $gt: 0 } }).lean(),
       StockHistory.find({ type: 'merma' }).sort({ createdAt: -1 }).lean(),
       ExchangeRate.findOne().sort({ updatedAt: -1 }).lean() as Promise<{ rate: number } | null>,
+      ElToqueRate.findOne().sort({ createdAt: -1 }).lean() as Promise<{ rateUSD: number } | null>,
     ]);
     const currentExchangeRate = rateDoc?.rate || 'No configurada (⚠️ AVISO: El sistema requiere configurar la tasa primero)';
+    const currentElToqueRate = eltoqueDoc?.rateUSD || 'No disponible';
 
     // ── FAST-PATH: Instant Duplicate Detection (< 20ms, zero AI tokens) ──────
     if (isDuplicateQuery(cleanPrompt)) {
@@ -596,6 +599,7 @@ export async function POST(req: NextRequest) {
       negocio: 'EL ARCA DISPLAY CLUB (Venta y distribución de pantallas de celulares en Cuba)',
       monedas: 'USD (Dólares en efectivo) y CUP (Pesos cubanos)',
       tasaCambioActualUSD_CUP: currentExchangeRate,
+      tasaInformalElToque: currentElToqueRate,
       hoy: { fecha: havanaTodayKey, ventasUSD: todayTot.usd, ventasCUP: todayTot.cup, ordenes: todayTot.count, repuestosVendidos: todayTot.itemsCount, pendienteUSD: todayTot.pendingUSD },
       ayer: { fecha: havanaYesterdayKey, ventasUSD: yesterdayTot.usd, ventasCUP: yesterdayTot.cup, ordenes: yesterdayTot.count, repuestosVendidos: yesterdayTot.itemsCount },
       desgloseDiarioUltimos7Dias: last14DaysSummary.slice(0, 7),

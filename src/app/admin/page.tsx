@@ -28,6 +28,8 @@ import {
   Pencil,
   Sparkles,
   GitMerge,
+  TrendingUp,
+  TrendingDown,
 } from 'lucide-react';
 import {
   getCanonicalBrand,
@@ -49,6 +51,11 @@ export default function AdminPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedBrand, setSelectedBrand] = useState('ALL');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // ElTOQUE Rate logic
+  const [currentRate, setCurrentRate] = useState<number>(300);
+  const [eltoqueRate, setEltoqueRate] = useState<number | null>(null);
+  const [hideEltoqueAlert, setHideEltoqueAlert] = useState(false);
 
   // New product form modal state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -125,8 +132,53 @@ export default function AdminPage() {
   useEffect(() => {
     if (isAuthenticated) {
       fetchProducts();
+      
+      // Check elToque reminder
+      const reminderExpiry = localStorage.getItem('eltoque_reminder_expiry');
+      if (reminderExpiry && Date.now() < parseInt(reminderExpiry)) {
+        setHideEltoqueAlert(true);
+      }
+
+      // Fetch current rate
+      fetch('/api/exchange-rate')
+        .then(res => res.json())
+        .then(data => {
+          if (data.rate) setCurrentRate(data.rate);
+        })
+        .catch(console.error);
+
+      // Fetch elTOQUE rate
+      fetch('/api/eltoque')
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && data.rate) setEltoqueRate(data.rate);
+        })
+        .catch(console.error);
     }
   }, [isAuthenticated]);
+
+  const handleAjustarTasa = async () => {
+    if (!eltoqueRate) return;
+    try {
+      await fetch('/api/exchange-rate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rate: eltoqueRate }),
+      });
+      setCurrentRate(eltoqueRate);
+      triggerToast(`Tasa ajustada a ${eltoqueRate} CUP correctamente`);
+    } catch (error) {
+      console.error(error);
+      triggerToast('Error ajustando la tasa', 3000);
+    }
+  };
+
+  const handleRecordarMasTarde = () => {
+    // 3 horas en el futuro
+    const expiry = Date.now() + 3 * 60 * 60 * 1000;
+    localStorage.setItem('eltoque_reminder_expiry', expiry.toString());
+    setHideEltoqueAlert(true);
+  };
 
   // Handle Login Submit
   const handleLogin = (e: React.FormEvent) => {
@@ -852,6 +904,49 @@ export default function AdminPage() {
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        
+        {/* Notificación de elTOQUE */}
+        {!hideEltoqueAlert && eltoqueRate !== null && eltoqueRate !== currentRate && (
+          <div className="glass-panel p-4 rounded-2xl border border-blue-500/40 bg-blue-500/10 flex flex-col md:flex-row items-center justify-between gap-4 animate-fade-in shadow-lg shadow-blue-500/5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0">
+                {eltoqueRate > currentRate ? (
+                  <TrendingUp className="w-5 h-5 text-rose-400" />
+                ) : (
+                  <TrendingDown className="w-5 h-5 text-emerald-400" />
+                )}
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  Actualización de Mercado: elTOQUE
+                  <span className="px-2 py-0.5 rounded-full bg-[#10131E] text-[10px] text-gray-400 border border-white/5">
+                    1 USD = {eltoqueRate} CUP
+                  </span>
+                </h3>
+                <p className="text-xs text-blue-200/80 mt-0.5">
+                  {eltoqueRate < currentRate
+                    ? `📉 elTOQUE reporta una baja. Tu tasa actual está por encima (${currentRate} CUP). ¿Deseas ajustar tus precios para mantener competitividad?`
+                    : `📈 elTOQUE reporta un alza. Tu tasa actual está por debajo (${currentRate} CUP). Riesgo de pérdida de margen detectado.`}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={handleRecordarMasTarde}
+                className="px-4 py-2 rounded-xl bg-[#10131E] hover:bg-white/5 border border-white/10 text-gray-300 text-xs font-semibold transition-colors"
+              >
+                Recordar en 3 horas
+              </button>
+              <button
+                onClick={handleAjustarTasa}
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md transition-all hover:scale-105"
+              >
+                Ajustar a {eltoqueRate} CUP
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Admin Header Banner */}
         <section className="glass-panel rounded-3xl p-6 sm:p-8 border border-amber-500/30 relative overflow-hidden flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
           <div className="space-y-2 max-w-xl">

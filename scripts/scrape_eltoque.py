@@ -14,7 +14,7 @@ MONGODB_URI = MONGODB_URI.strip()
 
 def scrape_eltoque_from_telegram():
     print("Iniciando scraping desde el canal oficial de Telegram de elTOQUE (evadiendo Cloudflare)...")
-    url = "https://t.me/s/eltoquecom"
+    url = "https://t.me/s/eltoquecom2"
     
     try:
         # Usamos un User-Agent normal

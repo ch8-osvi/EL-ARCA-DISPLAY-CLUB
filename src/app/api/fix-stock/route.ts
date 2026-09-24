@@ -1,17 +1,17 @@
 import { NextResponse } from 'next/server';
-import { connectToDatabase } from '@/lib/db';
-import Product from '@/models/Product';
-import StockHistory from '@/models/StockHistory';
+import connectToDatabase from '@/lib/mongoose';
+import { Product } from '@/lib/models/Product';
+import { StockHistory } from '@/lib/models/StockHistory';
 
 export async function GET() {
   try {
     await connectToDatabase();
     console.log("Connected to MongoDB.");
 
-    const twoHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000); // 3 hours
+    const timeWindow = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours
 
     const historyEntries = await StockHistory.find({
-      createdAt: { $gte: twoHoursAgo },
+      createdAt: { $gte: timeWindow },
       type: 'entrada',
       reason: { $in: [
         /Alta en lote por Asistente IA/i,
@@ -52,7 +52,7 @@ export async function GET() {
     }
 
     const hideEntries = await StockHistory.find({
-      createdAt: { $gte: twoHoursAgo },
+      createdAt: { $gte: timeWindow },
       reason: /Ocultado por el Asistente IA/i
     }).lean();
 

@@ -12,6 +12,7 @@
   "dependencies": {
     "@vercel/analytics": "^1.6.1",
     "clsx": "^2.1.1",
+    "dotenv": "^18.0.3",
     "lucide-react": "^0.475.0",
     "mongoose": "^9.9.2",
     "next": "^15.1.7",

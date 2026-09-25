@@ -18,7 +18,6 @@ const KNOWN_BRANDS = [
   'MOTOROLA',
   'HUAWEI',
   'IPHONE',
-  'APPLE',
   'LG',
   'ALCATEL',
   'OPPO',
@@ -125,8 +124,8 @@ export function parseBatchProductsFromText(text: string): ParsedBatchProduct[] {
     if (/^RM\b/i.test(upperDesc)) {
       marca = 'XIAOMI';
       desc = desc.replace(/^RM\s*/i, 'REDMI ');
-    } else if (/^IPHONE\b/i.test(upperDesc)) {
-      marca = 'APPLE';
+    } else if (/^(IPHONE|APPLE)\b/i.test(upperDesc)) {
+      marca = 'IPHONE';
     } else {
       for (const b of KNOWN_BRANDS) {
         const regex = new RegExp(`^${b}(?:\\s*\\/\\s*\\w+)?\\s+`, 'i');

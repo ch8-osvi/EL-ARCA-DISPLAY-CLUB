@@ -25,11 +25,12 @@ import {
   Boxes,
   History,
   EyeOff,
-  Pencil,
   Sparkles,
   GitMerge,
   TrendingUp,
   TrendingDown,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import {
   getCanonicalBrand,
@@ -83,8 +84,9 @@ export default function AdminPage() {
 
   // ElTOQUE Rate logic
   const [currentRate, setCurrentRate] = useState<number>(300);
+  const [currentRate, setCurrentRate] = useState<number | null>(null);
   const [eltoqueRate, setEltoqueRate] = useState<number | null>(null);
-  const [hideEltoqueAlert, setHideEltoqueAlert] = useState(false);
+  const [isEltoqueMinimized, setIsEltoqueMinimized] = useState(false);
 
   // New product form modal state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -162,12 +164,6 @@ export default function AdminPage() {
     if (isAuthenticated) {
       fetchProducts();
       
-      // Check elToque reminder
-      const reminderExpiry = localStorage.getItem('eltoque_reminder_expiry');
-      if (reminderExpiry && Date.now() < parseInt(reminderExpiry)) {
-        setHideEltoqueAlert(true);
-      }
-
       // Fetch current rate
       fetch('/api/exchange-rate')
         .then(res => res.json())
@@ -200,13 +196,6 @@ export default function AdminPage() {
       console.error(error);
       triggerToast('Error ajustando la tasa', 3000);
     }
-  };
-
-  const handleRecordarMasTarde = () => {
-    // 3 horas en el futuro
-    const expiry = Date.now() + 3 * 60 * 60 * 1000;
-    localStorage.setItem('eltoque_reminder_expiry', expiry.toString());
-    setHideEltoqueAlert(true);
   };
 
   // Handle Login Submit
@@ -929,51 +918,69 @@ export default function AdminPage() {
         isAdmin={true}
         onLogout={handleLogout}
         onRestoreCatalog={handleRestoreCatalog}
-        totalProducts={products.length}
+        totalProducts={loading ? null : products.length}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         
-        {/* Notificación de elTOQUE */}
-        {!hideEltoqueAlert && eltoqueRate !== null && eltoqueRate !== currentRate && (
-          <div className="glass-panel p-4 rounded-2xl border border-blue-500/40 bg-blue-500/10 flex flex-col md:flex-row items-center justify-between gap-4 animate-fade-in shadow-lg shadow-blue-500/5">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0">
-                {eltoqueRate > currentRate ? (
-                  <TrendingUp className="w-5 h-5 text-rose-400" />
-                ) : (
-                  <TrendingDown className="w-5 h-5 text-emerald-400" />
-                )}
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  Actualización de Mercado: elTOQUE
-                  <span className="px-2 py-0.5 rounded-full bg-[#10131E] text-[10px] text-gray-400 border border-white/5">
-                    1 USD = {eltoqueRate} CUP
-                  </span>
-                </h3>
-                <p className="text-xs text-blue-200/80 mt-0.5">
-                  {eltoqueRate < currentRate
-                    ? `📉 elTOQUE reporta una baja. Tu tasa actual está por encima (${currentRate} CUP). ¿Deseas ajustar tus precios para mantener competitividad?`
-                    : `📈 elTOQUE reporta un alza. Tu tasa actual está por debajo (${currentRate} CUP). Riesgo de pérdida de margen detectado.`}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={handleRecordarMasTarde}
-                className="px-4 py-2 rounded-xl bg-[#10131E] hover:bg-white/5 border border-white/10 text-gray-300 text-xs font-semibold transition-colors"
-              >
-                Recordar en 3 horas
-              </button>
-              <button
-                onClick={handleAjustarTasa}
-                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md transition-all hover:scale-105"
-              >
-                Ajustar a {eltoqueRate} CUP
+        {/* Notificación de elTOQUE (Colapsable) */}
+        {eltoqueRate !== null && eltoqueRate !== currentRate && (
+          isEltoqueMinimized ? (
+            <div 
+              className="glass-panel p-2 px-4 rounded-xl border border-blue-500/40 bg-blue-500/10 inline-flex items-center gap-3 animate-fade-in shadow-lg cursor-pointer hover:bg-blue-500/20 transition-colors w-max" 
+              onClick={() => setIsEltoqueMinimized(false)}
+            >
+              {eltoqueRate > currentRate ? (
+                <TrendingUp className="w-4 h-4 text-rose-400" />
+              ) : (
+                <TrendingDown className="w-4 h-4 text-emerald-400" />
+              )}
+              <span className="text-xs font-bold text-white">Alerta elTOQUE: {eltoqueRate} CUP</span>
+              <button className="ml-2 text-blue-300 hover:text-white transition-colors">
+                <ChevronDown className="w-4 h-4" />
               </button>
             </div>
-          </div>
+          ) : (
+            <div className="glass-panel p-4 rounded-2xl border border-blue-500/40 bg-blue-500/10 flex flex-col md:flex-row items-center justify-between gap-4 animate-fade-in shadow-lg shadow-blue-500/5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0">
+                  {eltoqueRate > currentRate ? (
+                    <TrendingUp className="w-5 h-5 text-rose-400" />
+                  ) : (
+                    <TrendingDown className="w-5 h-5 text-emerald-400" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    Actualización de Mercado: elTOQUE
+                    <span className="px-2 py-0.5 rounded-full bg-[#10131E] text-[10px] text-gray-400 border border-white/5">
+                      1 USD = {eltoqueRate} CUP
+                    </span>
+                  </h3>
+                  <p className="text-xs text-blue-200/80 mt-0.5 max-w-xl">
+                    {eltoqueRate < currentRate
+                      ? `📉 elTOQUE reporta una baja. Tu tasa actual está por encima (${currentRate} CUP). ¿Deseas ajustar tus precios para mantener competitividad?`
+                      : `📈 elTOQUE reporta un alza. Tu tasa actual está por debajo (${currentRate} CUP). Riesgo de pérdida de margen detectado.`}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => setIsEltoqueMinimized(true)}
+                  className="px-4 py-2 rounded-xl bg-[#10131E] hover:bg-white/5 border border-white/10 text-gray-300 text-xs font-semibold transition-colors flex items-center gap-1"
+                >
+                  Ocultar
+                  <ChevronUp className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={handleAjustarTasa}
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md transition-all hover:scale-105"
+                >
+                  Ajustar a {eltoqueRate} CUP
+                </button>
+              </div>
+            </div>
+          )
         )}
 
         {/* Admin Header Banner */}

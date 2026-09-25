@@ -103,16 +103,20 @@ export default function Navbar({
                 </button>
               </div>
 
-              {exchangeRate && exchangeRate > 0 && (
+              {exchangeRate === null ? (
+                <div className="hidden xl:inline-block w-24 h-6 bg-[#10131E] border border-white/5 rounded-lg animate-pulse" title="Cargando tasa de cambio..."></div>
+              ) : exchangeRate > 0 ? (
                 <span className="hidden xl:inline-flex items-center text-[10px] font-semibold text-gray-400 bg-[#10131E] px-2 py-1 rounded-lg border border-white/5">
                   1 USD = {exchangeRate} CUP
                 </span>
-              )}
+              ) : null}
             </div>
           )}
 
           {/* Total Modelos Badge */}
-          {typeof totalProducts === 'number' && (
+          {totalProducts === null || totalProducts === undefined ? (
+            <div className="w-24 sm:w-28 h-6 sm:h-7 bg-[#171B2B] border border-[#D4AF37]/10 rounded-full animate-pulse"></div>
+          ) : typeof totalProducts === 'number' && (
             <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full bg-[#171B2B] border border-[#D4AF37]/20 text-[11px] sm:text-xs text-[#E5DFD9]">
               <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-400 animate-pulse"></span>
               <span className="font-semibold text-white">{totalProducts}</span>
@@ -121,24 +125,28 @@ export default function Navbar({
           )}
 
           {/* Live Visitor Counter for Admin */}
-          {isAdmin && visitorStats && (
-            <div
-              className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full bg-blue-950/40 border border-blue-500/30 text-[11px] sm:text-xs text-blue-200 shadow-sm"
-              title={`${visitorStats.totalVisits} páginas vistas (${visitorStats.uniqueVisitors} visitantes únicos) • Hoy: ${visitorStats.todayVisits} visitas (${visitorStats.todayUnique} únicos)`}
-            >
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-              </span>
-              <Users className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-              <span className="font-bold text-white">{visitorStats.uniqueVisitors}</span>
-              <span className="text-gray-300 hidden sm:inline">Visitantes</span>
-              {visitorStats.todayUnique > 0 && (
-                <span className="text-blue-300 font-semibold hidden md:inline text-[10px] bg-blue-500/20 px-1.5 py-0.5 rounded-md">
-                  +{visitorStats.todayUnique} hoy
+          {isAdmin && (
+            visitorStats === null ? (
+              <div className="w-28 sm:w-36 h-6 sm:h-7 bg-blue-950/20 border border-blue-500/10 rounded-full animate-pulse"></div>
+            ) : visitorStats && (
+              <div
+                className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full bg-blue-950/40 border border-blue-500/30 text-[11px] sm:text-xs text-blue-200 shadow-sm"
+                title={`${visitorStats.totalVisits} páginas vistas (${visitorStats.uniqueVisitors} visitantes únicos) • Hoy: ${visitorStats.todayVisits} visitas (${visitorStats.todayUnique} únicos)`}
+              >
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
                 </span>
-              )}
-            </div>
+                <Users className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                <span className="font-bold text-white">{visitorStats.uniqueVisitors}</span>
+                <span className="text-gray-300 hidden sm:inline">Visitantes</span>
+                {visitorStats.todayUnique > 0 && (
+                  <span className="text-blue-300 font-semibold hidden md:inline text-[10px] bg-blue-500/20 px-1.5 py-0.5 rounded-md">
+                    +{visitorStats.todayUnique} hoy
+                  </span>
+                )}
+              </div>
+            )
           )}
 
           {/* View mode toggle (ONLY ON DESKTOP md:flex - HIDE ON MOBILE) */}

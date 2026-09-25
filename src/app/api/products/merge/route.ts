@@ -64,9 +64,7 @@ export async function POST(request: Request) {
     primaryProduct.precio = cleanPrecio;
     primaryProduct.calidad = cleanCalidad;
     primaryProduct.stock = combinedStock;
-    if (combinedStock > 0) {
-      primaryProduct.isHidden = false; // Reactivar si estaba agotado
-    }
+    primaryProduct.isHidden = false; // Siempre visible tras fusión
 
     await primaryProduct.save();
 

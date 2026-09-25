@@ -57,7 +57,7 @@ export default function PosPage() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [clientName, setClientName] = useState('');
   const [currency, setCurrency] = useState<'USD' | 'CUP'>('USD');
-  const [exchangeRate, setExchangeRate] = useState<number>(300);
+  const [exchangeRate, setExchangeRate] = useState<number | null>(null);
   const [isEditingRate, setIsEditingRate] = useState(false);
   const [tempRate, setTempRate] = useState<string>('300');
   const [isPaid, setIsPaid] = useState(true);

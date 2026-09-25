@@ -1213,7 +1213,7 @@ export async function executeNormalizarCatalogoExistente() {
         if (prod.precio > 0 && prod.precio !== existing.precio) {
           existing.precio = prod.precio;
         }
-        if (existing.stock > 0) existing.isHidden = false;
+        existing.isHidden = false; // Siempre visible tras fusión
         await existing.save();
 
         // Migrar StockHistory

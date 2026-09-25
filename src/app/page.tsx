@@ -27,7 +27,7 @@ export default function Home() {
   const [sortOption, setSortOption] = useState<SortOption>('default');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [currency, setCurrency] = useState<Currency>('USD');
-  const [exchangeRate, setExchangeRate] = useState<number>(300);
+  const [exchangeRate, setExchangeRate] = useState<number | null>(null);
 
   const whatsappNumber = '5352031972';
   const whatsappGroupUrl =
@@ -159,7 +159,7 @@ export default function Home() {
       <Navbar
         viewMode={viewMode}
         onViewModeChange={setViewMode}
-        totalProducts={filteredProducts.length}
+        totalProducts={loading ? null : filteredProducts.length}
         currency={currency}
         onCurrencyChange={handleCurrencyChange}
         exchangeRate={exchangeRate}
@@ -214,23 +214,34 @@ export default function Home() {
 
         {/* Search & Filter Controls */}
         <section className="space-y-4">
-          <SearchBar
-            searchTerm={searchTerm}
-            onSearchChange={setSearchTerm}
-            selectedQuality={selectedQuality}
-            onQualityChange={setSelectedQuality}
-            sortOption={sortOption}
-            onSortChange={setSortOption}
-            qualities={qualities}
-          />
+          {loading ? (
+            <div className="space-y-4">
+              {/* Skeleton para SearchBar */}
+              <div className="h-14 sm:h-16 bg-[#171B2B]/50 border border-white/5 rounded-2xl animate-pulse w-full"></div>
+              {/* Skeleton para BrandFilter */}
+              <div className="h-12 sm:h-14 bg-[#171B2B]/50 border border-white/5 rounded-2xl animate-pulse w-full"></div>
+            </div>
+          ) : (
+            <>
+              <SearchBar
+                searchTerm={searchTerm}
+                onSearchChange={setSearchTerm}
+                selectedQuality={selectedQuality}
+                onQualityChange={setSelectedQuality}
+                sortOption={sortOption}
+                onSortChange={setSortOption}
+                qualities={qualities}
+              />
 
-          <BrandFilter
-            brands={brands}
-            selectedBrand={selectedBrand}
-            onBrandSelect={setSelectedBrand}
-            brandCounts={brandCounts}
-            totalCount={products.length}
-          />
+              <BrandFilter
+                brands={brands}
+                selectedBrand={selectedBrand}
+                onBrandSelect={setSelectedBrand}
+                brandCounts={brandCounts}
+                totalCount={products.length}
+              />
+            </>
+          )}
         </section>
 
         {/* Results Counter Header */}

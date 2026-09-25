@@ -924,13 +924,17 @@ export default function AdminPage() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         
         {/* Notificación de elTOQUE (Colapsable) */}
-        {eltoqueRate !== null && currentRate !== null && eltoqueRate !== currentRate && (
+        {eltoqueRate !== null && currentRate !== null && (
           isEltoqueMinimized ? (
             <div 
-              className="glass-panel p-2 px-4 rounded-xl border border-blue-500/40 bg-blue-500/10 inline-flex items-center gap-3 animate-fade-in shadow-lg cursor-pointer hover:bg-blue-500/20 transition-colors w-max" 
+              className={`glass-panel p-2 px-4 rounded-xl border inline-flex items-center gap-3 animate-fade-in shadow-lg cursor-pointer transition-colors w-max ${
+                eltoqueRate === currentRate ? 'border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20' : 'border-blue-500/40 bg-blue-500/10 hover:bg-blue-500/20'
+              }`}
               onClick={() => setIsEltoqueMinimized(false)}
             >
-              {eltoqueRate > currentRate ? (
+              {eltoqueRate === currentRate ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              ) : eltoqueRate > currentRate ? (
                 <TrendingUp className="w-4 h-4 text-rose-400" />
               ) : (
                 <TrendingDown className="w-4 h-4 text-emerald-400" />
@@ -941,10 +945,16 @@ export default function AdminPage() {
               </button>
             </div>
           ) : (
-            <div className="glass-panel p-4 rounded-2xl border border-blue-500/40 bg-blue-500/10 flex flex-col md:flex-row items-center justify-between gap-4 animate-fade-in shadow-lg shadow-blue-500/5">
+            <div className={`glass-panel p-4 rounded-2xl border flex flex-col md:flex-row items-center justify-between gap-4 animate-fade-in shadow-lg ${
+                eltoqueRate === currentRate ? 'border-emerald-500/40 bg-emerald-500/10 shadow-emerald-500/5' : 'border-blue-500/40 bg-blue-500/10 shadow-blue-500/5'
+              }`}>
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0">
-                  {eltoqueRate > currentRate ? (
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
+                  eltoqueRate === currentRate ? 'bg-emerald-500/20' : 'bg-blue-500/20'
+                }`}>
+                  {eltoqueRate === currentRate ? (
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                  ) : eltoqueRate > currentRate ? (
                     <TrendingUp className="w-5 h-5 text-rose-400" />
                   ) : (
                     <TrendingDown className="w-5 h-5 text-emerald-400" />
@@ -952,15 +962,17 @@ export default function AdminPage() {
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    Actualización de Mercado: elTOQUE
+                    {eltoqueRate === currentRate ? 'Mercado Sincronizado' : 'Actualización de Mercado: elTOQUE'}
                     <span className="px-2 py-0.5 rounded-full bg-[#10131E] text-[10px] text-gray-400 border border-white/5">
                       1 USD = {eltoqueRate} CUP
                     </span>
                   </h3>
-                  <p className="text-xs text-blue-200/80 mt-0.5 max-w-xl">
-                    {eltoqueRate < currentRate
-                      ? `📉 elTOQUE reporta una baja. Tu tasa actual está por encima (${currentRate} CUP). ¿Deseas ajustar tus precios para mantener competitividad?`
-                      : `📈 elTOQUE reporta un alza. Tu tasa actual está por debajo (${currentRate} CUP). Riesgo de pérdida de margen detectado.`}
+                  <p className={`text-xs mt-0.5 max-w-xl ${eltoqueRate === currentRate ? 'text-emerald-200/80' : 'text-blue-200/80'}`}>
+                    {eltoqueRate === currentRate
+                      ? `Excelente. Tu catálogo está perfectamente sincronizado con la tasa actual del mercado (${currentRate} CUP).`
+                      : eltoqueRate < currentRate
+                        ? `📉 elTOQUE reporta una baja. Tu tasa actual está por encima (${currentRate} CUP). ¿Deseas ajustar tus precios para mantener competitividad?`
+                        : `📈 elTOQUE reporta un alza. Tu tasa actual está por debajo (${currentRate} CUP). Riesgo de pérdida de margen detectado.`}
                   </p>
                 </div>
               </div>
@@ -972,12 +984,14 @@ export default function AdminPage() {
                   Ocultar
                   <ChevronUp className="w-3.5 h-3.5" />
                 </button>
-                <button
-                  onClick={handleAjustarTasa}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md transition-all hover:scale-105"
-                >
-                  Ajustar a {eltoqueRate} CUP
-                </button>
+                {eltoqueRate !== currentRate && (
+                  <button
+                    onClick={handleAjustarTasa}
+                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md transition-all hover:scale-105"
+                  >
+                    Ajustar a {eltoqueRate} CUP
+                  </button>
+                )}
               </div>
             </div>
           )

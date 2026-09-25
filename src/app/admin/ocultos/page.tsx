@@ -270,9 +270,24 @@ export default function OcultosPage() {
 
         {/* Products Grid */}
         {loading ? (
-          <div className="py-20 text-center space-y-3">
-            <div className="w-10 h-10 border-4 border-rose-400 border-t-transparent rounded-full animate-spin mx-auto" />
-            <p className="text-gray-400 text-sm">Cargando productos ocultos...</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+            {[...Array(8)].map((_, i) => (
+              <div key={i} className="glass-card rounded-2xl p-4 border border-rose-500/10 flex flex-col gap-3 animate-pulse min-h-[160px]">
+                <div className="flex items-center justify-between">
+                  <div className="w-16 h-5 bg-rose-500/20 rounded-full"></div>
+                  <div className="w-10 h-3 bg-white/10 rounded"></div>
+                </div>
+                <div className="flex-1 mt-2">
+                  <div className="w-14 h-3 bg-[#D4AF37]/30 rounded block mb-2"></div>
+                  <div className="w-3/4 h-5 bg-white/10 rounded"></div>
+                </div>
+                <div className="flex items-center justify-between pt-2 border-t border-white/5">
+                  <div className="w-16 h-5 bg-white/10 rounded-lg"></div>
+                  <div className="w-12 h-5 bg-white/10 rounded"></div>
+                </div>
+                <div className="h-8 bg-emerald-500/10 rounded-xl w-full mt-2"></div>
+              </div>
+            ))}
           </div>
         ) : hiddenProducts.length === 0 ? (
           <div className="glass-panel rounded-3xl py-20 px-6 text-center space-y-4 border border-white/10">

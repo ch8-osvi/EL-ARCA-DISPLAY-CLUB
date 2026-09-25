@@ -575,9 +575,26 @@ export default function PosPage() {
 
           {/* Product Cards Grid */}
           {loading ? (
-            <div className="py-20 text-center space-y-3">
-              <div className="w-8 h-8 border-3 border-[#D4AF37] border-t-transparent rounded-full animate-spin mx-auto" />
-              <p className="text-gray-400 text-xs">Cargando inventario activo...</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 content-start auto-rows-max h-[520px] sm:h-[540px] lg:h-[560px] max-h-[580px] overflow-hidden pr-2 pb-4">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="glass-card rounded-2xl p-4 border border-white/5 flex flex-col justify-between min-h-[135px] animate-pulse">
+                  <div>
+                    <div className="flex items-center justify-between gap-1 mb-2">
+                      <div className="w-16 h-5 bg-white/10 rounded-md"></div>
+                      <div className="w-12 h-5 bg-white/10 rounded-md"></div>
+                    </div>
+                    <div className="w-3/4 h-5 bg-white/10 rounded mt-1"></div>
+                  </div>
+                  <div className="mt-3 pt-2.5 border-t border-white/5 flex items-center justify-between">
+                    <div>
+                      <div className="w-14 h-3 bg-white/10 rounded mb-1"></div>
+                      <div className="w-20 h-5 bg-white/10 rounded mb-1"></div>
+                      <div className="w-16 h-3 bg-white/10 rounded"></div>
+                    </div>
+                    <div className="w-20 h-8 bg-white/10 rounded-xl"></div>
+                  </div>
+                </div>
+              ))}
             </div>
           ) : filteredProducts.length === 0 ? (
             <div className="glass-panel rounded-2xl p-12 text-center space-y-2 border border-white/10">

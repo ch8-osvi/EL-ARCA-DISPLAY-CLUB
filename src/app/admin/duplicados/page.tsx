@@ -453,9 +453,40 @@ export default function DuplicadosPage() {
             </div>
 
             {loading ? (
-              <div className="py-24 text-center space-y-3">
-                <RefreshCw className="w-6 h-6 animate-spin text-[#D4AF37] mx-auto" />
-                <p className="text-xs text-gray-400">Analizando catálogo y compatibilidades...</p>
+              <div className="grid grid-cols-1 gap-5">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="glass-card rounded-2xl p-5 border border-white/5 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-6 animate-pulse">
+                    <div className="flex-1 space-y-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-20 h-6 bg-white/10 rounded-lg"></div>
+                        <div className="w-16 h-5 bg-white/10 rounded-lg"></div>
+                        <div className="w-24 h-6 bg-white/10 rounded-lg"></div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="p-3.5 rounded-xl bg-white/5 space-y-2">
+                          <div className="w-24 h-3 bg-white/10 rounded"></div>
+                          <div className="w-3/4 h-5 bg-white/10 rounded mt-2 mb-4"></div>
+                          <div className="flex justify-between pt-2 border-t border-white/5 mt-4">
+                            <div className="w-16 h-3 bg-white/10 rounded"></div>
+                            <div className="w-12 h-4 bg-white/10 rounded"></div>
+                          </div>
+                        </div>
+                        <div className="p-3.5 rounded-xl bg-white/5 space-y-2">
+                          <div className="w-24 h-3 bg-white/10 rounded"></div>
+                          <div className="w-3/4 h-5 bg-white/10 rounded mt-2 mb-4"></div>
+                          <div className="flex justify-between pt-2 border-t border-white/5 mt-4">
+                            <div className="w-16 h-3 bg-white/10 rounded"></div>
+                            <div className="w-12 h-4 bg-white/10 rounded"></div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2 shrink-0 w-full lg:w-48">
+                      <div className="w-full h-10 bg-white/10 rounded-xl"></div>
+                      <div className="w-full h-10 bg-white/10 rounded-xl"></div>
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : visiblePairs.length === 0 ? (
               <div className="glass-panel rounded-3xl p-12 text-center border border-white/10 max-w-xl mx-auto space-y-4">

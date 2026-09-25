@@ -8,13 +8,13 @@ import { LayoutGrid, List, Lock, Users, Eye } from 'lucide-react';
 interface NavbarProps {
   viewMode?: ViewMode;
   onViewModeChange?: (mode: ViewMode) => void;
-  totalProducts?: number;
+  totalProducts?: number | null;
   isAdmin?: boolean;
   onLogout?: () => void;
   onRestoreCatalog?: () => void;
   currency?: Currency;
   onCurrencyChange?: (currency: Currency) => void;
-  exchangeRate?: number;
+  exchangeRate?: number | null;
 }
 
 export default function Navbar({

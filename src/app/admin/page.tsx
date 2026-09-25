@@ -25,6 +25,7 @@ import {
   Boxes,
   History,
   EyeOff,
+  Pencil,
   Sparkles,
   GitMerge,
   TrendingUp,

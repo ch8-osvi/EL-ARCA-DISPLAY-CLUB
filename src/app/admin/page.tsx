@@ -923,7 +923,7 @@ export default function AdminPage() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         
         {/* Notificación de elTOQUE (Colapsable) */}
-        {eltoqueRate !== null && eltoqueRate !== currentRate && (
+        {eltoqueRate !== null && currentRate !== null && eltoqueRate !== currentRate && (
           isEltoqueMinimized ? (
             <div 
               className="glass-panel p-2 px-4 rounded-xl border border-blue-500/40 bg-blue-500/10 inline-flex items-center gap-3 animate-fade-in shadow-lg cursor-pointer hover:bg-blue-500/20 transition-colors w-max" 

@@ -105,7 +105,7 @@ export default function Navbar({
 
               {exchangeRate === null ? (
                 <div className="hidden xl:inline-block w-24 h-6 bg-[#10131E] border border-white/5 rounded-lg animate-pulse" title="Cargando tasa de cambio..."></div>
-              ) : exchangeRate > 0 ? (
+              ) : (exchangeRate ?? 0) > 0 ? (
                 <span className="hidden xl:inline-flex items-center text-[10px] font-semibold text-gray-400 bg-[#10131E] px-2 py-1 rounded-lg border border-white/5">
                   1 USD = {exchangeRate} CUP
                 </span>

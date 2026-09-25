@@ -293,7 +293,7 @@ export default function Home() {
                   key={product.id}
                   product={product}
                   currency={currency}
-                  exchangeRate={exchangeRate}
+                  exchangeRate={exchangeRate || 300}
                 />
               ))}
             </div>
@@ -301,7 +301,7 @@ export default function Home() {
             <ProductTable
               products={filteredProducts}
               currency={currency}
-              exchangeRate={exchangeRate}
+              exchangeRate={exchangeRate || 300}
             />
           )
         ) : (

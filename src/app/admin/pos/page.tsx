@@ -250,7 +250,7 @@ export default function PosPage() {
 
   const totalUSD = subtotalUSD;
   const totalCUP = useMemo(() => {
-    return roundCupPrice(subtotalUSD, exchangeRate);
+    return roundCupPrice(subtotalUSD, exchangeRate || 300);
   }, [subtotalUSD, exchangeRate]);
 
   const totalItemsCount = useMemo(() => {
@@ -310,7 +310,7 @@ export default function PosPage() {
         clientName,
         items: cart,
         currency,
-        exchangeRate,
+        exchangeRate: exchangeRate || 300,
         paid: isPaid,
         notes,
       };
@@ -399,7 +399,7 @@ export default function PosPage() {
           clientName={clientName || completedOrder?.clientName || 'Consumidor Final'}
           items={cart.length > 0 ? cart.map(i => ({ ...i, subtotalUSD: i.precioUSD * i.qty })) : completedOrder?.items || []}
           currency={currency}
-          exchangeRate={exchangeRate}
+          exchangeRate={exchangeRate || 300}
           subtotalUSD={subtotalUSD || completedOrder?.subtotalUSD || 0}
           totalUSD={totalUSD || completedOrder?.totalUSD || 0}
           totalCUP={totalCUP || completedOrder?.totalCUP || 0}
@@ -609,7 +609,7 @@ export default function PosPage() {
               {filteredProducts.map((prod) => {
                 const inCart = cart.find((c) => c.productId === prod.id);
                 const availableAfterCart = prod.stock - (inCart ? inCart.qty : 0);
-                const cupRounded = roundCupPrice(prod.precio, exchangeRate);
+                const cupRounded = roundCupPrice(prod.precio, exchangeRate || 300);
                 const formattedCUP = cupRounded.toLocaleString();
 
                 return (

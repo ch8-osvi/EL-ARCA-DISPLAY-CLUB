@@ -83,7 +83,6 @@ export default function AdminPage() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // ElTOQUE Rate logic
-  const [currentRate, setCurrentRate] = useState<number>(300);
   const [currentRate, setCurrentRate] = useState<number | null>(null);
   const [eltoqueRate, setEltoqueRate] = useState<number | null>(null);
   const [isEltoqueMinimized, setIsEltoqueMinimized] = useState(false);

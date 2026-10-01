@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Product } from '@/lib/types';
-import { Trash2, Smartphone, Tag, Pencil } from 'lucide-react';
+import { EyeOff, Smartphone, Tag, Pencil } from 'lucide-react';
 
 interface AdminProductCardProps {
   product: Product;
@@ -108,10 +108,10 @@ export default function AdminProductCard({ product, onDelete, onEdit }: AdminPro
                 id={`btn-delete-trigger-${product.id}`}
                 onClick={() => setShowConfirm(true)}
                 className="px-2.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-bold flex items-center gap-1.5 transition-all duration-200"
-                title="Eliminar de catálogo"
+                title="Ocultar de catálogo"
               >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Eliminar</span>
+                <EyeOff className="w-3.5 h-3.5" />
+                <span>Ocultar</span>
               </button>
             ) : (
               <div className="flex items-center gap-1">
@@ -120,7 +120,7 @@ export default function AdminProductCard({ product, onDelete, onEdit }: AdminPro
                   onClick={handleDeleteClick}
                   className="px-2 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold shadow-md transition-all duration-150 whitespace-nowrap"
                 >
-                  Sí, Borrar
+                  Sí, Ocultar
                 </button>
                 <button
                   onClick={() => setShowConfirm(false)}

@@ -109,6 +109,7 @@ export async function POST(request: Request) {
     // -----------------------------------------
     if (action === 'delete-permanent' && id) {
       await Product.findOneAndDelete({ id });
+      await StockHistory.deleteMany({ productId: id });
 
       const deletedCount = await Product.countDocuments({ isHidden: true });
 

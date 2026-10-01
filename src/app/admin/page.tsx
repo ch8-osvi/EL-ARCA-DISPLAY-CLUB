@@ -1135,7 +1135,7 @@ export default function AdminPage() {
             <div className="mt-3">
               <div className="flex items-baseline gap-2">
                 <span className="text-xl font-extrabold text-white block">
-                  Agotados ({deletedCount})
+                  Ocultos ({deletedCount})
                 </span>
               </div>
               <span className="text-[11px] text-rose-300 font-semibold mt-0.5 block">

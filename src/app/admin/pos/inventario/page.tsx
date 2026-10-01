@@ -16,6 +16,7 @@ import {
   ArrowDownRight,
   AlertOctagon,
   RotateCcw,
+  Trash2,
 } from 'lucide-react';
 import { Product } from '@/lib/types';
 import {
@@ -227,6 +228,30 @@ export default function InventoryPage() {
       triggerToast('Error de conexión', true);
     } finally {
       setAdjustLoading(false);
+    }
+  };
+
+  // Completely delete product
+  const handleDeleteProductCompletely = async (prod: ProductWithHidden) => {
+    if (!confirm(`¿Estás seguro que deseas eliminar COMPLETAMENTE el producto ${prod.modelo}? Esta acción borrará el producto, su historial y no se puede deshacer.`)) {
+      return;
+    }
+    
+    try {
+      const res = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete-permanent', id: prod.id }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        triggerToast(`Producto ${prod.modelo} eliminado permanentemente.`);
+        fetchInventory(); // Reload inventory
+      } else {
+        triggerToast(data.error || 'Error al eliminar producto', true);
+      }
+    } catch {
+      triggerToast('Error de conexión al eliminar producto', true);
     }
   };
 
@@ -886,7 +911,7 @@ export default function InventoryPage() {
                           className="flex-1 py-2 px-3 rounded-xl gold-gradient-bg text-black font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-gold-glow hover:scale-[1.02] transition-transform"
                         >
                           <Plus className="w-3.5 h-3.5" />
-                          <span>+ Stock</span>
+                          <span>Stock</span>
                         </button>
                         <button
                           onClick={() => handleViewHistory(prod)}
@@ -894,6 +919,13 @@ export default function InventoryPage() {
                           title="Ver movimientos de stock"
                         >
                           <History className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteProductCompletely(prod)}
+                          className="p-2 rounded-xl bg-white/5 hover:bg-rose-500/20 text-gray-400 hover:text-rose-400 transition-colors"
+                          title="Eliminar permanentemente del sistema"
+                        >
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </div>

@@ -80,6 +80,13 @@ export default function InventoryPage() {
     loading: boolean;
   }>({ open: false, product: null, records: [], loading: false });
 
+  // Delete Confirm Modal
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState<{
+    open: boolean;
+    product: ProductWithHidden | null;
+    isDeleting: boolean;
+  }>({ open: false, product: null, isDeleting: false });
+
   const [toastMessage, setToastMessage] = useState<{ text: string; isError?: boolean } | null>(null);
 
   const triggerToast = (text: string, isError = false) => {
@@ -232,26 +239,32 @@ export default function InventoryPage() {
   };
 
   // Completely delete product
-  const handleDeleteProductCompletely = async (prod: ProductWithHidden) => {
-    if (!confirm(`¿Estás seguro que deseas eliminar COMPLETAMENTE el producto ${prod.modelo}? Esta acción borrará el producto, su historial y no se puede deshacer.`)) {
-      return;
-    }
+  const triggerDeleteProduct = (prod: ProductWithHidden) => {
+    setDeleteConfirmModal({ open: true, product: prod, isDeleting: false });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirmModal.product) return;
     
+    setDeleteConfirmModal((prev) => ({ ...prev, isDeleting: true }));
     try {
       const res = await fetch('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete-permanent', id: prod.id }),
+        body: JSON.stringify({ action: 'delete-permanent', id: deleteConfirmModal.product.id }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        triggerToast(`Producto ${prod.modelo} eliminado permanentemente.`);
+        triggerToast(`Producto ${deleteConfirmModal.product.modelo} eliminado permanentemente.`);
         fetchInventory(); // Reload inventory
+        setDeleteConfirmModal({ open: false, product: null, isDeleting: false });
       } else {
         triggerToast(data.error || 'Error al eliminar producto', true);
+        setDeleteConfirmModal((prev) => ({ ...prev, isDeleting: false }));
       }
     } catch {
       triggerToast('Error de conexión al eliminar producto', true);
+      setDeleteConfirmModal((prev) => ({ ...prev, isDeleting: false }));
     }
   };
 
@@ -678,6 +691,52 @@ export default function InventoryPage() {
         </div>
       )}
 
+      {/* Delete Confirm Modal */}
+      {deleteConfirmModal.open && deleteConfirmModal.product && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-sm glass-panel rounded-3xl p-6 sm:p-7 border border-rose-500/40 shadow-2xl relative space-y-5">
+            <button
+              onClick={() => setDeleteConfirmModal({ open: false, product: null, isDeleting: false })}
+              className="absolute top-5 right-5 text-gray-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex flex-col items-center text-center space-y-3">
+              <div className="w-14 h-14 rounded-full bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400">
+                <ShieldAlert className="w-7 h-7" />
+              </div>
+              <div>
+                <h3 className="text-lg font-extrabold text-white">¿Eliminar Producto?</h3>
+                <p className="text-xs text-gray-400 mt-2">
+                  Estás a punto de borrar permanentemente el producto{' '}
+                  <strong className="text-rose-400">{deleteConfirmModal.product.modelo}</strong> ({deleteConfirmModal.product.calidad}).
+                  Esta acción no se puede deshacer y borrará su historial de mermas.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmModal({ open: false, product: null, isDeleting: false })}
+                className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 text-xs font-bold hover:bg-gray-700 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={deleteConfirmModal.isDeleting}
+                className="flex-1 py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold shadow-md shadow-rose-950/50 flex items-center justify-center gap-2 disabled:opacity-50 transition-all"
+              >
+                {deleteConfirmModal.isDeleting ? 'Eliminando...' : 'Sí, Eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Top Navbar */}
       <header className="sticky top-0 z-40 w-full glass-panel border-b border-[#D4AF37]/15 backdrop-blur-xl bg-[#090A0F]/90">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-4">
@@ -921,7 +980,7 @@ export default function InventoryPage() {
                           <History className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleDeleteProductCompletely(prod)}
+                          onClick={() => triggerDeleteProduct(prod)}
                           className="p-2 rounded-xl bg-white/5 hover:bg-rose-500/20 text-gray-400 hover:text-rose-400 transition-colors"
                           title="Eliminar permanentemente del sistema"
                         >

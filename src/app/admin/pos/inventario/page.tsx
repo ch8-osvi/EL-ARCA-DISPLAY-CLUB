@@ -52,7 +52,7 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true);
   const [currentView, setCurrentView] = useState<'STOCK' | 'MERMAS'>('STOCK');
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStock, setFilterStock] = useState<'ALL' | 'OUT' | 'LOW'>('ALL');
+  const [filterStock, setFilterStock] = useState<'ALL' | 'AVAILABLE' | 'OUT'>('ALL');
   const [selectedBrand, setSelectedBrand] = useState('ALL');
 
   // Add Product Modal State
@@ -428,7 +428,7 @@ export default function InventoryPage() {
     const scoredList = products
       .map((p) => {
         if (filterStock === 'OUT' && p.stock > 0) return null;
-        if (filterStock === 'LOW' && (p.stock <= 0 || p.stock > 2)) return null;
+        if (filterStock === 'AVAILABLE' && p.stock <= 0) return null;
 
         if (!matchBrandFilter(p.marca, selectedBrand)) {
           return null;
@@ -1108,33 +1108,33 @@ export default function InventoryPage() {
                 <div className="flex items-center gap-2 w-full sm:w-auto">
                   <button
                     onClick={() => setFilterStock('ALL')}
-                    className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
                       filterStock === 'ALL'
-                        ? 'gold-gradient-bg text-black'
+                        ? 'gold-gradient-bg text-black shadow-gold-glow'
                         : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
                     }`}
                   >
                     Todos
                   </button>
                   <button
-                    onClick={() => setFilterStock('LOW')}
-                    className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${
-                      filterStock === 'LOW'
-                        ? 'bg-amber-600 text-white'
+                    onClick={() => setFilterStock('AVAILABLE')}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                      filterStock === 'AVAILABLE'
+                        ? 'bg-emerald-600 text-white shadow-md'
                         : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
                     }`}
                   >
-                    Bajo Stock (1-2)
+                    Disponibles
                   </button>
                   <button
                     onClick={() => setFilterStock('OUT')}
-                    className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
                       filterStock === 'OUT'
-                        ? 'bg-rose-600 text-white'
+                        ? 'bg-rose-600 text-white shadow-md'
                         : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
                     }`}
                   >
-                    Agotados (0)
+                    Agotados
                   </button>
                 </div>
               </div>

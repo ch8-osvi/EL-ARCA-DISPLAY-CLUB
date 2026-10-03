@@ -86,6 +86,7 @@ export default function AdminPage() {
   // ElTOQUE Rate logic
   const [currentRate, setCurrentRate] = useState<number | null>(null);
   const [eltoqueRate, setEltoqueRate] = useState<number | null>(null);
+  const [loadingRates, setLoadingRates] = useState(true);
   const [isEltoqueMinimized, setIsEltoqueMinimized] = useState(false);
 
   // New product form modal state
@@ -164,21 +165,28 @@ export default function AdminPage() {
     if (isAuthenticated) {
       fetchProducts();
       
-      // Fetch current rate
-      fetch('/api/exchange-rate')
-        .then(res => res.json())
-        .then(data => {
-          if (data.rate) setCurrentRate(data.rate);
-        })
-        .catch(console.error);
+      const savedMin = localStorage.getItem('el_arca_eltoque_minimized');
+      if (savedMin === 'true') {
+        setIsEltoqueMinimized(true);
+      }
 
-      // Fetch elTOQUE rate
-      fetch('/api/eltoque')
-        .then(res => res.json())
-        .then(data => {
-          if (data.success && data.rate) setEltoqueRate(data.rate);
-        })
-        .catch(console.error);
+      setLoadingRates(true);
+      Promise.allSettled([
+        fetch('/api/exchange-rate')
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.rate) setCurrentRate(data.rate);
+          })
+          .catch(console.error),
+        fetch('/api/eltoque')
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success && data.rate) setEltoqueRate(data.rate);
+          })
+          .catch(console.error),
+      ]).finally(() => {
+        setLoadingRates(false);
+      });
     }
   }, [isAuthenticated]);
 
@@ -923,77 +931,109 @@ export default function AdminPage() {
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         
-        {/* Notificación de elTOQUE (Colapsable) */}
-        {eltoqueRate !== null && currentRate !== null && (
+        {/* Notificación de elTOQUE (Colapsable con Skeleton Anti-CLS) */}
+        {loadingRates ? (
           isEltoqueMinimized ? (
-            <div 
-              className={`glass-panel p-2 px-4 rounded-xl border inline-flex items-center gap-3 animate-fade-in shadow-lg cursor-pointer transition-colors w-max ${
-                eltoqueRate === currentRate ? 'border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20' : 'border-blue-500/40 bg-blue-500/10 hover:bg-blue-500/20'
-              }`}
-              onClick={() => setIsEltoqueMinimized(false)}
-            >
-              {eltoqueRate === currentRate ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              ) : eltoqueRate > currentRate ? (
-                <TrendingUp className="w-4 h-4 text-rose-400" />
-              ) : (
-                <TrendingDown className="w-4 h-4 text-emerald-400" />
-              )}
-              <span className="text-xs font-bold text-white">Alerta elTOQUE: {eltoqueRate} CUP</span>
-              <button className="ml-2 text-blue-300 hover:text-white transition-colors">
-                <ChevronDown className="w-4 h-4" />
-              </button>
+            <div className="glass-panel p-2 px-4 rounded-xl border border-white/10 inline-flex items-center gap-3 animate-pulse w-56 h-9">
+              <div className="w-4 h-4 rounded-full bg-white/10 shrink-0" />
+              <div className="h-3 w-32 bg-white/10 rounded" />
             </div>
           ) : (
-            <div className={`glass-panel p-4 rounded-2xl border flex flex-col md:flex-row items-center justify-between gap-4 animate-fade-in shadow-lg ${
-                eltoqueRate === currentRate ? 'border-emerald-500/40 bg-emerald-500/10 shadow-emerald-500/5' : 'border-blue-500/40 bg-blue-500/10 shadow-blue-500/5'
-              }`}>
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-                  eltoqueRate === currentRate ? 'bg-emerald-500/20' : 'bg-blue-500/20'
-                }`}>
-                  {eltoqueRate === currentRate ? (
-                    <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                  ) : eltoqueRate > currentRate ? (
-                    <TrendingUp className="w-5 h-5 text-rose-400" />
-                  ) : (
-                    <TrendingDown className="w-5 h-5 text-emerald-400" />
-                  )}
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    {eltoqueRate === currentRate ? 'Mercado Sincronizado' : 'Actualización de Mercado: elTOQUE'}
-                    <span className="px-2 py-0.5 rounded-full bg-[#10131E] text-[10px] text-gray-400 border border-white/5">
-                      1 USD = {eltoqueRate} CUP
-                    </span>
-                  </h3>
-                  <p className={`text-xs mt-0.5 max-w-xl ${eltoqueRate === currentRate ? 'text-emerald-200/80' : 'text-blue-200/80'}`}>
-                    {eltoqueRate === currentRate
-                      ? `Excelente. Tu catálogo está perfectamente sincronizado con la tasa actual del mercado (${currentRate} CUP).`
-                      : eltoqueRate < currentRate
-                        ? `📉 elTOQUE reporta una baja. Tu tasa actual está por encima (${currentRate} CUP). ¿Deseas ajustar tus precios para mantener competitividad?`
-                        : `📈 elTOQUE reporta un alza. Tu tasa actual está por debajo (${currentRate} CUP). Riesgo de pérdida de margen detectado.`}
-                  </p>
+            <div className="glass-panel p-4 rounded-2xl border border-white/10 flex flex-col md:flex-row items-center justify-between gap-4 animate-pulse shadow-lg">
+              <div className="flex items-center gap-3 w-full md:w-auto">
+                <div className="w-10 h-10 rounded-full bg-white/10 shrink-0" />
+                <div className="space-y-2 flex-1">
+                  <div className="flex items-center gap-2">
+                    <div className="h-4 w-44 bg-white/10 rounded-lg" />
+                    <div className="h-4 w-24 bg-white/10 rounded-full" />
+                  </div>
+                  <div className="h-3 w-72 max-w-full bg-white/10 rounded" />
                 </div>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  onClick={() => setIsEltoqueMinimized(true)}
-                  className="px-4 py-2 rounded-xl bg-[#10131E] hover:bg-white/5 border border-white/10 text-gray-300 text-xs font-semibold transition-colors flex items-center gap-1"
-                >
-                  Ocultar
-                  <ChevronUp className="w-3.5 h-3.5" />
-                </button>
-                {eltoqueRate !== currentRate && (
-                  <button
-                    onClick={handleAjustarTasa}
-                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md transition-all hover:scale-105"
-                  >
-                    Ajustar a {eltoqueRate} CUP
-                  </button>
-                )}
+              <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
+                <div className="h-8 w-20 bg-white/10 rounded-xl" />
+                <div className="h-8 w-32 bg-white/10 rounded-xl" />
               </div>
             </div>
+          )
+        ) : (
+          eltoqueRate !== null && currentRate !== null && (
+            isEltoqueMinimized ? (
+              <div 
+                className={`glass-panel p-2 px-4 rounded-xl border inline-flex items-center gap-3 animate-fade-in shadow-lg cursor-pointer transition-colors w-max ${
+                  eltoqueRate === currentRate ? 'border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20' : 'border-blue-500/40 bg-blue-500/10 hover:bg-blue-500/20'
+                }`}
+                onClick={() => {
+                  setIsEltoqueMinimized(false);
+                  localStorage.setItem('el_arca_eltoque_minimized', 'false');
+                }}
+              >
+                {eltoqueRate === currentRate ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                ) : eltoqueRate > currentRate ? (
+                  <TrendingUp className="w-4 h-4 text-rose-400" />
+                ) : (
+                  <TrendingDown className="w-4 h-4 text-emerald-400" />
+                )}
+                <span className="text-xs font-bold text-white">Alerta elTOQUE: {eltoqueRate} CUP</span>
+                <button className="ml-2 text-blue-300 hover:text-white transition-colors">
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <div className={`glass-panel p-4 rounded-2xl border flex flex-col md:flex-row items-center justify-between gap-4 animate-fade-in shadow-lg ${
+                  eltoqueRate === currentRate ? 'border-emerald-500/40 bg-emerald-500/10 shadow-emerald-500/5' : 'border-blue-500/40 bg-blue-500/10 shadow-blue-500/5'
+                }`}>
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
+                    eltoqueRate === currentRate ? 'bg-emerald-500/20' : 'bg-blue-500/20'
+                  }`}>
+                    {eltoqueRate === currentRate ? (
+                      <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                    ) : eltoqueRate > currentRate ? (
+                      <TrendingUp className="w-5 h-5 text-rose-400" />
+                    ) : (
+                      <TrendingDown className="w-5 h-5 text-emerald-400" />
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      {eltoqueRate === currentRate ? 'Mercado Sincronizado' : 'Actualización de Mercado: elTOQUE'}
+                      <span className="px-2 py-0.5 rounded-full bg-[#10131E] text-[10px] text-gray-400 border border-white/5">
+                        1 USD = {eltoqueRate} CUP
+                      </span>
+                    </h3>
+                    <p className={`text-xs mt-0.5 max-w-xl ${eltoqueRate === currentRate ? 'text-emerald-200/80' : 'text-blue-200/80'}`}>
+                      {eltoqueRate === currentRate
+                        ? `Excelente. Tu catálogo está perfectamente sincronizado con la tasa actual del mercado (${currentRate} CUP).`
+                        : eltoqueRate < currentRate
+                          ? `📉 elTOQUE reporta una baja. Tu tasa actual está por encima (${currentRate} CUP). ¿Deseas ajustar tus precios para mantener competitividad?`
+                          : `📈 elTOQUE reporta un alza. Tu tasa actual está por debajo (${currentRate} CUP). Riesgo de pérdida de margen detectado.`}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => {
+                      setIsEltoqueMinimized(true);
+                      localStorage.setItem('el_arca_eltoque_minimized', 'true');
+                    }}
+                    className="px-4 py-2 rounded-xl bg-[#10131E] hover:bg-white/5 border border-white/10 text-gray-300 text-xs font-semibold transition-colors flex items-center gap-1"
+                  >
+                    Ocultar
+                    <ChevronUp className="w-3.5 h-3.5" />
+                  </button>
+                  {eltoqueRate !== currentRate && (
+                    <button
+                      onClick={handleAjustarTasa}
+                      className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md transition-all hover:scale-105"
+                    >
+                      Ajustar a {eltoqueRate} CUP
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
           )
         )}
 

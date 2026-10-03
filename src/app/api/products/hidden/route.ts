@@ -7,7 +7,12 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
     await connectToDatabase();
-    const hiddenProducts = await Product.find({ isHidden: true }).sort({ updatedAt: -1 }).lean();
+    // Solo mostrar productos ocultos que tengan stock > 0 (apartados/reservados para clientes)
+    // Los productos con stock <= 0 pertenecen estrictamente a /admin/pos/inventario (Agotados)
+    const hiddenProducts = await Product.find({ isHidden: true, stock: { $gt: 0 } })
+      .sort({ updatedAt: -1 })
+      .lean();
+
     return NextResponse.json({
       success: true,
       count: hiddenProducts.length,

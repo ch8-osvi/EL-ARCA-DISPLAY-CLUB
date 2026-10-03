@@ -94,27 +94,32 @@ export default function Home() {
     }
   }, [products]);
 
+  // Only displays with stock > 0 are shown to public clients
+  const availableProducts = useMemo(() => {
+    return products.filter((p) => (p.stock ?? 0) > 0);
+  }, [products]);
+
   // Extract brand frequencies
   const brandCounts = useMemo(() => {
-    return getBrandCounts(products);
-  }, [products]);
+    return getBrandCounts(availableProducts);
+  }, [availableProducts]);
 
   // Extract unique brands and sort by frequency (most models first)
   const brands = useMemo(() => {
-    return getSortedBrands(products);
-  }, [products]);
+    return getSortedBrands(availableProducts);
+  }, [availableProducts]);
 
   const qualities = useMemo(() => {
     const set = new Set<string>();
-    products.forEach((p) => {
+    availableProducts.forEach((p) => {
       if (p.calidad) set.add(p.calidad);
     });
     return Array.from(set).sort();
-  }, [products]);
+  }, [availableProducts]);
 
   // Filter & Sort Products Instantaneously with Intelligent Fuzzy/Token Matching
   const filteredProducts = useMemo(() => {
-    const scoredList = products
+    const scoredList = availableProducts
       .map((p) => {
         // Brand filter with flexible matching for consolidated groups
         if (!matchBrandFilter(p.marca, selectedBrand)) {

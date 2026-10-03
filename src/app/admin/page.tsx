@@ -693,19 +693,25 @@ export default function AdminPage() {
     reader.readAsArrayBuffer(file);
   };
 
+  // In /admin, only active products with stock > 0 are shown!
+  // Products with stock <= 0 (agotados) belong strictly in /admin/pos/inventario
+  const availableProducts = useMemo(() => {
+    return products.filter((p) => (p.stock ?? 0) > 0);
+  }, [products]);
+
   // Brand frequencies (most products first)
   const brandCounts = useMemo(() => {
-    return getBrandCounts(products);
-  }, [products]);
+    return getBrandCounts(availableProducts);
+  }, [availableProducts]);
 
   // Brand list sorted by frequency (majority of models first)
   const brands = useMemo(() => {
-    return ['ALL', ...getSortedBrands(products)];
-  }, [products]);
+    return ['ALL', ...getSortedBrands(availableProducts)];
+  }, [availableProducts]);
 
   // Filtered list inside admin with Intelligent Fuzzy Search
   const filteredProducts = useMemo(() => {
-    const scoredList = products
+    const scoredList = availableProducts
       .map((p) => {
         // Filter by selected brand
         if (selectedBrand !== 'ALL' && !matchBrandFilter(p.marca, selectedBrand)) {
@@ -732,7 +738,7 @@ export default function AdminPage() {
       scoredList.map((item) => item.product),
       brandCounts
     );
-  }, [products, selectedBrand, searchTerm, brandCounts]);
+  }, [availableProducts, selectedBrand, searchTerm, brandCounts]);
 
   // Login Screen Render
   if (!isAuthenticated) {
@@ -1083,7 +1089,7 @@ export default function AdminPage() {
           {/* Brand Filter Chips */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
             {brands.map((b) => {
-              const count = b === 'ALL' ? products.length : brandCounts.get(b) || 0;
+              const count = b === 'ALL' ? availableProducts.length : brandCounts.get(b) || 0;
               return (
                 <button
                   key={b}

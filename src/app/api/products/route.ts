@@ -15,7 +15,7 @@ export async function GET() {
     // Fetch all active products
     const [activeProducts, deletedCount, topSales] = await Promise.all([
       Product.find({ isHidden: false }).sort({ createdAt: -1 }).lean(),
-      Product.countDocuments({ isHidden: true }),
+      Product.countDocuments({ isHidden: true, stock: { $gt: 0 } }),
       Sale.aggregate([
         { $match: { status: { $ne: 'CANCELLED' } } },
         { $unwind: '$items' },
@@ -69,7 +69,7 @@ export async function POST(request: Request) {
       await Product.findOneAndUpdate({ id }, { isHidden: true });
       
       const activeProducts = await Product.find({ isHidden: false }).sort({ createdAt: -1 }).lean();
-      const deletedCount = await Product.countDocuments({ isHidden: true });
+      const deletedCount = await Product.countDocuments({ isHidden: true, stock: { $gt: 0 } });
 
       return NextResponse.json({
         success: true,
@@ -95,7 +95,7 @@ export async function POST(request: Request) {
       );
 
       const activeProducts = await Product.find({ isHidden: false }).sort({ createdAt: -1 }).lean();
-      const deletedCount = await Product.countDocuments({ isHidden: true });
+      const deletedCount = await Product.countDocuments({ isHidden: true, stock: { $gt: 0 } });
 
       return NextResponse.json({
         success: true,
@@ -113,7 +113,7 @@ export async function POST(request: Request) {
       await Product.findOneAndDelete({ id });
       await StockHistory.deleteMany({ productId: id });
 
-      const deletedCount = await Product.countDocuments({ isHidden: true });
+      const deletedCount = await Product.countDocuments({ isHidden: true, stock: { $gt: 0 } });
 
       return NextResponse.json({
         success: true,
@@ -222,7 +222,7 @@ export async function POST(request: Request) {
       }
 
       const activeProducts = await Product.find({ isHidden: false }).sort({ createdAt: -1 }).lean();
-      const deletedCount = await Product.countDocuments({ isHidden: true });
+      const deletedCount = await Product.countDocuments({ isHidden: true, stock: { $gt: 0 } });
 
       return NextResponse.json({
         success: true,
@@ -266,7 +266,7 @@ export async function POST(request: Request) {
       }
 
       const activeProducts = await Product.find({ isHidden: false }).sort({ createdAt: -1 }).lean();
-      const deletedCount = await Product.countDocuments({ isHidden: true });
+      const deletedCount = await Product.countDocuments({ isHidden: true, stock: { $gt: 0 } });
 
       return NextResponse.json({
         success: true,
@@ -335,7 +335,7 @@ export async function DELETE(request: Request) {
     await Product.findOneAndUpdate({ id }, { isHidden: true });
 
     const activeProducts = await Product.find({ isHidden: false }).sort({ createdAt: -1 }).lean();
-    const deletedCount = await Product.countDocuments({ isHidden: true });
+    const deletedCount = await Product.countDocuments({ isHidden: true, stock: { $gt: 0 } });
 
     return NextResponse.json({
       success: true,

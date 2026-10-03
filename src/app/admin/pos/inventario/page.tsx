@@ -27,7 +27,7 @@ import {
   matchBrandFilter,
   sortProductsByPopularity,
 } from '@/lib/brandUtils';
-import { fuzzyMatchProduct, fuzzyMatchGeneric } from '@/lib/searchUtils';
+import { fuzzyMatchProduct, fuzzyMatchGeneric, roundCupPrice } from '@/lib/searchUtils';
 
 interface ProductWithHidden extends Product {
   isHidden?: boolean;
@@ -54,6 +54,7 @@ export default function InventoryPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStock, setFilterStock] = useState<'ALL' | 'AVAILABLE' | 'OUT'>('ALL');
   const [selectedBrand, setSelectedBrand] = useState('ALL');
+  const [exchangeRate, setExchangeRate] = useState<number>(320);
 
   // Add Product Modal State
   const [showAddModal, setShowAddModal] = useState(false);
@@ -116,16 +117,25 @@ export default function InventoryPage() {
   const fetchInventory = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/stock');
-      if (res.ok) {
-        const data = await res.json();
+      const [resStock, resMermas, resRate] = await Promise.allSettled([
+        fetch('/api/stock'),
+        fetch('/api/stock?type=merma'),
+        fetch('/api/exchange-rate'),
+      ]);
+
+      if (resStock.status === 'fulfilled' && resStock.value.ok) {
+        const data = await resStock.value.json();
         setProducts(data.products || []);
       }
-      // Also fetch mermas
-      const resMermas = await fetch('/api/stock?type=merma');
-      if (resMermas.ok) {
-        const dataMermas = await resMermas.json();
+      if (resMermas.status === 'fulfilled' && resMermas.value.ok) {
+        const dataMermas = await resMermas.value.json();
         setMermas(dataMermas.mermas || []);
+      }
+      if (resRate.status === 'fulfilled' && resRate.value.ok) {
+        const dataRate = await resRate.value.json();
+        if (dataRate?.rate && typeof dataRate.rate === 'number') {
+          setExchangeRate(dataRate.rate);
+        }
       }
     } catch (err) {
       console.error('Error fetching inventory:', err);
@@ -1181,7 +1191,7 @@ export default function InventoryPage() {
             {loading ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {[...Array(8)].map((_, i) => (
-                  <div key={i} className="glass-card rounded-2xl p-4 border border-white/5 flex flex-col justify-between min-h-[160px] animate-pulse">
+                  <div key={i} className="glass-card rounded-2xl p-4 border border-white/5 flex flex-col justify-between min-h-[195px] animate-pulse">
                     <div>
                       <div className="flex items-center justify-between gap-1 mb-2">
                         <div className="w-16 h-5 bg-white/10 rounded-md"></div>
@@ -1189,14 +1199,17 @@ export default function InventoryPage() {
                       </div>
                       <div className="w-4/5 h-5 bg-white/10 rounded mt-1"></div>
                     </div>
-                    <div className="mt-4 pt-3 border-t border-white/5 space-y-3">
-                      <div className="flex items-center justify-between">
+                    <div className="mt-3.5 pt-2.5 border-t border-white/5 space-y-2.5">
+                      <div className="h-8 bg-white/10 rounded-xl"></div>
+                      <div className="flex items-center justify-between px-1">
                         <div className="w-16 h-3 bg-white/10 rounded"></div>
-                        <div className="w-8 h-4 bg-white/10 rounded"></div>
+                        <div className="w-12 h-4 bg-white/10 rounded"></div>
                       </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="h-8 bg-white/10 rounded-xl"></div>
-                        <div className="h-8 bg-white/10 rounded-xl"></div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-8 bg-white/10 rounded-xl"></div>
+                        <div className="w-8 h-8 bg-white/10 rounded-xl"></div>
+                        <div className="w-8 h-8 bg-white/10 rounded-xl"></div>
+                        <div className="w-8 h-8 bg-white/10 rounded-xl"></div>
                       </div>
                     </div>
                   </div>
@@ -1209,84 +1222,106 @@ export default function InventoryPage() {
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {filtered.map((prod) => (
-                  <div
-                    key={prod.id}
-                    className={`glass-card rounded-2xl p-4 border flex flex-col justify-between transition-all ${
-                      prod.stock <= 0
-                        ? 'border-rose-500/30 opacity-75'
-                        : prod.stock <= 2
-                        ? 'border-amber-500/30'
-                        : 'border-white/10'
-                    }`}
-                  >
-                    <div>
-                      <div className="flex items-center justify-between gap-1 mb-2">
-                        <span className="text-[10px] font-bold text-[#E5C158] uppercase px-2 py-0.5 rounded-md bg-[#10131E] border border-white/10">
-                          {prod.marca}
-                        </span>
-                        <span className="text-[10px] text-gray-300 font-semibold px-2 py-0.5 rounded-md bg-white/5">
-                          {prod.calidad}
-                        </span>
+                {filtered.map((prod) => {
+                  const cupPrice = roundCupPrice(prod.precio, exchangeRate);
+                  const formattedCUP = cupPrice.toLocaleString('es-CU');
+
+                  return (
+                    <div
+                      key={prod.id}
+                      className={`glass-card rounded-2xl p-4 border flex flex-col justify-between transition-all ${
+                        prod.stock <= 0
+                          ? 'border-rose-500/30 opacity-75'
+                          : prod.stock <= 2
+                          ? 'border-amber-500/30'
+                          : 'border-white/10'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-1 mb-2">
+                          <span className="text-[10px] font-bold text-[#E5C158] uppercase px-2 py-0.5 rounded-md bg-[#10131E] border border-white/10">
+                            {prod.marca}
+                          </span>
+                          <span className="text-[10px] text-gray-300 font-semibold px-2 py-0.5 rounded-md bg-white/5">
+                            {prod.calidad}
+                          </span>
+                        </div>
+
+                        <h3 className="text-sm font-bold text-white leading-snug flex items-start gap-1.5">
+                          <Smartphone className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
+                          <span>{prod.modelo}</span>
+                        </h3>
                       </div>
 
-                      <h3 className="text-sm font-bold text-white leading-snug flex items-start gap-1.5">
-                        <Smartphone className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
-                        <span>{prod.modelo}</span>
-                      </h3>
+                      <div className="mt-3.5 pt-2.5 border-t border-white/5 space-y-2.5">
+                        {/* Dual Currency Price (CUP & USD) */}
+                        <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-[#10131E]/80 border border-white/5">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] uppercase font-bold text-gray-400">Precio:</span>
+                            <span className="text-xs sm:text-sm font-extrabold text-[#F3E0A9]">
+                              {formattedCUP} <span className="text-[10px] font-semibold text-[#E5C158]">CUP</span>
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">
+                            <span className="text-[10px] text-gray-400 font-medium">≈</span>
+                            <span>${prod.precio}</span>
+                            <span className="text-[9px] text-emerald-300/70 font-semibold">USD</span>
+                          </div>
+                        </div>
+
+                        {/* Stock Actual */}
+                        <div className="flex items-center justify-between text-xs px-1">
+                          <span className="text-gray-400">Stock Actual:</span>
+                          <span
+                            className={`font-extrabold ${
+                              prod.stock <= 0
+                                ? 'text-rose-400'
+                                : prod.stock <= 2
+                                ? 'text-amber-400'
+                                : 'text-emerald-400'
+                            }`}
+                          >
+                            {prod.stock <= 0
+                              ? 'Agotado (0)'
+                              : `${prod.stock} ${prod.stock === 1 ? 'unidad' : 'unidades'}`}
+                          </span>
+                        </div>
+
+                        {/* Botones de Acciones */}
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleOpenAdjust(prod)}
+                            className="flex-1 py-2 px-3 rounded-xl gold-gradient-bg text-black font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-gold-glow hover:scale-[1.02] transition-transform"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Stock</span>
+                          </button>
+                          <button
+                            onClick={() => handleOpenEdit(prod)}
+                            className="p-2 rounded-xl bg-white/5 hover:bg-[#D4AF37]/20 text-gray-400 hover:text-[#E5C158] transition-colors"
+                            title="Editar producto"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleViewHistory(prod)}
+                            className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                            title="Ver movimientos de stock"
+                          >
+                            <History className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => triggerDeleteProduct(prod)}
+                            className="p-2 rounded-xl bg-white/5 hover:bg-rose-500/20 text-gray-400 hover:text-rose-400 transition-colors"
+                            title="Eliminar permanentemente del sistema"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
-
-                    <div className="mt-4 pt-3 border-t border-white/5 space-y-3">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-gray-400">Stock Actual:</span>
-                        <span
-                          className={`font-extrabold ${
-                            prod.stock <= 0
-                              ? 'text-rose-400'
-                              : prod.stock <= 2
-                              ? 'text-amber-400'
-                              : 'text-emerald-400'
-                          }`}
-                        >
-                          {prod.stock <= 0
-                            ? 'Agotado (0)'
-                            : `${prod.stock} ${prod.stock === 1 ? 'unidad' : 'unidades'}`}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleOpenAdjust(prod)}
-                          className="flex-1 py-2 px-3 rounded-xl gold-gradient-bg text-black font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-gold-glow hover:scale-[1.02] transition-transform"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Stock</span>
-                        </button>
-                        <button
-                          onClick={() => handleOpenEdit(prod)}
-                          className="p-2 rounded-xl bg-white/5 hover:bg-[#D4AF37]/20 text-gray-400 hover:text-[#E5C158] transition-colors"
-                          title="Editar producto"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleViewHistory(prod)}
-                          className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
-                          title="Ver movimientos de stock"
-                        >
-                          <History className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => triggerDeleteProduct(prod)}
-                          className="p-2 rounded-xl bg-white/5 hover:bg-rose-500/20 text-gray-400 hover:text-rose-400 transition-colors"
-                          title="Eliminar permanentemente del sistema"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </>

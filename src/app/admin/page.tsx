@@ -61,6 +61,7 @@ const SkeletonProductCard = () => (
         <div>
           <div className="h-3 w-10 bg-white/10 rounded mb-1.5"></div>
           <div className="h-7 w-16 bg-white/10 rounded-lg"></div>
+          <div className="h-2.5 w-14 bg-white/10 rounded mt-1"></div>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="h-8 w-8 bg-white/10 rounded-xl"></div>
@@ -1244,6 +1245,7 @@ export default function AdminPage() {
               <AdminProductCard
                 key={product.id}
                 product={product}
+                exchangeRate={currentRate || 320}
                 onDelete={handleDeleteProduct}
                 onEdit={handleOpenEdit}
               />

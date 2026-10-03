@@ -1,18 +1,31 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Product } from '@/lib/types';
 import { EyeOff, Smartphone, Tag, Pencil } from 'lucide-react';
+import { roundCupPrice } from '@/lib/searchUtils';
 
 interface AdminProductCardProps {
   product: Product;
+  exchangeRate?: number;
   onDelete: (id: string) => void;
   onEdit?: (product: Product) => void;
 }
 
-export default function AdminProductCard({ product, onDelete, onEdit }: AdminProductCardProps) {
+export default function AdminProductCard({
+  product,
+  exchangeRate = 320,
+  onDelete,
+  onEdit,
+}: AdminProductCardProps) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  const cupPrice = useMemo(() => {
+    return roundCupPrice(product.precio, exchangeRate);
+  }, [product.precio, exchangeRate]);
+
+  const formattedCUP = cupPrice.toLocaleString('es-CU');
 
   const handleDeleteClick = () => {
     setIsDeleting(true);
@@ -81,11 +94,16 @@ export default function AdminProductCard({ product, onDelete, onEdit }: AdminPro
             <span className="text-[10px] uppercase font-semibold text-gray-400 block tracking-wider">
               Precio
             </span>
-            <div className="flex items-baseline gap-1">
-              <span className="text-xl font-extrabold text-[#F3E0A9]">
-                ${product.precio}
+            <div className="flex flex-col">
+              <div className="flex items-baseline gap-1">
+                <span className="text-xl font-extrabold text-[#F3E0A9]">
+                  ${product.precio}
+                </span>
+                <span className="text-xs font-semibold text-gray-400">USD</span>
+              </div>
+              <span className="text-[10px] text-gray-400 font-medium">
+                ≈ {formattedCUP} CUP
               </span>
-              <span className="text-xs font-semibold text-gray-400">USD</span>
             </div>
           </div>
 

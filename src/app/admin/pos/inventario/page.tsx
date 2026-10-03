@@ -1037,52 +1037,60 @@ export default function InventoryPage() {
       </header>
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        {/* Header Title & View Toggle */}
-        <section className="glass-panel rounded-3xl p-6 sm:p-8 border border-white/10 relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
+        {/* Header Title & Action Buttons */}
+        <section className="glass-panel rounded-3xl p-6 sm:p-8 border border-emerald-500/30 relative overflow-hidden flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+          <div className="space-y-2 max-w-xl">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-xs font-bold text-emerald-300">
+              <Boxes className="w-3.5 h-3.5 text-emerald-400" />
+              Control de Almacén & Bodega
+            </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-white">
               Control de Inventario & Stock
             </h1>
-            <p className="text-xs sm:text-sm text-gray-400 mt-1 max-w-xl">
+            <p className="text-xs sm:text-sm text-gray-300 leading-relaxed">
               Monitorea el inventario vendible en tiempo real, añade nuevas unidades de proveedores y consulta el registro de mermas y repuestos defectuosos.
             </p>
           </div>
 
-          {/* Controls: Add Product & View Mode Toggle */}
-          <div className="flex flex-wrap items-center gap-3">
+          {/* Action Buttons */}
+          <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto shrink-0">
+            {/* Button 1: Agregar Producto */}
             <button
+              id="btn-open-add-product"
               onClick={() => setShowAddModal(true)}
-              className="px-4 py-2.5 rounded-2xl gold-gradient-bg text-black text-xs font-extrabold shadow-gold-glow flex items-center gap-2 hover:scale-105 active:scale-95 transition-all"
+              className="h-12 px-4 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-sm w-full sm:w-auto"
             >
-              <Plus className="w-4 h-4 text-black stroke-[3]" />
+              <Plus className="w-4 h-4 text-emerald-400 shrink-0" />
               <span>Agregar Producto</span>
             </button>
 
-            {/* View Mode Toggle */}
-            <div className="flex items-center gap-1.5 bg-[#10131E] p-1 rounded-2xl border border-white/10 shrink-0">
+            {/* Button 2: Stock Activo */}
             <button
+              id="btn-view-stock"
               onClick={() => setCurrentView('STOCK')}
-              className={`px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all ${
+              className={`h-12 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-sm w-full sm:w-auto ${
                 currentView === 'STOCK'
-                  ? 'gold-gradient-bg text-black shadow-gold-glow'
-                  : 'text-gray-400 hover:text-white'
+                  ? 'bg-blue-600 hover:bg-blue-500 text-white border border-blue-400 shadow-md shadow-blue-950/50'
+                  : 'bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40'
               }`}
             >
-              <Boxes className="w-4 h-4" />
+              <Boxes className={`w-4 h-4 shrink-0 ${currentView === 'STOCK' ? 'text-white' : 'text-blue-400'}`} />
               <span>Stock Activo</span>
             </button>
+
+            {/* Button 3: Mermas & Bajas */}
             <button
+              id="btn-view-mermas"
               onClick={() => setCurrentView('MERMAS')}
-              className={`px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all ${
+              className={`h-12 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-sm w-full sm:w-auto ${
                 currentView === 'MERMAS'
-                  ? 'bg-rose-600 text-white shadow-lg shadow-rose-950/50'
-                  : 'text-gray-400 hover:text-white'
+                  ? 'bg-rose-600 hover:bg-rose-500 text-white border border-rose-400 shadow-md shadow-rose-950/50'
+                  : 'bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40'
               }`}
             >
-              <AlertOctagon className="w-4 h-4 text-rose-400" />
+              <AlertOctagon className={`w-4 h-4 shrink-0 ${currentView === 'MERMAS' ? 'text-white' : 'text-rose-400'}`} />
               <span>Mermas & Bajas ({totalMermaUnits})</span>
             </button>
-          </div>
           </div>
         </section>
 

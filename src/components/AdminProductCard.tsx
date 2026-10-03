@@ -2,21 +2,19 @@
 
 import React, { useState, useMemo } from 'react';
 import { Product } from '@/lib/types';
-import { EyeOff, Smartphone, Tag, Pencil } from 'lucide-react';
+import { EyeOff, Smartphone, Tag } from 'lucide-react';
 import { roundCupPrice } from '@/lib/searchUtils';
 
 interface AdminProductCardProps {
   product: Product;
   exchangeRate?: number;
   onDelete: (id: string) => void;
-  onEdit?: (product: Product) => void;
 }
 
 export default function AdminProductCard({
   product,
   exchangeRate = 320,
   onDelete,
-  onEdit,
 }: AdminProductCardProps) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -108,18 +106,6 @@ export default function AdminProductCard({
           </div>
 
           <div className="flex items-center gap-1.5">
-            {onEdit && (
-              <button
-                id={`btn-edit-trigger-${product.id}`}
-                onClick={() => onEdit(product)}
-                className="px-2.5 py-2 rounded-xl bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#E5C158] border border-[#D4AF37]/30 text-xs font-bold flex items-center gap-1.5 transition-all duration-200"
-                title="Editar precio y detalles del display"
-              >
-                <Pencil className="w-3.5 h-3.5" />
-                <span>Editar</span>
-              </button>
-            )}
-
             {/* Delete Trigger */}
             {!showConfirm ? (
               <button

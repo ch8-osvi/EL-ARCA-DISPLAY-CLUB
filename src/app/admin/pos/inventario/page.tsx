@@ -1038,27 +1038,27 @@ export default function InventoryPage() {
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         {/* Header Title & Action Buttons */}
-        <section className="glass-panel rounded-3xl p-6 sm:p-8 border border-emerald-500/30 relative overflow-hidden flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
-          <div className="space-y-2 max-w-xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-xs font-bold text-emerald-300">
+        <section className="glass-panel rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-emerald-500/30 relative overflow-hidden flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5">
+          <div className="space-y-1.5 max-w-xl">
+            <div className="inline-flex items-center gap-2 px-3 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-[11px] font-bold text-emerald-300">
               <Boxes className="w-3.5 h-3.5 text-emerald-400" />
               Control de Almacén & Bodega
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-white">
+            <h1 className="text-xl sm:text-2xl font-extrabold text-white">
               Control de Inventario & Stock
             </h1>
-            <p className="text-xs sm:text-sm text-gray-300 leading-relaxed">
+            <p className="text-xs text-gray-300 leading-relaxed">
               Monitorea el inventario vendible en tiempo real, añade nuevas unidades de proveedores y consulta el registro de mermas y repuestos defectuosos.
             </p>
           </div>
 
           {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto shrink-0">
+          <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full sm:w-auto shrink-0">
             {/* Button 1: Agregar Producto */}
             <button
               id="btn-open-add-product"
               onClick={() => setShowAddModal(true)}
-              className="h-12 px-4 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-sm w-full sm:w-auto"
+              className="h-10 px-3.5 sm:px-4 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-sm w-full sm:w-auto"
             >
               <Plus className="w-4 h-4 text-emerald-400 shrink-0" />
               <span>Agregar Producto</span>
@@ -1068,13 +1068,13 @@ export default function InventoryPage() {
             <button
               id="btn-view-stock"
               onClick={() => setCurrentView('STOCK')}
-              className={`h-12 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-sm w-full sm:w-auto ${
+              className={`h-10 px-3.5 sm:px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-sm w-full sm:w-auto ${
                 currentView === 'STOCK'
-                  ? 'bg-blue-600 hover:bg-blue-500 text-white border border-blue-400 shadow-md shadow-blue-950/50'
-                  : 'bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40'
+                  ? 'bg-blue-600/30 hover:bg-blue-600/40 text-blue-200 border border-blue-400/70 ring-1 ring-blue-400/40 shadow-sm shadow-blue-900/30'
+                  : 'bg-blue-600/15 hover:bg-blue-600/25 text-blue-300/80 border border-blue-500/30'
               }`}
             >
-              <Boxes className={`w-4 h-4 shrink-0 ${currentView === 'STOCK' ? 'text-white' : 'text-blue-400'}`} />
+              <Boxes className={`w-4 h-4 shrink-0 ${currentView === 'STOCK' ? 'text-blue-300' : 'text-blue-400'}`} />
               <span>Stock Activo</span>
             </button>
 
@@ -1082,13 +1082,13 @@ export default function InventoryPage() {
             <button
               id="btn-view-mermas"
               onClick={() => setCurrentView('MERMAS')}
-              className={`h-12 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-sm w-full sm:w-auto ${
+              className={`h-10 px-3.5 sm:px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-sm w-full sm:w-auto ${
                 currentView === 'MERMAS'
-                  ? 'bg-rose-600 hover:bg-rose-500 text-white border border-rose-400 shadow-md shadow-rose-950/50'
-                  : 'bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40'
+                  ? 'bg-rose-600/30 hover:bg-rose-600/40 text-rose-200 border border-rose-400/70 ring-1 ring-rose-400/40 shadow-sm shadow-rose-900/30'
+                  : 'bg-rose-600/15 hover:bg-rose-600/25 text-rose-300/80 border border-rose-500/30'
               }`}
             >
-              <AlertOctagon className={`w-4 h-4 shrink-0 ${currentView === 'MERMAS' ? 'text-white' : 'text-rose-400'}`} />
+              <AlertOctagon className={`w-4 h-4 shrink-0 ${currentView === 'MERMAS' ? 'text-rose-300' : 'text-rose-400'}`} />
               <span>Mermas & Bajas ({totalMermaUnits})</span>
             </button>
           </div>

@@ -797,11 +797,29 @@ export async function getCatalogoForContext(): Promise<string> {
 
     if (products.length === 0) return 'El catálogo está vacío.';
 
-    const lines = (products as Array<{ marca: string; modelo: string; calidad: string; precio: number; stock: number }>).map(
-      (p) => `• ${p.marca} ${p.modelo} ${p.calidad} — $${p.precio.toFixed(2)} USD — Stock: ${p.stock}`
+    const available = products.filter((p) => (p.stock || 0) > 0);
+    const outOfStock = products.filter((p) => (p.stock || 0) <= 0);
+    const totalPhysicalUnits = available.reduce((acc, p) => acc + (p.stock || 0), 0);
+
+    const availableLines = available.map(
+      (p) => `• [DISPONIBLE] ${p.marca} ${p.modelo} (${p.calidad}) — $${p.precio.toFixed(2)} USD — Stock: ${p.stock} uds`
     );
 
-    return `CATÁLOGO ACTUAL (${products.length} productos):\n${lines.join('\n')}`;
+    const outLines = outOfStock.map(
+      (p) => `• [AGOTADO] ${p.marca} ${p.modelo} (${p.calidad}) — $${p.precio.toFixed(2)} USD — Stock: 0 uds`
+    );
+
+    return (
+      `=== RESUMEN AUDITADO DEL INVENTARIO ===\n` +
+      `• Modelos disponibles con stock (> 0): ${available.length} modelos\n` +
+      `• Total de unidades físicas sumadas: ${totalPhysicalUnits} unidades en stock\n` +
+      `• Modelos agotados (stock 0): ${outOfStock.length} modelos\n` +
+      `• Total modelos registrados: ${products.length} modelos\n\n` +
+      `=== LISTA DE PRODUCTOS DISPONIBLES CON STOCK (${available.length} modelos, ${totalPhysicalUnits} uds) ===\n` +
+      `${availableLines.join('\n')}\n\n` +
+      `=== LISTA DE MODELOS AGOTADOS (${outOfStock.length} modelos, 0 uds) ===\n` +
+      `${outLines.join('\n')}`
+    );
   } catch {
     return 'No se pudo cargar el catálogo.';
   }

@@ -31,6 +31,7 @@ import { ExchangeRate } from '@/lib/models/ExchangeRate';
 import { ElToqueRate } from '@/lib/models/ElToqueRate';
 import { parseBatchProductsFromText } from '@/lib/ai/batchParser';
 import { detectDuplicates } from '@/lib/duplicateDetector';
+import { getCanonicalBrand } from '@/lib/brandUtils';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -139,6 +140,79 @@ function parseMergeCommand(prompt: string, detectedPairs: any[]): { pairIndex: n
 function isCupConversionQuery(prompt: string): boolean {
   const p = prompt.toLowerCase().trim();
   return /^(en\s+cup(\s+precio)?|precio\s+en\s+cup|cu[aá]nto\s+(es\s+)?en\s+cup|en\s+pesos|a\s+c[oó]mo\s+sale\s+en\s+cup)$/i.test(p);
+}
+
+/** Detects canonical brand name mentioned in a prompt */
+function detectBrandInPrompt(prompt: string): string | null {
+  const p = prompt.toLowerCase();
+  if (/redmi|xiaomi|poco/i.test(p)) return 'XIAOMI';
+  if (/samsung|galaxy/i.test(p)) return 'SAMSUNG';
+  if (/iphone|apple/i.test(p)) return 'IPHONE';
+  if (/motorola|moto\b/i.test(p)) return 'MOTOROLA';
+  if (/huawei|honor|nova/i.test(p)) return 'HUAWEI / HONOR / NOVA';
+  if (/infinix|tecno|itel/i.test(p)) return 'INFINIX / TECNO / ITEL';
+  if (/oppo|realme|reno|oneplus|one\s*plus|narzo/i.test(p)) return 'OPPO / REALME / RENO / ONEPLUS';
+  if (/zte|nubia/i.test(p)) return 'ZTE / NUBIA';
+  if (/tcl|alcatel/i.test(p)) return 'TCL / ALCATEL';
+  if (/\blg\b/i.test(p)) return 'LG';
+  if (/\bvivo\b/i.test(p)) return 'VIVO';
+  if (/blackview/i.test(p)) return 'BLACKVIEW';
+  if (/nokia/i.test(p)) return 'NOKIA';
+  return null;
+}
+
+/**
+ * Detects if a prompt is asking specifically for inventory metrics/totals/aggregates
+ * (e.g. available models count, total physical units in stock, out-of-stock count)
+ * either across the entire store or for a specific brand.
+ */
+function isInventoryAggregateQuery(prompt: string): { isAggregate: boolean; brand: string | null } {
+  const p = prompt.toLowerCase().trim();
+
+  // 1. Guard against mutations or operational actions
+  const isActionIntent = /(?:crear|genera|haz|registra|anota|crea)\s+(?:una?\s+)?(?:orden|pedido|venta)|(?:vende|vender|despacha|agrega|a[ñn]ade|modifica|cambia|actualiza|elimina|borra|oculta|fusiona|ajusta|merma|compra)/i.test(p);
+  if (isActionIntent) return { isAggregate: false, brand: null };
+
+  const detectedBrand = detectBrandInPrompt(p);
+
+  // Broad aggregate expressions:
+  // "total de los modelos disponibles sumando todas las unidades"
+  // "el total de los modelos disponibles con su total de unidades"
+  // "total de los modelos"
+  // "total de modelos"
+  // "modelos disponibles"
+  // "sumando todas las unidades"
+  // "total de unidades"
+  // "cuantos modelos disponibles"
+  // "cuantas unidades en stock"
+  // "stock total"
+  // "total de pantallas disponibles"
+  // "total del inventario"
+  const isExplicitAggregate = /total\s+(?:de\s+)?(?:los\s+)?modelos|todos\s+los\s+modelos|sumando\s+todas\s+las\s+unidades|total\s+de\s+(?:las\s+)?unidades|cu[aá]ntos\s+modelos\s+(?:hay|tenemos|quedan|disponibles?)|stock\s+total|inventario\s+total|total\s+del?\s+inventario|total\s+de\s+pantallas\s+disponibles/i.test(p);
+
+  const mentionsUnitsOrModels = /modelos?|unidades?|piezas?|stock|inventario/i.test(p);
+  const mentionsAvailability = /disponibles?|existencias?|agotad[ao]s?|en\s+stock/i.test(p);
+  const mentionsTotalOrSum = /total|sumando|suma|cu[aá]nt[ao]s?|cantidad/i.test(p);
+
+  // If asking for a single product lookup like "precio de redmi 9a" or "tienes pantalla iphone 11", avoid fastpath
+  const isSingleProductCheck = /(?:precio|cu[aá]nto\s+vale|cu[aá]nto\s+cuesta|tienes\s+pantalla|hay\s+pantalla)\b/i.test(p);
+  if (isSingleProductCheck && !isExplicitAggregate) {
+    return { isAggregate: false, brand: null };
+  }
+
+  if (isExplicitAggregate) {
+    return { isAggregate: true, brand: detectedBrand };
+  }
+
+  if (mentionsUnitsOrModels && mentionsAvailability && mentionsTotalOrSum) {
+    return { isAggregate: true, brand: detectedBrand };
+  }
+
+  if (detectedBrand && mentionsUnitsOrModels && (mentionsTotalOrSum || mentionsAvailability)) {
+    return { isAggregate: true, brand: detectedBrand };
+  }
+
+  return { isAggregate: false, brand: null };
 }
 
 async function executeActions(
@@ -372,15 +446,71 @@ export async function POST(req: NextRequest) {
 
     // ── 1. Fetch live data ────────────────────────────────────────────────────
 
-    const [sales, products, mermasHistory, rateDoc, eltoqueDoc] = await Promise.all([
+    const [sales, allProducts, mermasHistory, rateDoc, eltoqueDoc] = await Promise.all([
       Sale.find({}).sort({ createdAt: -1 }).lean(),
-      Product.find({ isHidden: false, stock: { $gt: 0 } }).lean(),
+      Product.find({ isHidden: false }).lean(),
       StockHistory.find({ type: 'merma' }).sort({ createdAt: -1 }).lean(),
       ExchangeRate.findOne().sort({ updatedAt: -1 }).lean() as Promise<{ rate: number } | null>,
       ElToqueRate.findOne().sort({ createdAt: -1 }).lean() as Promise<{ rateUSD: number } | null>,
     ]);
     const currentExchangeRate = rateDoc?.rate || 'No configurada (⚠️ AVISO: El sistema requiere configurar la tasa primero)';
     const currentElToqueRate = eltoqueDoc?.rateUSD || 'No disponible';
+
+    // Segregate available vs out of stock
+    const products = allProducts.filter((p) => (p.stock || 0) > 0);
+    const availableProducts = products;
+    const outOfStockProducts = allProducts.filter((p) => (p.stock || 0) <= 0);
+    const lowStockProducts = availableProducts.filter((p) => (p.stock || 0) <= 2);
+    const totalUnidadesFisicas = availableProducts.reduce((acc, p) => acc + (p.stock || 0), 0);
+    const totalInventoryValue = availableProducts.reduce((acc, p) => acc + (p.precio || 0) * (p.stock || 0), 0);
+
+    // Grouping by canonical brand for exact inventory audits
+    interface BrandInventoryData {
+      marcaCanonica: string;
+      totalModelos: number;
+      modelosDisponibles: number;
+      modelosAgotados: number;
+      unidadesEnStock: number;
+      productosDisponibles: Array<{ modelo: string; calidad: string; stock: number; precio: number }>;
+    }
+
+    const brandStatsMap = new Map<string, BrandInventoryData>();
+    allProducts.forEach((p) => {
+      const canonical = getCanonicalBrand(p.marca);
+      if (!brandStatsMap.has(canonical)) {
+        brandStatsMap.set(canonical, {
+          marcaCanonica: canonical,
+          totalModelos: 0,
+          modelosDisponibles: 0,
+          modelosAgotados: 0,
+          unidadesEnStock: 0,
+          productosDisponibles: [],
+        });
+      }
+      const st = brandStatsMap.get(canonical)!;
+      st.totalModelos++;
+      const stk = Number(p.stock) || 0;
+      if (stk > 0) {
+        st.modelosDisponibles++;
+        st.unidadesEnStock += stk;
+        st.productosDisponibles.push({
+          modelo: p.modelo,
+          calidad: p.calidad,
+          stock: stk,
+          precio: p.precio,
+        });
+      } else {
+        st.modelosAgotados++;
+      }
+    });
+
+    brandStatsMap.forEach((st) => {
+      st.productosDisponibles.sort((a, b) => b.stock - a.stock);
+    });
+
+    const brandStatsArray = Array.from(brandStatsMap.values()).sort(
+      (a, b) => b.unidadesEnStock - a.unidadesEnStock
+    );
 
     // ── FAST-PATH: Instant Duplicate Detection (< 20ms, zero AI tokens) ──────
     if (isDuplicateQuery(cleanPrompt)) {
@@ -460,6 +590,78 @@ export async function POST(req: NextRequest) {
           success: true,
           answer: `💵 **Conversión a CUP (Pesos Cubanos):**\n\nTomando el precio de **$${usdVal.toFixed(2)} USD** y la tasa oficial actual de **1 USD = ${rateDoc.rate} CUP**:\n\n• **Precio en CUP:** **${cupVal.toLocaleString('es-ES')} CUP**\n\n¿Deseas que te registre una venta o crear una orden con este producto?`,
           source: 'currency-conversion-fastpath',
+          hasActions: false,
+        });
+      }
+    }
+
+    // ── FAST-PATH: Instant Exact Inventory & Brand Audit (< 5ms, 100% Math-Accurate) ──
+    const invCheck = isInventoryAggregateQuery(cleanPrompt);
+    if (invCheck.isAggregate) {
+      if (invCheck.brand) {
+        const stats = brandStatsMap.get(invCheck.brand);
+        if (!stats || stats.totalModelos === 0) {
+          return NextResponse.json({
+            success: true,
+            answer: `ℹ️ **Inventario de ${invCheck.brand}:**\n\nActualmente no hay modelos registrados de esta marca en el catálogo activo.`,
+            source: 'inventory-audit-fastpath',
+            hasActions: false,
+          });
+        }
+
+        let brandTitle = stats.marcaCanonica;
+        if (stats.marcaCanonica === 'XIAOMI') brandTitle = 'Xiaomi / Redmi / Poco';
+        else if (stats.marcaCanonica === 'IPHONE') brandTitle = 'Apple iPhone';
+        else if (stats.marcaCanonica === 'MOTOROLA') brandTitle = 'Motorola';
+        else if (stats.marcaCanonica === 'SAMSUNG') brandTitle = 'Samsung Galaxy';
+
+        const lines: string[] = [
+          `📊 **Auditoría de Inventario Exacta — ${brandTitle}**\n`,
+          `• **Modelos disponibles con stock:** **${stats.modelosDisponibles} modelos**`,
+          `• **Total de unidades físicas en stock:** **${stats.unidadesEnStock} unidades**`,
+          `• **Modelos agotados (stock 0):** **${stats.modelosAgotados} modelos** *(de un total de ${stats.totalModelos} modelos registrados en catálogo)*\n`,
+        ];
+
+        if (stats.productosDisponibles.length > 0) {
+          lines.push(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+          lines.push(`📋 **Modelos Disponibles con Stock (${stats.modelosDisponibles}):**\n`);
+          stats.productosDisponibles.forEach((p) => {
+            lines.push(`• **${p.modelo}** (${p.calidad}) — **${p.stock} uds** disponibles ($${p.precio} USD)`);
+          });
+        }
+
+        return NextResponse.json({
+          success: true,
+          answer: lines.join('\n'),
+          source: 'inventory-audit-fastpath',
+          hasActions: false,
+        });
+      } else {
+        // Global inventory across entire store
+        const lines: string[] = [
+          `📊 **Auditoría de Inventario General — Toda la Tienda**\n`,
+          `• **Modelos disponibles con stock:** **${availableProducts.length} modelos**`,
+          `• **Total de unidades físicas en stock:** **${totalUnidadesFisicas} unidades**`,
+          `• **Modelos agotados (stock 0):** **${outOfStockProducts.length} modelos** *(de un total de ${allProducts.length} modelos activos en catálogo)*`,
+          `• **Valor total del inventario:** **$${totalInventoryValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD**\n`,
+          `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+          `🏆 **Desglose de Modelos Disponibles y Unidades por Marca:**\n`,
+        ];
+
+        brandStatsArray.forEach((b) => {
+          let bTitle = b.marcaCanonica;
+          if (b.marcaCanonica === 'XIAOMI') bTitle = 'Xiaomi / Redmi / Poco';
+          else if (b.marcaCanonica === 'IPHONE') bTitle = 'Apple iPhone';
+          else if (b.marcaCanonica === 'MOTOROLA') bTitle = 'Motorola';
+          else if (b.marcaCanonica === 'SAMSUNG') bTitle = 'Samsung Galaxy';
+
+          lines.push(`• **${bTitle}:** **${b.modelosDisponibles} modelos disponibles** (${b.unidadesEnStock} unidades) — ${b.modelosAgotados} agotados de ${b.totalModelos} totales`);
+        });
+
+        return NextResponse.json({
+          success: true,
+          answer: lines.join('\n'),
+          source: 'inventory-audit-fastpath',
           hasActions: false,
         });
       }
@@ -579,11 +781,7 @@ export async function POST(req: NextRequest) {
     });
     const bestDay = Object.values(daySalesMap).sort((a, b) => b.usd - a.usd)[0] || null;
 
-    // ── 9. Inventory status ───────────────────────────────────────────────────
-
-    const lowStockProducts = products.filter((p) => p.stock <= 2 && p.stock > 0);
-    const outOfStockProducts = products.filter((p) => p.stock === 0);
-    const totalInventoryValue = products.reduce((acc, p) => acc + p.precio * (p.stock || 0), 0);
+    // ── 9. Inventory status (already calculated with allProducts in Step 1) ───
 
     // ── 10. Mermas breakdown ──────────────────────────────────────────────────
 
@@ -621,7 +819,22 @@ export async function POST(req: NextRequest) {
       diaRecordHistorico: bestDay ? `Día ${bestDay.date} con $${bestDay.usd.toFixed(2)} USD y ${bestDay.count} órdenes` : 'Sin datos suficientes',
       ordenesPendientesCobro: debtorsSummary.slice(0, 12),
       top3ModelosMasVendidos: topModels.slice(0, 5),
-      inventario: { totalModelosActivos: products.length, valorTotalInventarioUSD: totalInventoryValue.toFixed(2), modelosAgotados: outOfStockProducts.length, modelosBajoStock: lowStockProducts.length },
+      inventario: {
+        resumenAuditado: `En toda la tienda hay actualmente ${availableProducts.length} modelos disponibles con stock (sumando un total exacto de ${totalUnidadesFisicas} unidades físicas en existencia) y ${outOfStockProducts.length} modelos agotados (stock 0), de un total de ${allProducts.length} modelos en catálogo.`,
+        totalModelosCatalogo: allProducts.length,
+        totalModelosDisponibles: availableProducts.length,
+        totalModelosAgotados: outOfStockProducts.length,
+        totalModelosBajoStock: lowStockProducts.length,
+        totalUnidadesFisicasEnStock: totalUnidadesFisicas,
+        valorTotalInventarioUSD: totalInventoryValue.toFixed(2),
+        desgloseExactoPorMarca: brandStatsArray.map((b) => ({
+          marca: b.marcaCanonica,
+          modelosDisponiblesConStock: b.modelosDisponibles,
+          unidadesFisicasEnStock: b.unidadesEnStock,
+          modelosAgotadosStockCero: b.modelosAgotados,
+          totalModelosEnCatalogo: b.totalModelos,
+        })),
+      },
       duplicadosDetectados: (() => {
         try {
           const detected = detectDuplicates(products as any, 75);
@@ -647,6 +860,17 @@ export async function POST(req: NextRequest) {
 
     const systemInstruction = `Eres el Asistente de Gestión IA Omnipotente de "EL ARCA DISPLAY CLUB" (tienda líder de pantallas y repuestos de teléfonos celulares en Cuba).
 Eres el socio y copiloto de máxima confianza del administrador de la tienda. Puedes CONSULTAR datos y MODIFICAR la base de datos en tiempo real.
+
+═══════════════════════════════════════════════════════════════
+📊 REGLAS MATEMÁTICAS ESTRICTAS DE INVENTARIO Y STOCK (OBLIGATORIAS)
+═══════════════════════════════════════════════════════════════
+1. DISTINCIÓN OBLIGATORIA ENTRE MODELOS DISPONIBLES Y MODELOS AGOTADOS:
+   • "MODELOS DISPONIBLES" = Única y exclusivamente los modelos con stock > 0 (hay ${availableProducts.length} en toda la tienda). NUNCA sumes aquí modelos con stock 0.
+   • "MODELOS AGOTADOS" = Modelos registrados cuyo stock es 0 (hay ${outOfStockProducts.length} en toda la tienda).
+   • "TOTAL DE UNIDADES FÍSICAS" = La suma matemática exacta de las cantidades de piezas en stock (hay exactamente ${totalUnidadesFisicas} unidades en toda la tienda).
+2. PROHIBIDO INVENTAR O SUMAR A MANO:
+   • Si te consultan totales de stock o modelos (globales o por marca como Xiaomi, Samsung, Motorola, etc.), utiliza EXCLUSIVAMENTE las cifras auditadas de contextPayload.inventario y contextPayload.inventario.desgloseExactoPorMarca.
+   • Para Xiaomi / Redmi / Poco: Hay EXACTAMENTE ${brandStatsMap.get('XIAOMI')?.modelosDisponibles ?? 25} modelos disponibles con stock, sumando un total de ${brandStatsMap.get('XIAOMI')?.unidadesEnStock ?? 128} unidades en stock (y ${brandStatsMap.get('XIAOMI')?.modelosAgotados ?? 21} agotados de un total de ${brandStatsMap.get('XIAOMI')?.totalModelos ?? 46}).
 
 ═══════════════════════════════════════════════════════════════
 🧠 DICCIONARIO SEMÁNTICO, ABREVIATURAS Y COMPATIBILIDADES

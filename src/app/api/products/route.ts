@@ -8,13 +8,20 @@ import seedProducts from '@/data/products_seed.json';
 export const dynamic = 'force-dynamic'; // Evita que Next.js guarde la respuesta en caché
 
 // Make sure we connect to the DB
-export async function GET() {
+export async function GET(request: Request) {
   try {
     await connectToDatabase();
 
-    // Fetch all active products
+    const { searchParams } = new URL(request.url);
+    const includeEmpty = searchParams.get('all') === 'true';
+
+    // Por defecto solo repuestos activos con stock > 0 (para catálogo comercial y /admin)
+    // Los agotados viven en /admin/pos/inventario
+    const queryFilter = includeEmpty ? { isHidden: false } : { isHidden: false, stock: { $gt: 0 } };
+
+    // Fetch active products
     const [activeProducts, deletedCount, topSales] = await Promise.all([
-      Product.find({ isHidden: false }).sort({ createdAt: -1 }).lean(),
+      Product.find(queryFilter).sort({ createdAt: -1 }).lean(),
       Product.countDocuments({ isHidden: true, stock: { $gt: 0 } }),
       Sale.aggregate([
         { $match: { status: { $ne: 'CANCELLED' } } },

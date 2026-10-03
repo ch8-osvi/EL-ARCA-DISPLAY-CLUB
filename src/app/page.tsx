@@ -156,7 +156,7 @@ export default function Home() {
     if (sortOption === 'model-asc') return [...list].sort((a, b) => a.modelo.localeCompare(b.modelo));
 
     return sortProductsByPopularity(list, brandCounts);
-  }, [products, searchTerm, selectedBrand, selectedQuality, sortOption, brandCounts]);
+  }, [availableProducts, searchTerm, selectedBrand, selectedQuality, sortOption, brandCounts]);
 
   return (
     <div className="min-h-screen bg-[#090A0F] text-white flex flex-col">

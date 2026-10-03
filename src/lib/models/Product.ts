@@ -58,17 +58,14 @@ const ProductSchema = new Schema<IProduct>(
   }
 );
 
-// Pre-save hook: guarantee uppercase and automatically unhide if stock > 0
+// Pre-save hook: guarantee uppercase
 ProductSchema.pre('save', function () {
   if (this.marca) this.marca = this.marca.toUpperCase().trim();
   if (this.modelo) this.modelo = this.modelo.toUpperCase().trim();
   if (this.calidad) this.calidad = this.calidad.toUpperCase().trim();
-  if (this.stock > 0 && this.isHidden) {
-    this.isHidden = false;
-  }
 });
 
-// Pre-update hook: guarantee uppercase and unhide if restocked in query updates
+// Pre-update hook: guarantee uppercase in query updates
 ProductSchema.pre(['updateOne', 'findOneAndUpdate', 'updateMany'], function () {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const update = this.getUpdate() as any;
@@ -82,14 +79,6 @@ ProductSchema.pre(['updateOne', 'findOneAndUpdate', 'updateMany'], function () {
     if (update.$set.marca) update.$set.marca = String(update.$set.marca).toUpperCase().trim();
     if (update.$set.modelo) update.$set.modelo = String(update.$set.modelo).toUpperCase().trim();
     if (update.$set.calidad) update.$set.calidad = String(update.$set.calidad).toUpperCase().trim();
-    if (typeof update.$set.stock === 'number' && update.$set.stock > 0) {
-      update.$set.isHidden = false;
-    }
-  }
-
-  if (update.$inc && typeof update.$inc.stock === 'number' && update.$inc.stock > 0) {
-    if (!update.$set) update.$set = {};
-    update.$set.isHidden = false;
   }
 });
 

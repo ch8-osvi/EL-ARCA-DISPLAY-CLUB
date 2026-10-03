@@ -921,10 +921,6 @@ export async function executeCrearOrdenMulti(input: {
 
       // Si falló por falta de stock repentina o producto eliminado, se omite el log (o se manejaría rollback en un sistema completo)
       if (updatedProduct) {
-        if (updatedProduct.stock <= 0 && !updatedProduct.isHidden) {
-          await Product.updateOne({ _id: item.productMongoId }, { $set: { isHidden: true } });
-        }
-        
         await StockHistory.create({
           productId: item.productCustomId,
           productName: `${item.marca} ${item.modelo} (${item.calidad})`,

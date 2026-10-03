@@ -24,13 +24,7 @@ export default function OcultosPage() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  // Restore Modal State
-  const [restoreModal, setRestoreModal] = useState<{
-    open: boolean;
-    product: HiddenProduct | null;
-  }>({ open: false, product: null });
-  const [restoreStock, setRestoreStock] = useState('1');
-  const [restoreLoading, setRestoreLoading] = useState(false);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
 
   const triggerToast = (msg: string) => {
     setToastMessage(msg);
@@ -78,44 +72,28 @@ export default function OcultosPage() {
     return scored.map((item) => item.product);
   }, [hiddenProducts, searchTerm]);
 
-  const handleOpenRestore = (product: HiddenProduct) => {
-    setRestoreModal({ open: true, product });
-    setRestoreStock(product.stock > 0 ? product.stock.toString() : '1');
-  };
-
-  const handleConfirmRestore = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!restoreModal.product) return;
-
-    const stockNum = parseInt(restoreStock, 10);
-    if (!stockNum || isNaN(stockNum) || stockNum < 1) {
-      triggerToast('Por favor ingresa un stock válido mayor a 0');
-      return;
-    }
-
-    setRestoreLoading(true);
+  const handleDirectRestore = async (product: HiddenProduct) => {
+    setRestoringId(product.id);
     try {
       const res = await fetch('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'unhide',
-          id: restoreModal.product.id,
-          stock: stockNum,
+          id: product.id,
         }),
       });
 
       if (res.ok) {
-        setHiddenProducts((prev) => prev.filter((p) => p.id !== restoreModal.product?.id));
-        triggerToast(`Producto reactivado con ${stockNum} uds en catálogo`);
-        setRestoreModal({ open: false, product: null });
+        setHiddenProducts((prev) => prev.filter((p) => p.id !== product.id));
+        triggerToast(`¡${product.modelo} reactivado en catálogo! (${product.stock} uds conservadas)`);
       } else {
         triggerToast('Error al restaurar producto');
       }
     } catch {
       triggerToast('Error de conexión');
     } finally {
-      setRestoreLoading(false);
+      setRestoringId(null);
     }
   };
 
@@ -147,67 +125,6 @@ export default function OcultosPage() {
         </div>
       )}
 
-      {/* Restore Stock Selection Modal */}
-      {restoreModal.open && restoreModal.product && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md glass-panel rounded-3xl p-6 sm:p-8 border border-emerald-500/40 shadow-2xl space-y-5 relative">
-            <button
-              onClick={() => setRestoreModal({ open: false, product: null })}
-              className="absolute top-5 right-5 text-gray-400 hover:text-white"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="space-y-1">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
-                <RotateCcw className="w-5 h-5" />
-              </div>
-              <h3 className="text-lg font-bold text-white">Reactivar Producto en Catálogo</h3>
-              <p className="text-xs text-gray-400">
-                <strong className="text-[#E5C158]">{restoreModal.product.marca} {restoreModal.product.modelo}</strong> ({restoreModal.product.calidad})
-              </p>
-            </div>
-
-            <form onSubmit={handleConfirmRestore} className="space-y-4">
-              <div>
-                <label className="text-xs font-semibold text-gray-300 block mb-1">
-                  Cantidad de Stock para Reactivar <span className="text-emerald-400">*</span>
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={restoreStock}
-                  onChange={(e) => setRestoreStock(e.target.value)}
-                  className="w-full px-4 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-sm focus:border-emerald-400 focus:outline-none"
-                  required
-                  autoFocus
-                />
-                <span className="text-[10px] text-gray-400 mt-1 block">
-                  El producto volverá a ser visible para los clientes con este inventario inicial.
-                </span>
-              </div>
-
-              <div className="pt-2 flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setRestoreModal({ open: false, product: null })}
-                  className="flex-1 py-2.5 rounded-xl bg-gray-800 text-gray-300 text-xs font-bold hover:bg-gray-700"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={restoreLoading}
-                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold shadow-lg flex items-center justify-center gap-2"
-                >
-                  {restoreLoading ? 'Restaurando...' : 'Reactivar en Catálogo'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* Simple Header */}
       <header className="sticky top-0 z-40 w-full glass-panel border-b border-[#D4AF37]/15 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-4">
@@ -232,11 +149,11 @@ export default function OcultosPage() {
               Archivo de Productos Ocultos
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-white">
-              Productos Ocultos / Eliminados
+              Productos Ocultos y Apartados
             </h1>
             <p className="text-sm text-gray-400 max-w-xl">
-              Estos productos fueron ocultados automáticamente por stock 0 o borrado manual. 
-              Puedes reactivarlos asignando la cantidad de stock inicial.
+              Productos apartados o pausados temporalmente del catálogo público. 
+              Puedes reactivarlos con un solo clic conservando su stock actual.
             </p>
           </div>
         </section>
@@ -334,12 +251,23 @@ export default function OcultosPage() {
                   <h3 className="text-sm font-bold text-white leading-tight mt-0.5">{product.modelo}</h3>
                 </div>
 
-                {/* Quality & Price */}
+                {/* Quality, Stock & Price */}
                 <div className="flex items-center justify-between mt-auto pt-2 border-t border-white/5">
-                  <span className="text-[10px] bg-[#171B2B] text-gray-300 px-2 py-0.5 rounded-lg border border-white/10 font-semibold">
-                    {product.calidad}
-                  </span>
-                  <span className="text-base font-extrabold text-white">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] bg-[#171B2B] text-gray-300 px-2 py-0.5 rounded-lg border border-white/10 font-semibold">
+                      {product.calidad}
+                    </span>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                        product.stock > 0
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                          : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                      }`}
+                    >
+                      {product.stock > 0 ? `${product.stock} uds` : '0 uds'}
+                    </span>
+                  </div>
+                  <span className="text-base font-extrabold text-[#F3E0A9]">
                     ${product.precio.toFixed(2)}
                   </span>
                 </div>
@@ -347,11 +275,12 @@ export default function OcultosPage() {
                 {/* Actions */}
                 <div className="flex gap-2">
                   <button
-                    onClick={() => handleOpenRestore(product)}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition-all hover:scale-105"
+                    onClick={() => handleDirectRestore(product)}
+                    disabled={restoringId === product.id}
+                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition-all hover:scale-[1.02] disabled:opacity-50"
                   >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    Restaurar al Catálogo
+                    <RotateCcw className={`w-3.5 h-3.5 ${restoringId === product.id ? 'animate-spin' : ''}`} />
+                    {restoringId === product.id ? 'Reactivando...' : 'Reactivar en Catálogo'}
                   </button>
                 </div>
               </div>

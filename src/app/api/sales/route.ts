@@ -138,8 +138,6 @@ export async function POST(req: Request) {
           { id: productId, stock: { $gte: qty } },
           { 
             $inc: { stock: -qty },
-            // Set isHidden to true if stock becomes 0
-            $set: { isHidden: stockBefore - qty <= 0 }
           },
           { new: true }
         );

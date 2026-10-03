@@ -84,12 +84,14 @@ export async function POST(request: Request) {
     // ACTION: UNHIDE (Restore a hidden product)
     // -----------------------------------------
     if (action === 'unhide' && id) {
-      const stockVal = Number(body.stock);
-      const newStock = !isNaN(stockVal) && stockVal > 0 ? stockVal : 1;
+      const updateData: Record<string, any> = { isHidden: false };
+      if (body.stock !== undefined && !isNaN(Number(body.stock))) {
+        updateData.stock = Math.max(0, Number(body.stock));
+      }
 
       await Product.findOneAndUpdate(
         { id },
-        { isHidden: false, stock: newStock }
+        { $set: updateData }
       );
 
       const activeProducts = await Product.find({ isHidden: false }).sort({ createdAt: -1 }).lean();
@@ -203,7 +205,7 @@ export async function POST(request: Request) {
           calidad: calidadUp,
           precio: newPrecio,
           stock: newStock,
-          isHidden: newStock === 0,
+          isHidden: false,
         });
 
         if (newStock > 0) {

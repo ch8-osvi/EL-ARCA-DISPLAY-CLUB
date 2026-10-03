@@ -17,6 +17,8 @@ import {
   AlertOctagon,
   RotateCcw,
   Trash2,
+  Pencil,
+  RefreshCw,
 } from 'lucide-react';
 import { Product } from '@/lib/types';
 import {
@@ -62,6 +64,16 @@ export default function InventoryPage() {
   const [newPrecio, setNewPrecio] = useState('');
   const [newStock, setNewStock] = useState('1');
   const [isSubmittingAdd, setIsSubmittingAdd] = useState(false);
+
+  // Edit Product Modal State
+  const [editingProduct, setEditingProduct] = useState<ProductWithHidden | null>(null);
+  const [editMarca, setEditMarca] = useState('');
+  const [editModelo, setEditModelo] = useState('');
+  const [editCalidadSelect, setEditCalidadSelect] = useState('ORIGINAL C/M');
+  const [editCalidadCustom, setEditCalidadCustom] = useState('');
+  const [editPrecio, setEditPrecio] = useState('');
+  const [editStock, setEditStock] = useState('');
+  const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
 
   // Add Stock Modal
   const [adjustModal, setAdjustModal] = useState<{
@@ -265,6 +277,116 @@ export default function InventoryPage() {
     } catch {
       triggerToast('Error de conexión al eliminar producto', true);
       setDeleteConfirmModal((prev) => ({ ...prev, isDeleting: false }));
+    }
+  };
+
+  // Open Edit Product Modal
+  const handleOpenEdit = (product: ProductWithHidden) => {
+    setEditingProduct(product);
+    setEditMarca(product.marca || '');
+    setEditModelo(product.modelo || '');
+    setEditPrecio(product.precio !== undefined ? product.precio.toString() : '0');
+    setEditStock(product.stock !== undefined ? product.stock.toString() : '0');
+
+    const standardQualities = [
+      'ORIGINAL C/M',
+      'INCELL C/M',
+      'OLED C/M',
+      'ORIGINAL',
+      'INCELL',
+      'OLED',
+      'OLED SOFT',
+      'AMOLED C/M',
+      'MECHANIC',
+      'AAA',
+    ];
+
+    const currentUpper = (product.calidad || '').toUpperCase().trim();
+    if (standardQualities.includes(currentUpper)) {
+      setEditCalidadSelect(currentUpper);
+      setEditCalidadCustom('');
+    } else {
+      setEditCalidadSelect('CUSTOM');
+      setEditCalidadCustom(product.calidad || '');
+    }
+  };
+
+  // Save Product Edits
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProduct) return;
+
+    const parsedPrecio = parseFloat(editPrecio);
+    if (isNaN(parsedPrecio) || parsedPrecio < 0) {
+      triggerToast('Error: Ingresa un precio válido mayor o igual a 0 USD.', true);
+      return;
+    }
+
+    const parsedStock = parseInt(editStock, 10);
+    if (isNaN(parsedStock) || parsedStock < 0) {
+      triggerToast('Error: Ingresa una cantidad de stock válida (mínimo 0).', true);
+      return;
+    }
+
+    if (!editModelo.trim()) {
+      triggerToast('Error: El modelo no puede estar vacío.', true);
+      return;
+    }
+
+    const finalCalidad =
+      editCalidadSelect === 'CUSTOM'
+        ? editCalidadCustom.trim().toUpperCase() || 'ORIGINAL'
+        : editCalidadSelect.trim().toUpperCase();
+
+    const marcaTrimmed = (editMarca || 'VARIOS').toUpperCase().trim();
+    const modeloTrimmed = editModelo.toUpperCase().trim();
+
+    setIsSubmittingEdit(true);
+
+    // Optimistic update in local state
+    setProducts((prev) =>
+      prev.map((p) => {
+        if (p.id === editingProduct.id) {
+          return {
+            ...p,
+            marca: marcaTrimmed,
+            modelo: modeloTrimmed,
+            calidad: finalCalidad,
+            precio: parsedPrecio,
+            stock: parsedStock,
+          };
+        }
+        return p;
+      })
+    );
+
+    try {
+      const res = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update',
+          id: editingProduct.id,
+          marca: marcaTrimmed,
+          modelo: modeloTrimmed,
+          calidad: finalCalidad,
+          precio: parsedPrecio,
+          stock: parsedStock,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        triggerToast(`Display ${modeloTrimmed} actualizado: $${parsedPrecio} USD (Stock: ${parsedStock})`);
+        fetchInventory();
+      } else {
+        triggerToast(data.error || 'Display actualizado en modo local', true);
+      }
+    } catch {
+      triggerToast(`Display ${modeloTrimmed} actualizado en modo local`);
+    } finally {
+      setIsSubmittingEdit(false);
+      setEditingProduct(null);
     }
   };
 
@@ -737,6 +859,166 @@ export default function InventoryPage() {
         </div>
       )}
 
+      {/* Edit Product Modal */}
+      {editingProduct && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-lg glass-panel rounded-3xl p-6 sm:p-8 border border-[#D4AF37]/50 shadow-2xl relative space-y-6 animate-fadeIn">
+            <button
+              onClick={() => setEditingProduct(null)}
+              className="absolute top-5 right-5 text-gray-400 hover:text-white"
+            >
+              <X className="w-6 h-6" />
+            </button>
+
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="p-1.5 rounded-lg bg-[#D4AF37]/20 text-[#E5C158] border border-[#D4AF37]/30">
+                  <Pencil className="w-4 h-4" />
+                </span>
+                <span className="text-xs font-bold uppercase tracking-wider text-[#E5C158]">
+                  {editingProduct.marca}
+                </span>
+              </div>
+              <h3 className="text-xl font-bold text-white">Editar Display</h3>
+              <p className="text-xs text-gray-400">
+                Ajusta el precio, stock o datos técnicos del display en tiempo real.
+              </p>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">
+                  Marca
+                </label>
+                <input
+                  type="text"
+                  value={editMarca}
+                  onChange={(e) => setEditMarca(e.target.value.toUpperCase())}
+                  placeholder="ej. SAMSUNG, XIAOMI"
+                  className="w-full px-4 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-sm focus:border-[#D4AF37] focus:outline-none uppercase font-mono"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">
+                  Modelo / Código
+                </label>
+                <input
+                  type="text"
+                  value={editModelo}
+                  onChange={(e) => setEditModelo(e.target.value.toUpperCase())}
+                  placeholder="ej. GALAXY A02 / A022"
+                  className="w-full px-4 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-sm focus:border-[#D4AF37] focus:outline-none uppercase font-mono"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-gray-300 block mb-1">
+                    Calidad
+                  </label>
+                  <select
+                    value={editCalidadSelect}
+                    onChange={(e) => setEditCalidadSelect(e.target.value)}
+                    className="w-full px-3 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-xs focus:border-[#D4AF37] focus:outline-none cursor-pointer"
+                  >
+                    <option value="ORIGINAL C/M">ORIGINAL C/M</option>
+                    <option value="INCELL C/M">INCELL C/M</option>
+                    <option value="OLED C/M">OLED C/M</option>
+                    <option value="ORIGINAL">ORIGINAL S/M</option>
+                    <option value="INCELL">INCELL S/M</option>
+                    <option value="OLED">OLED S/M</option>
+                    <option value="OLED SOFT">OLED SOFT</option>
+                    <option value="AMOLED C/M">AMOLED C/M</option>
+                    <option value="MECHANIC">MECHANIC</option>
+                    <option value="AAA">AAA</option>
+                    <option value="CUSTOM">-- Personalizada --</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-[#E5C158] block mb-1">
+                    Precio ($ USD)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={editPrecio}
+                    onChange={(e) => setEditPrecio(e.target.value)}
+                    placeholder="ej. 18.00"
+                    className="w-full px-3 py-3 bg-[#10131E] border border-[#D4AF37]/50 rounded-xl text-white text-xs focus:border-[#D4AF37] focus:outline-none font-bold text-[#F3E0A9]"
+                    required
+                    autoFocus
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-emerald-400 block mb-1">
+                    Stock (Uds.)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={editStock}
+                    onChange={(e) => setEditStock(e.target.value)}
+                    placeholder="ej. 5"
+                    className="w-full px-3 py-3 bg-[#10131E] border border-emerald-500/30 rounded-xl text-white text-xs focus:border-emerald-400 focus:outline-none font-bold"
+                    required
+                  />
+                </div>
+              </div>
+
+              {editCalidadSelect === 'CUSTOM' && (
+                <div>
+                  <label className="text-xs font-semibold text-amber-300 block mb-1">
+                    Calidad Personalizada:
+                  </label>
+                  <input
+                    type="text"
+                    value={editCalidadCustom}
+                    onChange={(e) => setEditCalidadCustom(e.target.value)}
+                    placeholder="ej. ORIGINAL CON MARCO C/M"
+                    className="w-full px-4 py-3 bg-[#10131E] border border-amber-500/40 rounded-xl text-white text-sm focus:border-[#D4AF37] focus:outline-none"
+                    required
+                  />
+                </div>
+              )}
+
+              <div className="pt-2 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingProduct(null)}
+                  className="px-4 py-2.5 rounded-xl bg-gray-800 text-gray-300 text-xs font-bold hover:bg-gray-700 transition-colors"
+                >
+                  Cancelar
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={isSubmittingEdit}
+                  className="px-5 py-2.5 rounded-xl gold-gradient-bg text-black text-xs font-extrabold shadow-gold-glow flex items-center gap-2 hover:scale-[1.02] transition-transform disabled:opacity-50"
+                >
+                  {isSubmittingEdit ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Guardando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Guardar Cambios</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Top Navbar */}
       <header className="sticky top-0 z-40 w-full glass-panel border-b border-[#D4AF37]/15 backdrop-blur-xl bg-[#090A0F]/90">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-4">
@@ -971,6 +1253,13 @@ export default function InventoryPage() {
                         >
                           <Plus className="w-3.5 h-3.5" />
                           <span>Stock</span>
+                        </button>
+                        <button
+                          onClick={() => handleOpenEdit(prod)}
+                          className="p-2 rounded-xl bg-white/5 hover:bg-[#D4AF37]/20 text-gray-400 hover:text-[#E5C158] transition-colors"
+                          title="Editar producto"
+                        >
+                          <Pencil className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => handleViewHistory(prod)}

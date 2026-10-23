@@ -832,7 +832,6 @@ export default function AdminPage() {
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         
-        <p role="status" className="text-xs text-gray-400 mb-3">{referenceStatus}</p>
         {/* Notificación de elTOQUE (Colapsable con Skeleton Anti-CLS) */}
         {loadingRates ? (
           isEltoqueMinimized ? (
@@ -859,7 +858,11 @@ export default function AdminPage() {
             </div>
           )
         ) : (
-          eltoqueRate !== null && (
+          eltoqueRate === null ? (
+            <div className="glass-panel p-4 rounded-2xl border border-white/10">
+              <p role="status" className="text-xs leading-relaxed text-gray-400">{referenceStatus}</p>
+            </div>
+          ) : (
             isEltoqueMinimized ? (
               <div 
                 className={`glass-panel p-2 px-4 rounded-xl border inline-flex items-center gap-3 animate-fade-in shadow-lg cursor-pointer transition-colors w-max ${
@@ -886,7 +889,7 @@ export default function AdminPage() {
               <div className={`glass-panel p-4 rounded-2xl border flex flex-col md:flex-row items-center justify-between gap-4 animate-fade-in shadow-lg ${
                   eltoqueRate === currentRate ? 'border-emerald-500/40 bg-emerald-500/10 shadow-emerald-500/5' : 'border-blue-500/40 bg-blue-500/10 shadow-blue-500/5'
                 }`}>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
                     eltoqueRate === currentRate ? 'bg-emerald-500/20' : 'bg-blue-500/20'
                   }`}>
@@ -898,8 +901,8 @@ export default function AdminPage() {
                       <TrendingDown className="w-5 h-5 text-emerald-400" />
                     )}
                   </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-bold text-white flex flex-wrap items-center gap-2">
                       {referenceStale ? 'Referencia pendiente de verificación' : eltoqueRate === currentRate ? 'Mercado Sincronizado' : 'Actualización de Mercado: elTOQUE'}
                       <span className="px-2 py-0.5 rounded-full bg-[#10131E] text-[10px] text-gray-400 border border-white/5">
                         1 USD = {eltoqueRate} CUP
@@ -912,6 +915,7 @@ export default function AdminPage() {
                           ? `📉 elTOQUE reporta una baja. Tu tasa actual está por encima (${currentRate} CUP). ¿Deseas ajustar tus precios para mantener competitividad?`
                           : `📈 elTOQUE reporta un alza. Tu tasa actual está por debajo (${currentRate} CUP). Riesgo de pérdida de margen detectado.`}
                     </p>
+                    <p role="status" className="text-xs leading-relaxed text-gray-400 mt-2 max-w-xl break-words">{referenceStatus}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">

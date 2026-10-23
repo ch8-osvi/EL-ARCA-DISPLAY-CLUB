@@ -1,0 +1,64 @@
+/*
+ * Estilos de impresión del Etiquetador (/admin/etiquetas).
+ * Todas las clases están prefijadas con "labels-" o "label-" para no afectar
+ * al resto de la aplicación.
+ */
+
+/* En pantalla, el área de impresión no se muestra (la vista previa usa los mismos componentes). */
+@media screen {
+  .labels-print-area {
+    display: none;
+  }
+}
+
+/*
+ * Página con nombre: solo las hojas de etiquetas usan A4 sin márgenes.
+ * (Next.js puede mantener este CSS cargado tras navegar a otra ruta; así no
+ * altera la impresión de otras pantallas.)
+ */
+@page arcalabels {
+  size: A4 portrait;
+  margin: 0;
+}
+
+@media print {
+  html:has(.labels-print-area),
+  body:has(.labels-print-area) {
+    background: #ffffff !important;
+    background-image: none !important;
+    color: #000000 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* Oculta la interfaz de edición, menús y botones. */
+  .labels-screen {
+    display: none !important;
+  }
+
+  .labels-print-area {
+    display: block !important;
+  }
+
+  .labels-print-area .label-sheet {
+    page: arcalabels;
+    break-after: page;
+    page-break-after: always;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .labels-print-area .label-sheet:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  .labels-print-area,
+  .labels-print-area * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

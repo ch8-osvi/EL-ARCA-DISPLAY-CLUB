@@ -8,13 +8,13 @@ import { roundCupPrice } from '@/lib/searchUtils';
 interface ProductTableProps {
   products: Product[];
   currency?: Currency;
-  exchangeRate?: number;
+  exchangeRate?: number | null;
 }
 
 export default function ProductTable({
   products,
   currency = 'USD',
-  exchangeRate = 300,
+  exchangeRate = null,
 }: ProductTableProps) {
   const whatsappNumber = '5352031972';
 
@@ -45,7 +45,7 @@ export default function ProductTable({
           <tbody className="divide-y divide-white/5 text-gray-200">
             {products.map((product) => {
               const cupPrice = roundCupPrice(product.precio, exchangeRate);
-              const formattedCUP = cupPrice.toLocaleString('es-CU');
+              const formattedCUP = (Number.isFinite(cupPrice) ? cupPrice.toLocaleString('es-CU') : 'No disponible');
 
               const isTopSeller = Boolean(product.isTopSeller);
               const isLowStock = product.stock === 1;

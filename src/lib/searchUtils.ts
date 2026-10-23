@@ -308,8 +308,9 @@ export function fuzzyMatchGeneric(
  * Rounds to the nearest multiple of 100 for practical Cuban cash handling.
  * E.g.: 9,550 -> 9,600 | 9,540 -> 9,500 | 9,800 -> 9,800 | 9,890 -> 9,900
  */
-export function roundCupPrice(priceUSD: number, rate: number): number {
-  if (!priceUSD || !rate || rate <= 0) return 0;
+export function roundCupPrice(priceUSD: number, rate: number | null | undefined): number {
+  if (!rate || !Number.isFinite(rate) || rate < 1) return NaN;
+  if (!priceUSD) return 0;
   const rawCUP = priceUSD * rate;
   return Math.round(rawCUP / 100) * 100;
 }

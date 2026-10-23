@@ -91,20 +91,21 @@ export default function Navbar({
                 <button
                   id="btn-currency-cup"
                   type="button"
+                  disabled={!exchangeRate}
                   onClick={() => onCurrencyChange('CUP')}
                   className={`px-2 sm:px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-bold transition-all duration-200 ${
                     currency === 'CUP'
                       ? 'bg-gradient-to-r from-[#D4AF37] to-[#AA8826] text-black shadow-sm'
                       : 'text-gray-400 hover:text-white'
                   }`}
-                  title={`Ver precios en Pesos Cubanos (CUP) - Tasa 1 USD = ${exchangeRate || 300} CUP`}
+                  title={`Ver precios en Pesos Cubanos (CUP) - Tasa 1 USD = ${exchangeRate ?? 'no disponible'} CUP`}
                 >
                   CUP
                 </button>
               </div>
 
               {exchangeRate === null ? (
-                <div className="hidden xl:inline-block w-24 h-6 bg-[#10131E] border border-white/5 rounded-lg animate-pulse" title="Cargando tasa de cambio..."></div>
+                <span className="hidden xl:inline-block text-xs text-gray-400">Tasa CUP no disponible</span>
               ) : (exchangeRate ?? 0) > 0 ? (
                 <span className="hidden xl:inline-flex items-center text-[10px] font-semibold text-gray-400 bg-[#10131E] px-2 py-1 rounded-lg border border-white/5">
                   1 USD = {exchangeRate} CUP

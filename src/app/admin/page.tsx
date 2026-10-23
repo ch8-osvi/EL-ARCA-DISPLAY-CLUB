@@ -1,5 +1,6 @@
 'use client';
 
+import { useActiveExchangeRate } from '@/lib/useActiveExchangeRate';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
@@ -83,8 +84,11 @@ export default function AdminPage() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // ElTOQUE Rate logic
-  const [currentRate, setCurrentRate] = useState<number | null>(null);
+  const [currentRate, setCurrentRate] = useActiveExchangeRate();
   const [eltoqueRate, setEltoqueRate] = useState<number | null>(null);
+  const [referenceStatus, setReferenceStatus] = useState('Verificando referencia elTOQUE…');
+  const [referenceStale, setReferenceStale] = useState(true);
+  const [savingRate, setSavingRate] = useState(false);
   const [loadingRates, setLoadingRates] = useState(true);
   const [isEltoqueMinimized, setIsEltoqueMinimized] = useState(false);
 
@@ -159,40 +163,52 @@ export default function AdminPage() {
         setIsEltoqueMinimized(true);
       }
 
-      setLoadingRates(true);
-      Promise.allSettled([
-        fetch('/api/exchange-rate')
-          .then((res) => res.json())
-          .then((data) => {
-            if (data.rate) setCurrentRate(data.rate);
-          })
-          .catch(console.error),
-        fetch('/api/eltoque')
-          .then((res) => res.json())
-          .then((data) => {
-            if (data.success && data.rate) setEltoqueRate(data.rate);
-          })
-          .catch(console.error),
-      ]).finally(() => {
-        setLoadingRates(false);
-      });
     }
   }, [isAuthenticated]);
 
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let active = true;
+    const refresh = async () => {
+      try {
+        const response = await fetch('/api/eltoque', { cache: 'no-store' });
+        const data = await response.json();
+        if (!active) return;
+        setEltoqueRate(data.success ? data.rate : null);
+        setReferenceStale(!data.success || data.stale);
+        setReferenceStatus(data.success
+          ? [data.stale ? 'Referencia desactualizada.' : 'Referencia elTOQUE (últimas 24 horas).',
+             'Verificada: ' + new Date(data.updatedAt).toLocaleString(),
+             'Fecha informada por elTOQUE: ' + data.providerDate,
+             data.warning || ''].filter(Boolean).join(' ')
+          : 'Referencia elTOQUE no disponible. Se mantiene la tasa activa del negocio.');
+      } catch {
+        if (active) { setReferenceStale(true); setReferenceStatus('No se pudo verificar elTOQUE. Se mantiene la tasa activa del negocio.'); }
+      } finally { if (active) setLoadingRates(false); }
+    };
+    void refresh();
+    const timer = window.setInterval(refresh, 60000);
+    window.addEventListener('focus', refresh);
+    return () => { active = false; clearInterval(timer); window.removeEventListener('focus', refresh); };
+  }, [isAuthenticated]);
+
   const handleAjustarTasa = async () => {
-    if (!eltoqueRate) return;
+    if (!eltoqueRate || referenceStale || savingRate) return;
+    setSavingRate(true);
     try {
-      await fetch('/api/exchange-rate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rate: eltoqueRate }),
+      const response = await fetch('/api/exchange-rate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rate: eltoqueRate, source: 'eltoque' }),
       });
-      setCurrentRate(eltoqueRate);
-      triggerToast(`Tasa ajustada a ${eltoqueRate} CUP correctamente`);
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || 'No se pudo guardar la tasa');
+      setCurrentRate(data.rate);
+      window.dispatchEvent(new Event('exchange-rate-changed'));
+      try { localStorage.setItem('el_arca_rate_updated', String(Date.now())); } catch {}
+      triggerToast('Tasa del negocio guardada: ' + data.rate + ' CUP');
     } catch (error) {
-      console.error(error);
-      triggerToast('Error ajustando la tasa', 3000);
-    }
+      triggerToast(error instanceof Error ? error.message : 'Error ajustando la tasa', 3000);
+    } finally { setSavingRate(false); }
   };
 
   // Handle Login Submit
@@ -816,6 +832,7 @@ export default function AdminPage() {
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         
+        <p role="status" className="text-xs text-gray-400 mb-3">{referenceStatus}</p>
         {/* Notificación de elTOQUE (Colapsable con Skeleton Anti-CLS) */}
         {loadingRates ? (
           isEltoqueMinimized ? (
@@ -842,7 +859,7 @@ export default function AdminPage() {
             </div>
           )
         ) : (
-          eltoqueRate !== null && currentRate !== null && (
+          eltoqueRate !== null && (
             isEltoqueMinimized ? (
               <div 
                 className={`glass-panel p-2 px-4 rounded-xl border inline-flex items-center gap-3 animate-fade-in shadow-lg cursor-pointer transition-colors w-max ${
@@ -855,7 +872,7 @@ export default function AdminPage() {
               >
                 {eltoqueRate === currentRate ? (
                   <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                ) : eltoqueRate > currentRate ? (
+                ) : eltoqueRate > (currentRate ?? 0) ? (
                   <TrendingUp className="w-4 h-4 text-rose-400" />
                 ) : (
                   <TrendingDown className="w-4 h-4 text-emerald-400" />
@@ -875,7 +892,7 @@ export default function AdminPage() {
                   }`}>
                     {eltoqueRate === currentRate ? (
                       <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                    ) : eltoqueRate > currentRate ? (
+                    ) : eltoqueRate > (currentRate ?? 0) ? (
                       <TrendingUp className="w-5 h-5 text-rose-400" />
                     ) : (
                       <TrendingDown className="w-5 h-5 text-emerald-400" />
@@ -883,7 +900,7 @@ export default function AdminPage() {
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                      {eltoqueRate === currentRate ? 'Mercado Sincronizado' : 'Actualización de Mercado: elTOQUE'}
+                      {referenceStale ? 'Referencia pendiente de verificación' : eltoqueRate === currentRate ? 'Mercado Sincronizado' : 'Actualización de Mercado: elTOQUE'}
                       <span className="px-2 py-0.5 rounded-full bg-[#10131E] text-[10px] text-gray-400 border border-white/5">
                         1 USD = {eltoqueRate} CUP
                       </span>
@@ -891,7 +908,7 @@ export default function AdminPage() {
                     <p className={`text-xs mt-0.5 max-w-xl ${eltoqueRate === currentRate ? 'text-emerald-200/80' : 'text-blue-200/80'}`}>
                       {eltoqueRate === currentRate
                         ? `Excelente. Tu catálogo está perfectamente sincronizado con la tasa actual del mercado (${currentRate} CUP).`
-                        : eltoqueRate < currentRate
+                        : eltoqueRate < (currentRate ?? 0)
                           ? `📉 elTOQUE reporta una baja. Tu tasa actual está por encima (${currentRate} CUP). ¿Deseas ajustar tus precios para mantener competitividad?`
                           : `📈 elTOQUE reporta un alza. Tu tasa actual está por debajo (${currentRate} CUP). Riesgo de pérdida de margen detectado.`}
                     </p>
@@ -911,6 +928,7 @@ export default function AdminPage() {
                   {eltoqueRate !== currentRate && (
                     <button
                       onClick={handleAjustarTasa}
+                      disabled={referenceStale || savingRate}
                       className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md transition-all hover:scale-105"
                     >
                       Ajustar a {eltoqueRate} CUP
@@ -1129,7 +1147,7 @@ export default function AdminPage() {
               <AdminProductCard
                 key={product.id}
                 product={product}
-                exchangeRate={currentRate || 320}
+                exchangeRate={currentRate}
                 onDelete={handleDeleteProduct}
               />
             ))}

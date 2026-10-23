@@ -1,8 +1,8 @@
+import { getActiveExchangeRate } from '@/lib/exchangeRate';
 import connectToDatabase from '@/lib/mongoose';
 import { Product } from '@/lib/models/Product';
 import { Sale } from '@/lib/models/Sale';
 import { StockHistory } from '@/lib/models/StockHistory';
-import { ExchangeRate } from '@/lib/models/ExchangeRate';
 import { getHavanaMonthDay } from '@/lib/dateUtils';
 
 /** Generates order number: MMDD + 3 random letters + product count */
@@ -435,7 +435,7 @@ export async function executeRegistrarVentaRapida(args: {
     }
 
     // Verify exchange rate first before mutating DB
-    const rateDoc = await ExchangeRate.findOne().lean() as { rate: number } | null;
+    const rateDoc = await getActiveExchangeRate() as { rate: number } | null;
     if (!rateDoc || typeof rateDoc.rate !== 'number') {
       return {
         success: false,

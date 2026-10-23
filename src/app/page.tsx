@@ -1,5 +1,6 @@
 'use client';
 
+import { useActiveExchangeRate } from '@/lib/useActiveExchangeRate';
 import React, { useState, useEffect, useMemo } from 'react';
 import Navbar from '@/components/Navbar';
 import SearchBar from '@/components/SearchBar';
@@ -27,7 +28,7 @@ export default function Home() {
   const [sortOption, setSortOption] = useState<SortOption>('default');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [currency, setCurrency] = useState<Currency>('USD');
-  const [exchangeRate, setExchangeRate] = useState<number | null>(null);
+  const [exchangeRate, setExchangeRate] = useActiveExchangeRate();
 
   const whatsappNumber = '5352031972';
   const whatsappGroupUrl =
@@ -298,7 +299,7 @@ export default function Home() {
                   key={product.id}
                   product={product}
                   currency={currency}
-                  exchangeRate={exchangeRate || 300}
+                  exchangeRate={exchangeRate}
                 />
               ))}
             </div>
@@ -306,7 +307,7 @@ export default function Home() {
             <ProductTable
               products={filteredProducts}
               currency={currency}
-              exchangeRate={exchangeRate || 300}
+              exchangeRate={exchangeRate}
             />
           )
         ) : (

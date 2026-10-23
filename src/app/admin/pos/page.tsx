@@ -1,5 +1,6 @@
 'use client';
 
+import { useActiveExchangeRate } from '@/lib/useActiveExchangeRate';
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import {
@@ -57,9 +58,9 @@ export default function PosPage() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [clientName, setClientName] = useState('');
   const [currency, setCurrency] = useState<'USD' | 'CUP'>('USD');
-  const [exchangeRate, setExchangeRate] = useState<number | null>(null);
+  const [exchangeRate, setExchangeRate] = useActiveExchangeRate();
   const [isEditingRate, setIsEditingRate] = useState(false);
-  const [tempRate, setTempRate] = useState<string>('300');
+  const [tempRate, setTempRate] = useState<string>('');
   const [isPaid, setIsPaid] = useState(true);
   const [notes, setNotes] = useState('');
   const [copies, setCopies] = useState<number>(1);
@@ -120,22 +121,26 @@ export default function PosPage() {
   // Save exchange rate update
   const handleSaveRate = async () => {
     const num = parseFloat(tempRate);
-    if (!num || isNaN(num) || num < 1) {
+    if (!Number.isFinite(num) || num < 1) {
       triggerToast('Ingresa una tasa válida mayor a 0', true);
       return;
     }
-    setExchangeRate(num);
-    setIsEditingRate(false);
 
     try {
-      await fetch('/api/exchange-rate', {
+      const response = await fetch('/api/exchange-rate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rate: num }),
       });
-      triggerToast(`Tasa CUP actualizada a ${num}`);
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || 'No se pudo guardar la tasa');
+      setExchangeRate(data.rate);
+      setIsEditingRate(false);
+      window.dispatchEvent(new Event('exchange-rate-changed'));
+      try { localStorage.setItem('el_arca_rate_updated', String(Date.now())); } catch {}
+      triggerToast('Tasa CUP guardada: ' + data.rate);
     } catch (err) {
-      console.error('Error saving exchange rate:', err);
+      triggerToast(err instanceof Error ? err.message : 'Error guardando tasa', true);
     }
   };
 
@@ -250,7 +255,7 @@ export default function PosPage() {
 
   const totalUSD = subtotalUSD;
   const totalCUP = useMemo(() => {
-    return roundCupPrice(subtotalUSD, exchangeRate || 300);
+    return roundCupPrice(subtotalUSD, exchangeRate);
   }, [subtotalUSD, exchangeRate]);
 
   const totalItemsCount = useMemo(() => {
@@ -303,6 +308,7 @@ export default function PosPage() {
       return;
     }
 
+    if (!exchangeRate) { triggerToast('No hay una tasa activa disponible. Configúrala antes de facturar.', true); return; }
     setIsSubmitting(true);
     try {
       const payload = {
@@ -310,7 +316,7 @@ export default function PosPage() {
         clientName,
         items: cart,
         currency,
-        exchangeRate: exchangeRate || 300,
+        exchangeRate: exchangeRate,
         paid: isPaid,
         notes,
       };
@@ -394,19 +400,19 @@ export default function PosPage() {
 
       {/* Hidden Ticket Container for direct printing */}
       <div style={{ display: 'none' }}>
-        <TicketContent
+        {exchangeRate !== null && <TicketContent
           orderNumber={completedOrder?.orderNumber || 'PREVIEW'}
           clientName={clientName || completedOrder?.clientName || 'Consumidor Final'}
           items={cart.length > 0 ? cart.map(i => ({ ...i, subtotalUSD: i.precioUSD * i.qty })) : completedOrder?.items || []}
           currency={currency}
-          exchangeRate={exchangeRate || 300}
+          exchangeRate={exchangeRate}
           subtotalUSD={subtotalUSD || completedOrder?.subtotalUSD || 0}
           totalUSD={totalUSD || completedOrder?.totalUSD || 0}
           totalCUP={totalCUP || completedOrder?.totalCUP || 0}
           paid={isPaid}
           notes={notes}
           createdAt={completedOrder?.createdAt || new Date()}
-        />
+        />}
       </div>
 
       {/* POS Top Navbar */}
@@ -609,8 +615,8 @@ export default function PosPage() {
               {filteredProducts.map((prod) => {
                 const inCart = cart.find((c) => c.productId === prod.id);
                 const availableAfterCart = prod.stock - (inCart ? inCart.qty : 0);
-                const cupRounded = roundCupPrice(prod.precio, exchangeRate || 300);
-                const formattedCUP = cupRounded.toLocaleString();
+                const cupRounded = roundCupPrice(prod.precio, exchangeRate);
+                const formattedCUP = (Number.isFinite(cupRounded) ? cupRounded.toLocaleString() : 'No disponible');
 
                 return (
                   <div
@@ -929,7 +935,7 @@ export default function PosPage() {
                     ${totalUSD.toFixed(2)} USD
                   </div>
                   <div className="text-xs font-bold text-emerald-400">
-                    ≈ {totalCUP.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CUP
+                    ≈ {(Number.isFinite(totalCUP) ? totalCUP.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : 'No disponible')} CUP
                   </div>
                 </div>
               </div>

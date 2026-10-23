@@ -1,39 +1,31 @@
 import { NextResponse } from 'next/server';
-import connectToDatabase from '@/lib/mongoose';
-import { ExchangeRate } from '@/lib/models/ExchangeRate';
-
+import { getActiveExchangeRate, saveActiveExchangeRate, validExchangeRate } from '@/lib/exchangeRate';
+import { getElToqueRate } from '@/lib/eltoque';
 export const dynamic = 'force-dynamic';
-
-/** GET /api/exchange-rate — Retrieves the latest saved rate */
 export async function GET() {
   try {
-    await connectToDatabase();
-    const doc = await ExchangeRate.findOne().sort({ updatedAt: -1 }).lean();
-    return NextResponse.json({ success: true, rate: doc ? doc.rate : 300 });
-  } catch (err) {
-    console.error('[exchange-rate GET]', err);
-    return NextResponse.json({ success: false, error: 'Error obteniendo tasa' }, { status: 500 });
+    const doc = await getActiveExchangeRate();
+    return NextResponse.json({ success: !!doc, rate: doc?.rate ?? null, updatedAt: doc?.updatedAt ?? null },
+      { status: doc ? 200 : 503, headers: { 'Cache-Control': 'no-store' } });
+  } catch {
+    return NextResponse.json({ success: false, rate: null, error: 'Error obteniendo tasa' }, { status: 503 });
   }
 }
-
-/** POST /api/exchange-rate — Saves / updates the rate */
 export async function POST(req: Request) {
   try {
-    await connectToDatabase();
-    const { rate } = await req.json();
-
-    const num = parseFloat(rate);
-    if (!num || isNaN(num) || num < 1) {
-      return NextResponse.json({ success: false, error: 'Tasa inválida' }, { status: 400 });
+    const body = await req.json();
+    let rate = body.rate;
+    if (body.source === 'eltoque') {
+      const reference = await getElToqueRate();
+      if (!reference.success || reference.stale || reference.rate !== rate) {
+        return NextResponse.json({ success: false, error: 'La referencia cambió o está desactualizada. Actualiza el panel.' }, { status: 409 });
+      }
+      rate = reference.rate;
     }
-
-    // Singleton: Eliminar cualquier registro previo (limpiar duplicados) y crear uno único
-    await ExchangeRate.deleteMany({});
-    await ExchangeRate.create({ rate: num });
-
-    return NextResponse.json({ success: true, rate: num });
-  } catch (err) {
-    console.error('[exchange-rate POST]', err);
+    if (!validExchangeRate(rate)) return NextResponse.json({ success: false, error: 'Tasa inválida' }, { status: 400 });
+    const doc = await saveActiveExchangeRate(rate);
+    return NextResponse.json({ success: true, rate: doc!.rate });
+  } catch {
     return NextResponse.json({ success: false, error: 'Error guardando tasa' }, { status: 500 });
   }
 }

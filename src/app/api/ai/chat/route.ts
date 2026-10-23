@@ -1,3 +1,5 @@
+import { getElToqueRate } from '@/lib/eltoque';
+import { getActiveExchangeRate } from '@/lib/exchangeRate';
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongoose';
 import { Sale } from '@/lib/models/Sale';
@@ -27,8 +29,6 @@ import {
   executeAjustarStockProducto,
   executeRegistrarVentaRapida,
 } from '@/lib/whatsapp/tools';
-import { ExchangeRate } from '@/lib/models/ExchangeRate';
-import { ElToqueRate } from '@/lib/models/ElToqueRate';
 import { parseBatchProductsFromText } from '@/lib/ai/batchParser';
 import { detectDuplicates } from '@/lib/duplicateDetector';
 import { getCanonicalBrand } from '@/lib/brandUtils';
@@ -450,11 +450,11 @@ export async function POST(req: NextRequest) {
       Sale.find({}).sort({ createdAt: -1 }).lean(),
       Product.find({ isHidden: false }).lean(),
       StockHistory.find({ type: 'merma' }).sort({ createdAt: -1 }).lean(),
-      ExchangeRate.findOne().sort({ updatedAt: -1 }).lean() as Promise<{ rate: number } | null>,
-      ElToqueRate.findOne().sort({ createdAt: -1 }).lean() as Promise<{ rateUSD: number } | null>,
+      getActiveExchangeRate() as Promise<{ rate: number } | null>,
+      getElToqueRate(),
     ]);
     const currentExchangeRate = rateDoc?.rate || 'No configurada (⚠️ AVISO: El sistema requiere configurar la tasa primero)';
-    const currentElToqueRate = eltoqueDoc?.rateUSD || 'No disponible';
+    const currentElToqueRate = (eltoqueDoc.success && !eltoqueDoc.stale ? eltoqueDoc.rate : 'No disponible o desactualizada');
 
     // Segregate available vs out of stock
     const products = allProducts.filter((p) => (p.stock || 0) > 0);

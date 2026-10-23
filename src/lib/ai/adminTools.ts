@@ -1,3 +1,4 @@
+import { getActiveExchangeRate, saveActiveExchangeRate, validExchangeRate } from '@/lib/exchangeRate';
 /**
  * src/lib/ai/adminTools.ts
  * ─────────────────────────────────────────────────────────────────────────────
@@ -9,7 +10,6 @@ import connectToDatabase from '@/lib/mongoose';
 import { Product } from '@/lib/models/Product';
 import { Sale } from '@/lib/models/Sale';
 import { StockHistory } from '@/lib/models/StockHistory';
-import { ExchangeRate } from '@/lib/models/ExchangeRate';
 import { getHavanaMonthDay } from '@/lib/dateUtils';
 import mongoose from 'mongoose';
 import { cleanModelAndQuality } from '@/lib/ai/batchParser';
@@ -838,7 +838,7 @@ export async function executeCrearOrdenMulti(input: {
     await connectToDatabase();
     const { findProductSmart } = await import('@/lib/whatsapp/tools');
 
-    const rateDoc = await ExchangeRate.findOne().sort({ updatedAt: -1 }).lean() as { rate: number } | null;
+    const rateDoc = await getActiveExchangeRate() as { rate: number } | null;
     if (!rateDoc || typeof rateDoc.rate !== 'number') {
       return {
         success: false,
@@ -1070,17 +1070,16 @@ export async function executeActualizarTasaCambio(nuevaTasa: number) {
   try {
     await connectToDatabase();
     const rate = parseFloat(String(nuevaTasa));
-    if (isNaN(rate) || rate < 1) {
+    if (!validExchangeRate(rate)) {
       return { success: false, message: '❌ La tasa de cambio debe ser un número positivo válido (ej: 320, 340).' };
     }
 
     // Obtener la tasa actual para informar el cambio
-    const oldDoc = await ExchangeRate.findOne().sort({ updatedAt: -1 }).lean() as { rate: number } | null;
-    const tasaAnterior = oldDoc?.rate ?? 300;
+    const oldDoc = await getActiveExchangeRate() as { rate: number } | null;
+    const tasaAnterior = oldDoc?.rate ?? 'Sin configurar';
 
-    // Singleton: Eliminar todos los registros duplicados y mantener uno solo
-    await ExchangeRate.deleteMany({});
-    await ExchangeRate.create({ rate });
+    // Actualizar atómicamente la tasa activa compartida
+    await saveActiveExchangeRate(rate);
 
     return {
       success: true,

@@ -1,0 +1,15 @@
+name: Verificar API elTOQUE
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Actualizar referencia desde el servidor (clave privada en Vercel)
+        run: |
+          curl --fail --silent --show-error --max-time 45 https://elarca-displayclub.vercel.app/api/eltoque -o rate.json
+          python -c 'import json; d=json.load(open("rate.json")); assert d.get("success") and not d.get("stale") and not d.get("warning"), "No se pudo verificar una referencia reciente"'

@@ -1,3 +1,4 @@
+import { getActiveExchangeRate } from '@/lib/exchangeRate';
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongoose';
 import { Sale } from '@/lib/models/Sale';
@@ -103,6 +104,11 @@ export async function POST(req: Request) {
         );
       }
 
+      const activeRate = await getActiveExchangeRate();
+      if (!activeRate) return NextResponse.json({ success: false, error: 'Configura la tasa antes de facturar' }, { status: 503 });
+      if (exchangeRate !== activeRate.rate) return NextResponse.json({ success: false, error: 'La tasa cambió. Actualiza el POS antes de facturar.' }, { status: 409 });
+      const rateNum = activeRate.rate;
+
       // Validate and deduct stock for each item atomically
       const processedItems: any[] = [];
       for (const item of items) {
@@ -179,7 +185,7 @@ export async function POST(req: Request) {
         processedItems.reduce((acc, i) => acc + i.subtotalUSD, 0).toFixed(2)
       );
       const totalUSD  = subtotalUSD;
-      const rateNum   = parseFloat(exchangeRate) || 300;
+
       const totalCUP  = parseFloat((totalUSD * rateNum).toFixed(2));
 
       // Generate unique order number (retry up to 5 times on collision)

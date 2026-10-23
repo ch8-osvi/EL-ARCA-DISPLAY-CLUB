@@ -8,13 +8,13 @@ import { roundCupPrice } from '@/lib/searchUtils';
 interface ProductCardProps {
   product: Product;
   currency?: Currency;
-  exchangeRate?: number;
+  exchangeRate?: number | null;
 }
 
 export default function ProductCard({
   product,
   currency = 'USD',
-  exchangeRate = 300,
+  exchangeRate = null,
 }: ProductCardProps) {
   const getQualityBadgeClass = (calidad: string) => {
     const q = calidad.toUpperCase();
@@ -43,7 +43,7 @@ export default function ProductCard({
 
   // WhatsApp link configuration
   const whatsappNumber = '5352031972';
-  const formattedCUP = cupPrice.toLocaleString('es-CU');
+  const formattedCUP = (Number.isFinite(cupPrice) ? cupPrice.toLocaleString('es-CU') : 'No disponible');
   const whatsappText = encodeURIComponent(
     `Hola! Deseo consultar la disponibilidad del display: ${product.marca} ${product.modelo} (${product.calidad}) - $${product.precio} USD (${formattedCUP} CUP) en EL ARCA DISPLAY CLUB.`
   );

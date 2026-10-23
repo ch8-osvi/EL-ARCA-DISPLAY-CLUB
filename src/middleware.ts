@@ -29,7 +29,7 @@ export function middleware(request: NextRequest) {
   }
 
   // --- 2. Proteger Operaciones Críticas de la API ---
-  if (PROTECTED_API_ROUTES.some((route) => pathname.startsWith(route))) {
+  if (PROTECTED_API_ROUTES.some((route) => pathname.startsWith(route)) || (pathname === '/api/exchange-rate' && request.method === 'POST')) {
     // Métodos que alteran la DB o exponen datos sensibles de negocio
     if (request.method !== 'OPTIONS') { // Permitir preflight CORS si es necesario
       if (!isAuthenticated) {

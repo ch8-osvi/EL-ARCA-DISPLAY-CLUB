@@ -7,13 +7,13 @@ import { roundCupPrice } from '@/lib/searchUtils';
 
 interface AdminProductCardProps {
   product: Product;
-  exchangeRate?: number;
+  exchangeRate?: number | null;
   onDelete: (id: string) => void;
 }
 
 export default function AdminProductCard({
   product,
-  exchangeRate = 320,
+  exchangeRate = null,
   onDelete,
 }: AdminProductCardProps) {
   const [showConfirm, setShowConfirm] = useState(false);
@@ -23,7 +23,7 @@ export default function AdminProductCard({
     return roundCupPrice(product.precio, exchangeRate);
   }, [product.precio, exchangeRate]);
 
-  const formattedCUP = cupPrice.toLocaleString('es-CU');
+  const formattedCUP = (Number.isFinite(cupPrice) ? cupPrice.toLocaleString('es-CU') : 'No disponible');
 
   const handleDeleteClick = () => {
     setIsDeleting(true);

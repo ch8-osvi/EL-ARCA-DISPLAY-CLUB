@@ -1,5 +1,6 @@
 'use client';
 
+import { useActiveExchangeRate } from '@/lib/useActiveExchangeRate';
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import {
@@ -54,7 +55,7 @@ export default function InventoryPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStock, setFilterStock] = useState<'ALL' | 'AVAILABLE' | 'OUT'>('ALL');
   const [selectedBrand, setSelectedBrand] = useState('ALL');
-  const [exchangeRate, setExchangeRate] = useState<number>(320);
+  const [exchangeRate, setExchangeRate] = useActiveExchangeRate();
 
   // Add Product Modal State
   const [showAddModal, setShowAddModal] = useState(false);
@@ -1224,7 +1225,7 @@ export default function InventoryPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {filtered.map((prod) => {
                   const cupPrice = roundCupPrice(prod.precio, exchangeRate);
-                  const formattedCUP = cupPrice.toLocaleString('es-CU');
+                  const formattedCUP = (Number.isFinite(cupPrice) ? cupPrice.toLocaleString('es-CU') : 'No disponible');
 
                   return (
                     <div

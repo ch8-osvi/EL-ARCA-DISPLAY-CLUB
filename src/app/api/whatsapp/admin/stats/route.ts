@@ -83,7 +83,7 @@ export async function GET() {
         uniqueClientsTotalCount: uniqueClientsAllTime.size,
         activeRate: rateDoc?.rate || 340,
         botStatus: config.botStatus || 'online',
-        botPhone: config.botPhone || '5363657247',
+        botPhone: config.botPhone || '',
         topBrands,
       },
       recentLogs: recentLogs.map((l) => {

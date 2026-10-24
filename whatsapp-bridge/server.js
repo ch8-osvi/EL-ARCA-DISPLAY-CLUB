@@ -262,7 +262,7 @@ app.get('/scan', async (req, res) => {
           ⏳ ESPERANDO VINCULACIÓN
         </div>
         <h1>Vincular WhatsApp</h1>
-        <p>Abre WhatsApp en el teléfono de la tienda (<strong>+53 ${BOT_PHONE}</strong>) y escanea este código QR:</p>
+        <p>Abre WhatsApp en el teléfono o línea comercial de la tienda y escanea este código QR:</p>
         
         <div class="qr-wrapper">
           ${
@@ -274,8 +274,8 @@ app.get('/scan', async (req, res) => {
 
         <div class="steps">
           <ol>
-            <li>Abre <strong>WhatsApp</strong> en el móvil <strong>+53 ${BOT_PHONE}</strong></li>
-            <li>Toca los tres puntos (⋮) o Configuración</li>
+            <li>Abre <strong>WhatsApp</strong> en el teléfono que atenderá la tienda</li>
+            <li>Toca los tres puntos (⋮) o Ajustes / Configuración</li>
             <li>Selecciona <strong>Dispositivos vinculados</strong></li>
             <li>Toca en <strong>Vincular un dispositivo</strong> y apunta la cámara a esta pantalla</li>
           </ol>
@@ -440,8 +440,26 @@ async function startBaileysSocket() {
       isConnected = true;
       currentQR = null;
       currentQRDataUrl = null;
-      connectedPhone = sock.user?.id ? sock.user.id.split(':')[0].replace(/\D/g, '') : BOT_PHONE;
+      connectedPhone = sock.user?.id ? sock.user.id.split(':')[0].replace(/\D/g, '') : null;
       console.log(`[Baileys] ✅ Conectado exitosamente a WhatsApp con el número: +${connectedPhone}`);
+
+      // Sincronizar número real conectado con MongoDB Atlas y la API de Vercel
+      if (connectedPhone) {
+        if (mongoDb) {
+          mongoDb.collection('whatsappconfigs').updateOne(
+            {},
+            { $set: { botPhone: connectedPhone, botStatus: 'online', updatedAt: new Date() } },
+            { upsert: true }
+          ).catch((err) => console.warn('[Config Mongo Sync Error]', err.message));
+        }
+
+        // Notificar al endpoint de Vercel para actualizar la interfaz web en la nube
+        fetch(VERCEL_WEBHOOK_URL.replace('/webhook', '/admin/config'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'set_bot_phone', phone: connectedPhone }),
+        }).catch(() => {});
+      }
     }
 
     if (connection === 'close') {

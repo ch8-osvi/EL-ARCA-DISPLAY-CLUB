@@ -12,7 +12,7 @@ const WhatsAppConfigSchema = new Schema<IWhatsAppConfig>(
   {
     adminPhones: { type: [String], default: ['5352031972'] },
     blacklistedPhones: { type: [String], default: [] },
-    botPhone: { type: String, default: '5363657247' },
+    botPhone: { type: String, default: '' },
     botStatus: { type: String, enum: ['online', 'offline'], default: 'offline' },
     lastPingAt: { type: Date, default: Date.now },
   },
@@ -31,7 +31,7 @@ export async function getWhatsAppConfig(): Promise<IWhatsAppConfig> {
     config = await WhatsAppConfig.create({
       adminPhones: ['5352031972'],
       blacklistedPhones: [],
-      botPhone: '5363657247',
+      botPhone: process.env.BOT_PHONE || '',
       botStatus: 'online',
       lastPingAt: new Date(),
     });

@@ -531,7 +531,7 @@ export default function AdminWhatsAppPage() {
             {/* Indicador de Estado del Bot con Dot Verde Parpadeante */}
             <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-xs font-bold text-emerald-300 shadow-sm">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400/50" />
-              <span>Bot: +53 {metrics?.botPhone || '63657247'}</span>
+              <span>Bot: {metrics?.botPhone ? `+${metrics.botPhone}` : 'En línea'}</span>
               <span className="hidden sm:inline-block text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-200 font-extrabold">Activo</span>
             </div>
 

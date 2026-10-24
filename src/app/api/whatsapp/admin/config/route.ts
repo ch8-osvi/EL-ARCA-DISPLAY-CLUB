@@ -13,7 +13,7 @@ export async function GET() {
       status: 'ok',
       adminPhones: config.adminPhones || [],
       blacklistedPhones: config.blacklistedPhones || [],
-      botPhone: config.botPhone || '5363657247',
+      botPhone: config.botPhone || '',
       botStatus: config.botStatus || 'online',
     });
   } catch (err: any) {
@@ -50,6 +50,9 @@ export async function POST(req: NextRequest) {
       }
     } else if (action === 'remove_blacklist') {
       config.blacklistedPhones = config.blacklistedPhones.filter((p) => normalizePhoneNumber(p) !== cleanPhone);
+    } else if (action === 'set_bot_phone') {
+      config.botPhone = cleanPhone;
+      config.botStatus = 'online';
     } else {
       return NextResponse.json({ error: 'Acción no reconocida' }, { status: 400 });
     }

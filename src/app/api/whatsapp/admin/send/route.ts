@@ -25,7 +25,12 @@ export async function POST(req: NextRequest) {
       });
     } else {
       return NextResponse.json(
-        { error: 'El servicio de WhatsApp no pudo entregar el mensaje. Verifica que el bot esté conectado.' },
+        {
+          success: false,
+          error: 'El bot local no está conectado o no es accesible directamente desde la nube de Vercel.',
+          reason: 'bridge_unreachable',
+          to: cleanTo,
+        },
         { status: 502 }
       );
     }

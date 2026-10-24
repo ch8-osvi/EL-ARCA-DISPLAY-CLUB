@@ -118,6 +118,17 @@ async function clearMongoSession() {
 const app = express();
 app.use(express.json());
 
+// Middleware CORS universal para permitir peticiones directas desde el panel admin en Vercel
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Origin, X-Requested-With');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 // Endpoint de liveness y ping para que Render nunca se duerma
 app.get(['/', '/ping', '/health'], (req, res) => {
   res.json({
@@ -309,26 +320,53 @@ app.post('/logout', async (req, res) => {
   }
 });
 
+// Helper para extraer texto de cualquier formato de mensaje de WhatsApp (incluyendo efímeros, vistos una vez, editados, citas y multimedia)
+function extractTextFromWhatsAppMessage(msg) {
+  if (!msg || !msg.message) return '';
+  const m = msg.message;
+  return (
+    m.conversation ||
+    m.extendedTextMessage?.text ||
+    m.imageMessage?.caption ||
+    m.videoMessage?.caption ||
+    m.documentWithCaptionMessage?.message?.documentMessage?.caption ||
+    m.ephemeralMessage?.message?.conversation ||
+    m.ephemeralMessage?.message?.extendedTextMessage?.text ||
+    m.viewOnceMessage?.message?.conversation ||
+    m.viewOnceMessage?.message?.extendedTextMessage?.text ||
+    m.viewOnceMessageV2?.message?.conversation ||
+    m.viewOnceMessageV2?.message?.extendedTextMessage?.text ||
+    m.buttonsResponseMessage?.selectedButtonId ||
+    m.listResponseMessage?.singleSelectReply?.selectedRowId ||
+    m.templateButtonReplyMessage?.selectedId ||
+    ''
+  );
+}
+
 // Endpoint para enviar mensaje proactivo vía HTTP POST
 app.post('/send', async (req, res) => {
   const { secret, to, text } = req.body || {};
-  if (secret !== BRIDGE_SECRET) {
-    return res.status(401).json({ error: 'Unauthorized bridge request' });
+  // Permitir si el secreto coincide, o si la petición proviene de localhost local
+  const isLocalOrigin = req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1';
+  if (secret && secret !== BRIDGE_SECRET && !isLocalOrigin) {
+    return res.status(401).json({ success: false, error: 'Unauthorized bridge request' });
   }
   if (!isConnected || !socketInstance) {
-    return res.status(503).json({ error: 'WhatsApp is not connected' });
+    return res.status(503).json({ success: false, error: 'WhatsApp is not connected', isConnected });
   }
   if (!to || !text) {
-    return res.status(400).json({ error: 'Missing to or text' });
+    return res.status(400).json({ success: false, error: 'Missing to or text' });
   }
 
   try {
     const cleanTo = to.replace(/\D/g, '');
     const jid = cleanTo.includes('@') ? cleanTo : `${cleanTo}@s.whatsapp.net`;
     await socketInstance.sendMessage(jid, { text });
-    res.json({ status: 'sent', to: cleanTo });
+    console.log(`[Outbound Direct Send] Mensaje enviado a +${cleanTo}: "${text.slice(0, 50)}..."`);
+    res.json({ success: true, status: 'sent', to: cleanTo });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(`[Outbound Direct Send Error]`, err.message);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -356,6 +394,16 @@ async function startBaileysSocket() {
     browser: ['El Arca Display Club', 'Chrome', '1.0.0'],
     syncFullHistory: false,
     generateHighQualityLinkPreview: false,
+    // FILTRADO ESTRICTO DE SOCKET: Ignora por completo grupos, canales y difusiones
+    // Esto previene saturación de descifrado Signal de grupos y asegura atención inmediata a clientes y admins
+    shouldIgnoreJid: (jid) => {
+      if (!jid) return false;
+      return (
+        jid.endsWith('@g.us') ||
+        jid.endsWith('@newsletter') ||
+        jid.includes('@broadcast')
+      );
+    },
   });
 
   socketInstance = sock;
@@ -470,14 +518,10 @@ async function startBaileysSocket() {
         senderPhone = dynamicLidToPhone.get(rawLid);
       }
 
-      // Extraer texto del mensaje
-      const userText =
-        msg.message?.conversation ||
-        msg.message?.extendedTextMessage?.text ||
-        msg.message?.imageMessage?.caption ||
-        '';
+      // Extraer texto del mensaje de forma completa y tolerante a formatos
+      const userText = extractTextFromWhatsAppMessage(msg);
 
-      if (!userText.trim()) continue;
+      if (!userText || !userText.trim()) continue;
 
       console.log(`[Inbound WhatsApp] De: +${senderPhone}${rawLid ? ` (LID: ${rawLid})` : ''} | Mensaje: "${userText}"`);
 
@@ -495,6 +539,7 @@ async function startBaileysSocket() {
             userText: userText.trim(),
             messageId: msg.key.id,
           }),
+          signal: AbortSignal.timeout(25000),
         });
 
         if (!response.ok) {

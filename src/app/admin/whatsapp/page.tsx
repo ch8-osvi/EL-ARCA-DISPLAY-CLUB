@@ -148,16 +148,47 @@ export default function AdminWhatsAppPage() {
   const [newBlacklistPhone, setNewBlacklistPhone] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // New Live Features: Sound & AutoRefresh
+  // Live Features: Sound & Desktop Notifications
   const [soundEnabled, setSoundEnabled] = useState(false);
-  const [autoRefresh, setAutoRefresh] = useState(true);
+  const soundEnabledRef = useRef(false);
   const lastLogIdRef = useRef<string | null>(null);
+
+  // Cargar preferencia de sonido guardada en localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('el_arca_whatsapp_sound') === 'true';
+      setSoundEnabled(saved);
+      soundEnabledRef.current = saved;
+    } catch {}
+  }, []);
+
+  const toggleSound = () => {
+    const next = !soundEnabled;
+    setSoundEnabled(next);
+    soundEnabledRef.current = next;
+    try {
+      localStorage.setItem('el_arca_whatsapp_sound', String(next));
+    } catch {}
+
+    if (next) {
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+      playNotificationSound();
+      triggerToast('🔔 Alertas sonoras y notificaciones activadas');
+    } else {
+      triggerToast('🔕 Alertas silenciadas');
+    }
+  };
 
   const playNotificationSound = () => {
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioCtx) return;
       const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'sine';
@@ -243,10 +274,15 @@ export default function AdminWhatsAppPage() {
   // Direct reply from modal
   const [directReplyText, setDirectReplyText] = useState('');
   const [isSendingReply, setIsSendingReply] = useState(false);
+  const [sendErrorFallback, setSendErrorFallback] = useState<string | null>(null);
 
   const handleSendDirectReply = async () => {
     if (!selectedLog || !directReplyText.trim()) return;
     setIsSendingReply(true);
+    setSendErrorFallback(null);
+    let delivered = false;
+
+    // Intento 1: A través de la API Next.js /api/whatsapp/admin/send
     try {
       const res = await fetch('/api/whatsapp/admin/send', {
         method: 'POST',
@@ -255,20 +291,49 @@ export default function AdminWhatsAppPage() {
           to: selectedLog.senderPhone,
           text: directReplyText.trim(),
         }),
+        signal: AbortSignal.timeout(4000),
       });
-      const data = await res.json();
-      if (res.ok) {
-        triggerToast(`Mensaje enviado a +${selectedLog.senderPhone}`);
-        setDirectReplyText('');
-        fetchData();
-      } else {
-        triggerToast(data.error || 'Error al enviar');
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        delivered = true;
       }
     } catch {
-      triggerToast('Error de conexión');
-    } finally {
-      setIsSendingReply(false);
+      // Endpoint cloud timeout o bridge unreachable
     }
+
+    // Intento 2: Si estamos en el navegador de la PC donde corre el bot en local
+    if (!delivered) {
+      try {
+        const localRes = await fetch('http://localhost:7860/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: selectedLog.senderPhone,
+            text: directReplyText.trim(),
+            secret: 'el_arca_bridge_secret_2026',
+          }),
+          signal: AbortSignal.timeout(3000),
+        });
+        const localData = await localRes.json().catch(() => ({}));
+        if (localRes.ok && localData.success) {
+          delivered = true;
+        }
+      } catch {
+        // Local bridge no accesible directamente
+      }
+    }
+
+    if (delivered) {
+      triggerToast(`✅ Mensaje enviado exitosamente a +${selectedLog.senderPhone}`);
+      setDirectReplyText('');
+      setSendErrorFallback(null);
+      fetchData({ silent: true });
+    } else {
+      const fallbackUrl = `https://wa.me/${selectedLog.senderPhone}?text=${encodeURIComponent(directReplyText.trim())}`;
+      setSendErrorFallback(fallbackUrl);
+      triggerToast('⚠️ El bot no respondió en este momento. Puedes abrir WhatsApp Web directamente.');
+    }
+    setIsSendingReply(false);
   };
 
   const triggerToast = (msg: string) => {
@@ -296,22 +361,42 @@ export default function AdminWhatsAppPage() {
     }
   };
 
-  // Carga de datos
-  const fetchData = async () => {
-    setLoading(true);
+  // Carga de datos (con soporte para refresco silencioso en segundo plano)
+  const fetchData = async (options?: { silent?: boolean }) => {
+    const isSilent = options?.silent === true;
+    if (!isSilent) setLoading(true);
     try {
       const [statsRes, configRes] = await Promise.all([
-        fetch('/api/whatsapp/admin/stats'),
-        fetch('/api/whatsapp/admin/config'),
+        fetch('/api/whatsapp/admin/stats', { cache: 'no-store' }),
+        fetch('/api/whatsapp/admin/config', { cache: 'no-store' }),
       ]);
 
       if (statsRes.ok) {
         const statsData = await statsRes.json();
         setMetrics(statsData.metrics);
         const incomingLogs: WhatsAppLogItem[] = statsData.recentLogs || [];
-        if (soundEnabled && lastLogIdRef.current && incomingLogs.length > 0 && incomingLogs[0].id !== lastLogIdRef.current) {
+
+        // Detectar nuevo mensaje entrante para disparar alerta sonora y push notification
+        if (
+          soundEnabledRef.current &&
+          lastLogIdRef.current &&
+          incomingLogs.length > 0 &&
+          incomingLogs[0].id !== lastLogIdRef.current
+        ) {
           playNotificationSound();
+          if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+            try {
+              const notif = new Notification('El Arca WhatsApp - Nuevo Mensaje', {
+                body: `+${incomingLogs[0].senderPhone}: "${(incomingLogs[0].userMessage || '').slice(0, 75)}"`,
+                icon: '/favicon.ico',
+              });
+              notif.onclick = () => {
+                window.focus();
+              };
+            } catch {}
+          }
         }
+
         if (incomingLogs.length > 0) {
           lastLogIdRef.current = incomingLogs[0].id;
         }
@@ -325,20 +410,22 @@ export default function AdminWhatsAppPage() {
       }
     } catch (err) {
       console.error('Error fetching WhatsApp data:', err);
-      triggerToast('Error cargando datos de WhatsApp');
+      if (!isSilent) triggerToast('Error cargando datos de WhatsApp');
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   };
 
   useEffect(() => {
     if (isAuthenticated) {
       fetchData();
-      if (!autoRefresh) return;
-      const interval = setInterval(fetchData, 30000); // Polling cada 30s
+      // Polling silencioso en segundo plano cada 20s sin parpadeos ni bloqueos de pantalla
+      const interval = setInterval(() => {
+        fetchData({ silent: true });
+      }, 20000);
       return () => clearInterval(interval);
     }
-  }, [isAuthenticated, autoRefresh]);
+  }, [isAuthenticated]);
 
   // Handlers para admins y blacklist
   const handleConfigAction = async (action: string, phone: string) => {
@@ -442,20 +529,25 @@ export default function AdminWhatsAppPage() {
 
           <div className="flex items-center gap-2.5">
             <button
-              onClick={() => {
-                const next = !autoRefresh;
-                setAutoRefresh(next);
-                triggerToast(next ? 'Auto-actualización cada 30s reanudada' : 'Auto-actualización en pausa');
-              }}
+              onClick={toggleSound}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
-                autoRefresh
-                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                  : 'bg-yellow-500/10 border-yellow-500/30 text-yellow-300'
+                soundEnabled
+                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                  : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'
               }`}
-              title={autoRefresh ? 'Click para pausar auto-actualización automática' : 'Click para reanudar auto-actualización'}
+              title={soundEnabled ? 'Click para silenciar alertas y notificaciones' : 'Click para activar alertas sonoras y notificaciones de escritorio'}
             >
-              <span className={`w-2 h-2 rounded-full ${autoRefresh ? 'bg-emerald-400 animate-pulse' : 'bg-yellow-400'}`} />
-              <span>{autoRefresh ? 'En vivo' : 'Pausado'}</span>
+              {soundEnabled ? (
+                <>
+                  <Volume2 className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                  <span>Sonido: Activo</span>
+                </>
+              ) : (
+                <>
+                  <VolumeX className="w-3.5 h-3.5 text-gray-400" />
+                  <span>Sonido: Silenciado</span>
+                </>
+              )}
             </button>
 
             <div className="hidden sm:inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-bold text-gray-300">
@@ -463,7 +555,7 @@ export default function AdminWhatsAppPage() {
             </div>
 
             <button
-              onClick={fetchData}
+              onClick={() => fetchData()}
               disabled={loading}
               title="Refrescar datos ahora"
               className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 transition-all hover:scale-105 active:scale-95"
@@ -1006,32 +1098,85 @@ export default function AdminWhatsAppPage() {
               </div>
             </div>
 
-            {/* Direct Quick Reply from Panel */}
-            <div className="pt-3 border-t border-white/10 space-y-2">
-              <span className="text-gray-400 font-bold text-xs flex items-center gap-1.5">
-                <Send className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Enviar Respuesta Directa vía Bot:</span>
-              </span>
-              <div className="flex gap-2">
+            {/* Direct Quick Reply from Panel with Multi-Layer Fallback */}
+            <div className="pt-3 border-t border-white/10 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-300 font-bold text-xs flex items-center gap-1.5">
+                  <Send className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Enviar Respuesta Directa al Cliente:</span>
+                </span>
+                <span className="text-[11px] text-gray-400">
+                  Destinatario: <strong className="text-white">+{selectedLog.senderPhone}</strong>
+                </span>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="text"
-                  placeholder={`Escribir a +${selectedLog.senderPhone}...`}
+                  placeholder={`Escribir respuesta para +${selectedLog.senderPhone}...`}
                   value={directReplyText}
-                  onChange={(e) => setDirectReplyText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !isSendingReply) handleSendDirectReply();
+                  onChange={(e) => {
+                    setDirectReplyText(e.target.value);
+                    if (sendErrorFallback) setSendErrorFallback(null);
                   }}
-                  className="flex-1 px-3 py-2 bg-[#0B0F19] border border-white/10 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-emerald-400"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !isSendingReply && directReplyText.trim()) {
+                      handleSendDirectReply();
+                    }
+                  }}
+                  className="flex-1 px-3.5 py-2.5 bg-[#0B0F19] border border-white/10 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-emerald-400 shadow-inner"
                 />
-                <button
-                  onClick={handleSendDirectReply}
-                  disabled={isSendingReply || !directReplyText.trim()}
-                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-emerald-950/40 shrink-0"
-                >
-                  <Send className="w-3 h-3" />
-                  <span>{isSendingReply ? 'Enviando...' : 'Enviar'}</span>
-                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleSendDirectReply}
+                    disabled={isSendingReply || !directReplyText.trim()}
+                    className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md shadow-emerald-950/40 active:scale-95"
+                  >
+                    {isSendingReply ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Enviando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-3.5 h-3.5" />
+                        <span>Enviar con Bot</span>
+                      </>
+                    )}
+                  </button>
+
+                  <a
+                    href={`https://wa.me/${selectedLog.senderPhone}?text=${encodeURIComponent(directReplyText.trim() || '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3.5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-gray-300 hover:text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
+                    title="Abrir este mensaje directamente en tu WhatsApp Web"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="hidden sm:inline">WhatsApp Web</span>
+                  </a>
+                </div>
               </div>
+
+              {/* Banner de contingencia y retroalimentación si el bot no está accesible */}
+              {sendErrorFallback && (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 animate-fade-in">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>El bot local no respondió. El mensaje está listo para enviar en tu WhatsApp Web:</span>
+                  </div>
+                  <a
+                    href={sendErrorFallback}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs flex items-center gap-1.5 transition-all shrink-0 shadow-sm"
+                  >
+                    <span>Abrir y Enviar</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              )}
             </div>
 
             <div className="pt-2 flex items-center justify-between border-t border-white/10 text-[11px] text-gray-500">

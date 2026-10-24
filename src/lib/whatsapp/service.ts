@@ -186,7 +186,10 @@ function parseDirectStockQuery(text: string): string | null {
 
 /** Sends a message to a WhatsApp user via Baileys Bridge, Whapi.cloud Gateway or Meta Cloud API */
 export async function sendWhatsAppMessage(to: string, messageText: string): Promise<boolean> {
-  const bridgeUrl = process.env.WHATSAPP_BRIDGE_URL || 'http://localhost:7860';
+  const isVercelCloud = !!process.env.VERCEL || process.env.NODE_ENV === 'production';
+  const configuredBridgeUrl = process.env.WHATSAPP_BRIDGE_URL;
+  // Solo usar localhost si estamos en desarrollo local o si fue configurado explícitamente
+  const bridgeUrl = configuredBridgeUrl || (!isVercelCloud ? 'http://localhost:7860' : null);
   const bridgeSecret = process.env.WHATSAPP_BRIDGE_SECRET || 'el_arca_bridge_secret_2026';
   const whapiToken = process.env.WHAPI_TOKEN;
   const metaToken = process.env.WHATSAPP_TOKEN;
@@ -204,7 +207,7 @@ export async function sendWhatsAppMessage(to: string, messageText: string): Prom
           to: cleanTo,
           text: messageText,
         }),
-        signal: AbortSignal.timeout(6000),
+        signal: AbortSignal.timeout(3500),
       });
       if (res.ok) {
         return true;

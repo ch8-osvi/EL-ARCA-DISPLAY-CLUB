@@ -43,6 +43,43 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
 
     // =========================================================================
+    // CASE 0: BAILEYS CLOUD BRIDGE (Custom microservice, 100% Free & Cuba-ready)
+    // =========================================================================
+    if (body.source === 'baileys_bridge') {
+      const expectedSecret = process.env.WHATSAPP_BRIDGE_SECRET || 'el_arca_bridge_secret_2026';
+      if (body.secret && body.secret !== expectedSecret) {
+        return NextResponse.json({ error: 'Unauthorized bridge request' }, { status: 401 });
+      }
+
+      const senderPhone = normalizePhoneNumber(body.senderPhone || body.chatId || '');
+      const userText = (body.userText || body.text || '').trim();
+      const messageId = body.messageId;
+
+      if (messageId && processedMessageIds.has(messageId)) {
+        return NextResponse.json({ status: 'already_processed', reply: null }, { status: 200 });
+      }
+      if (messageId) {
+        processedMessageIds.add(messageId);
+        if (processedMessageIds.size > 2000) processedMessageIds.clear();
+      }
+
+      if (userText && senderPhone) {
+        console.log(`[Baileys Bridge Inbound] From: ${senderPhone} | Text: "${userText}"`);
+        const replyText = await processWhatsAppAiMessage(userText, senderPhone);
+        return NextResponse.json(
+          {
+            status: 'success',
+            reply: replyText,
+            senderPhone,
+          },
+          { status: 200 }
+        );
+      }
+
+      return NextResponse.json({ status: 'no_text_or_phone', reply: null }, { status: 200 });
+    }
+
+    // =========================================================================
     // CASE 1: WHAPI.CLOUD GATEWAY (Independent, QR-based, zero Meta ban)
     // =========================================================================
     const rawWhapiMessages: any[] = Array.isArray(body.messages)

@@ -84,7 +84,12 @@ export async function GET(req: Request) {
               { $count: "n" },
             ],
             failures: [
-              { $match: { status: "failed", $expr: day } },
+              {
+                $match: {
+                  $or: [{ status: "failed" }, { aiFailed: true }],
+                  $expr: day,
+                },
+              },
               { $count: "n" },
             ],
             tokens: [
@@ -113,7 +118,7 @@ export async function GET(req: Request) {
         results: { $exists: true, $ne: [] },
       }),
       BotOutbound.countDocuments({
-        status: { $in: ["queued", "sending"] },
+        status: { $in: ["queued", "sending", "submitted"] },
         expiresAt: { $gt: new Date() },
       }),
       BotConversation.countDocuments({ paused: true }),

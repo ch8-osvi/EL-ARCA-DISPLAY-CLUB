@@ -4,8 +4,9 @@ import { BotOutbound } from "@/lib/models/BotState";
 import { getWhatsAppConfig } from "@/lib/models/WhatsAppConfig";
 import { normalizePhoneNumber, validPhone } from "@/lib/whatsapp/identity";
 import { processNextMessage } from "@/lib/whatsapp/inbox";
-import { WhatsAppLog } from "@/lib/models/WhatsAppLog";
 import { dispatchProviderMessages } from "@/lib/whatsapp/providers";
+import { advanceDelivery, type DeliveryStatus } from "@/lib/whatsapp/delivery";
+import { formatWhatsAppText } from "@/lib/whatsapp/format";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 export async function POST(req: Request) {
@@ -35,8 +36,19 @@ export async function POST(req: Request) {
         body.connected ||
         (process.env.WHATSAPP_PROVIDER &&
           process.env.WHATSAPP_PROVIDER !== "bridge")
-      )
-        processed = await processNextMessage();
+      ) {
+        const ready = await BotOutbound.exists({
+          provider: "bridge",
+          status: { $in: ["queued", "sending", "submitted"] },
+          attempts: { $lt: 5 },
+          expiresAt: { $gt: new Date() },
+          $or: [
+            { leaseUntil: { $exists: false } },
+            { leaseUntil: { $lte: new Date() } },
+          ],
+        });
+        if (!ready) processed = await processNextMessage();
+      }
       await dispatchProviderMessages();
     }
     if (body.action === "pull" || body.action === "work") {
@@ -45,7 +57,7 @@ export async function POST(req: Request) {
         const message = await BotOutbound.findOneAndUpdate(
           {
             provider: "bridge",
-            status: { $in: ["queued", "sending"] },
+            status: { $in: ["queued", "sending", "submitted"] },
             attempts: { $lt: 5 },
             expiresAt: { $gt: new Date() },
             $or: [
@@ -63,11 +75,16 @@ export async function POST(req: Request) {
           { returnDocument: "after", sort: { createdAt: 1 } },
         ).lean();
         if (!message) break;
-        messages.push({ id: message._id, to: message.to, text: message.text });
+        messages.push({
+          id: message._id,
+          to: message.to,
+          chatJid: message.chatJid,
+          text: formatWhatsAppText(message.text),
+        });
       }
       await BotOutbound.updateMany(
         {
-          status: "sending",
+          status: { $in: ["sending", "submitted"] },
           attempts: { $gte: 5 },
           leaseUntil: { $lt: new Date() },
         },
@@ -80,23 +97,25 @@ export async function POST(req: Request) {
       );
       return Response.json({ messages, processed });
     }
-    if (body.action === "ack" && typeof body.id === "string") {
-      const success = body.success === true;
-      await BotOutbound.updateOne(
-        { _id: body.id, status: "sending" },
-        {
-          $set: {
-            status: success ? "sent" : "failed",
-            providerId: String(body.providerId || "").slice(0, 200),
-            error: success ? "" : "El puente no pudo enviar el mensaje",
-          },
-          $unset: { leaseUntil: 1 },
-        },
-      );
-      await WhatsAppLog.updateMany(
-        { messageId: body.id },
-        { $set: { status: success ? "sent" : "failed" } },
-      );
+    if (
+      ["ack", "receipt"].includes(body.action) &&
+      typeof body.id === "string" &&
+      body.id.length <= 300
+    ) {
+      if (
+        body.action === "receipt" &&
+        !["sent", "delivered", "read"].includes(body.status)
+      )
+        return Response.json({ error: "Estado inválido" }, { status: 400 });
+      const status: DeliveryStatus =
+        body.action === "receipt"
+          ? body.status
+          : body.success === true
+            ? body.status === "submitted"
+              ? "submitted"
+              : "sent"
+            : "failed";
+      await advanceDelivery(body.id, status, String(body.providerId || ""));
       return Response.json({ success: true });
     }
     return Response.json({ error: "Acción inválida" }, { status: 400 });

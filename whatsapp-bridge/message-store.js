@@ -8,14 +8,14 @@ function messageStore(folder, ttl = 7 * 86400000) {
   const filename = (id) =>
     path.join(folder, createHash("sha256").update(id).digest("hex") + ".json");
   return {
-    async put(id, message) {
+    async put(id, message, metadata = {}) {
       await fs.mkdir(folder, { recursive: true });
       const file = filename(id),
         temp = file + ".tmp";
       await fs.writeFile(
         temp,
         JSON.stringify(
-          { message, expiresAt: Date.now() + ttl },
+          { message, metadata, expiresAt: Date.now() + ttl },
           BufferJSON.replacer,
         ),
         { mode: 0o600 },
@@ -30,6 +30,19 @@ function messageStore(folder, ttl = 7 * 86400000) {
           BufferJSON.reviver,
         );
         return item.expiresAt > Date.now() ? item.message : undefined;
+      } catch (e) {
+        if (e.code === "ENOENT") return undefined;
+        throw e;
+      }
+    },
+    async getRecord(id) {
+      if (!id) return undefined;
+      try {
+        const item = JSON.parse(
+          await fs.readFile(filename(id), "utf8"),
+          BufferJSON.reviver,
+        );
+        return item.expiresAt > Date.now() ? item : undefined;
       } catch (e) {
         if (e.code === "ENOENT") return undefined;
         throw e;

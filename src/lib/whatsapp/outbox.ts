@@ -1,12 +1,15 @@
 import { randomUUID } from "node:crypto";
 import connect from "@/lib/mongoose";
-import { BotOutbound } from "@/lib/models/BotState";
+import { BotOutbound, BotInbox } from "@/lib/models/BotState";
 import { normalizePhoneNumber, validPhone } from "./identity";
+import { formatWhatsAppText } from "./format";
+import { verifiedChatJid } from "./transport";
 export async function enqueueMessage(
   to: string,
   text: string,
   id: string = randomUUID(),
   provider = process.env.WHATSAPP_PROVIDER || "bridge",
+  replyChatJid?: string,
 ) {
   await connect();
   const phone = normalizePhoneNumber(to);
@@ -17,12 +20,24 @@ export async function enqueueMessage(
     text.length > 20000
   )
     throw new Error("Destinatario o mensaje inválido");
+  const previous =
+    provider === "bridge" && !replyChatJid
+      ? await BotInbox.findOne({ phone, provider, chatJid: { $exists: true } })
+          .sort({ createdAt: -1 })
+          .select("chatJid")
+          .lean()
+      : null;
+  const chatJid =
+    provider === "bridge"
+      ? verifiedChatJid(phone, replyChatJid || previous?.chatJid)
+      : undefined;
   await BotOutbound.updateOne(
     { _id: id },
     {
       $setOnInsert: {
         to: phone,
-        text: text.trim(),
+        text: formatWhatsAppText(text.trim()),
+        ...(chatJid ? { chatJid } : {}),
         provider,
         status: "queued",
         attempts: 0,

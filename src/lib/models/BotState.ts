@@ -5,6 +5,7 @@ const inbox = new Schema(
   {
     _id: String,
     phone: String,
+    chatJid: String,
     text: String,
     audio: Schema.Types.Mixed,
     provider: String,
@@ -18,11 +19,13 @@ const inbox = new Schema(
   { timestamps: true },
 );
 inbox.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+inbox.index({ phone: 1, provider: 1, createdAt: -1 });
 export const BotInbox = model("BotInbox", inbox);
 const outbound = new Schema(
   {
     _id: String,
     to: String,
+    chatJid: String,
     text: String,
     provider: { type: String, default: "bridge" },
     status: { type: String, default: "queued" },

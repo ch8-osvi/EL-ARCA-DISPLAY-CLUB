@@ -46,6 +46,7 @@ export async function POST(req: Request) {
         body.userText || "",
         "bridge",
         body.audio,
+        body.chatJid,
       );
       return Response.json({ status: "queued", id }, { status: 202 });
     }

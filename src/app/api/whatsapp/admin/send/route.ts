@@ -3,6 +3,7 @@ import { allowRequest } from "@/lib/security/limits";
 import { enqueueMessage } from "@/lib/whatsapp/outbox";
 import { WhatsAppLog } from "@/lib/models/WhatsAppLog";
 import { normalizePhoneNumber } from "@/lib/whatsapp/identity";
+import { formatWhatsAppText } from "@/lib/whatsapp/format";
 export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const denied = await requireAdmin(req);
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
           role: "admin",
           direction: "manual",
           userMessage: "Respuesta del equipo",
-          botReply: b.text,
+          botReply: formatWhatsAppText(b.text),
           actionExecuted: "RESPUESTA_MANUAL",
           status: "queued",
           timestamp: new Date(),

@@ -16,11 +16,14 @@ const {
   fetchLatestBaileysVersion,
   downloadMediaMessage,
   normalizeMessageContent,
+  generateMessageIDV2,
+  makeCacheableSignalKeyStore,
 } = require("@whiskeysockets/baileys");
 const { authStore } = require("./auth-store");
 const { messageStore } = require("./message-store");
 const { scanPage } = require("./scan-page");
 const { recoverableSignalError } = require("./errors");
+const { sendQueuedText } = require("./send-text");
 const { signedHeaders, equalSecret, extractText } = require("./security");
 const PORT = Number(process.env.PORT || 7860),
   HOST = "127.0.0.1";
@@ -43,8 +46,20 @@ const AUTH = path.join(__dirname, "auth_session"),
   SPOOL = path.join(__dirname, "spool");
 const retryMessages = messageStore(path.join(__dirname, "message-cache"));
 const uiSession = randomBytes(32).toString("hex");
-let nextPoll = 2500,
+let nextPoll = 500,
   workTimer = null;
+let wakeRequested = false,
+  flushingReceipts = false;
+const seenReceipts = new Set();
+function wakeWorker() {
+  nextPoll = 500;
+  if (working) {
+    wakeRequested = true;
+    return;
+  }
+  clearTimeout(workTimer);
+  if (!stopping) workTimer = setTimeout(worker, 0).unref();
+}
 const lidToPhone = new Map();
 let sock = null,
   connected = false,
@@ -158,16 +173,79 @@ async function flushIncoming() {
       });
       if (!r.ok) throw new Error("Webhook HTTP " + r.status);
       await fs.unlink(target);
+      wakeWorker();
     }
   } finally {
     submitting = false;
   }
+}
+async function flushReceipts() {
+  if (flushingReceipts) return;
+  flushingReceipts = true;
+  try {
+    for (const file of (await fs.readdir(SPOOL)).filter(
+      (n) => n.startsWith("receipt-") && n.endsWith(".json"),
+    )) {
+      const target = path.join(SPOOL, file);
+      await cloud(JSON.parse(await fs.readFile(target, "utf8")));
+      await fs.unlink(target);
+    }
+  } finally {
+    flushingReceipts = false;
+  }
+}
+async function captureReceipt(key, status) {
+  const stage =
+    status >= 4
+      ? "read"
+      : status === 3
+        ? "delivered"
+        : status === 2
+          ? "sent"
+          : null;
+  if (!stage || !key?.id) return;
+  const seenKey = key.id + ":" + stage;
+  if (seenReceipts.has(seenKey)) return;
+  seenReceipts.add(seenKey);
+  if (seenReceipts.size > 5000)
+    seenReceipts.delete(seenReceipts.values().next().value);
+  const item = await retryMessages.getRecord(key.id);
+  if (!item?.metadata?.outboundId) {
+    seenReceipts.delete(seenKey);
+    return;
+  }
+  const file = path.join(
+    SPOOL,
+    "receipt-" +
+      createHash("sha256")
+        .update(key.id + ":" + stage)
+        .digest("hex") +
+      ".json",
+  );
+  await save(file, {
+    action: "receipt",
+    id: item.metadata.outboundId,
+    providerId: key.id,
+    status: stage,
+  });
+  console.info(
+    "[Delivery]",
+    JSON.stringify({
+      id: key.id,
+      status: stage,
+      elapsedMs: Date.now() - item.metadata.submittedAt,
+    }),
+  );
+  void flushReceipts().catch((e) =>
+    console.warn("[Receipt pending]", e.message),
+  );
 }
 async function worker() {
   if (working || stopping) return;
   clearTimeout(workTimer);
   working = true;
   try {
+    await flushReceipts();
     await flushIncoming();
     const { messages = [], processed = false } = await cloud({
       action: "work",
@@ -188,45 +266,67 @@ async function worker() {
         state = JSON.parse(await fs.readFile(journal, "utf8"));
       } catch (e) {
         if (e.code !== "ENOENT") throw e;
-        state = { sent: 0 };
-      }
-      const chunks = message.text.match(/[\s\S]{1,3500}/g) || [];
-      for (let i = state.sent; i < chunks.length; i++) {
-        const id = createHash("sha256")
-          .update(message.id + ":" + i)
-          .digest("hex")
-          .slice(0, 32)
-          .toUpperCase();
-        await retryMessages.put(id, { conversation: chunks[i] });
-        const result = await sock.sendMessage(
-          message.to + "@s.whatsapp.net",
-          { text: chunks[i] },
-          { messageId: id },
-        );
-        if (result?.message) await retryMessages.put(id, result.message);
         state = {
-          sent: i + 1,
-          providerId: result?.key?.id,
-          updatedAt: Date.now(),
+          version: 2,
+          sent: 0,
+          providerId: generateMessageIDV2(sock.user?.id),
         };
         await save(journal, state);
+      }
+      if (state.version === 2) {
+        const delivery = await sendQueuedText({
+          sock,
+          message,
+          state,
+          cache: retryMessages,
+          saveState: (updated) => save(journal, updated),
+        });
+        console.info(
+          "[Delivery]",
+          JSON.stringify({ ...delivery, status: "submitted" }),
+        );
+      } else {
+        const chunks = message.text.match(/[\s\S]{1,3500}/g) || [];
+        for (let i = state.sent; i < chunks.length; i++) {
+          const id = createHash("sha256")
+            .update(message.id + ":" + i)
+            .digest("hex")
+            .slice(0, 32)
+            .toUpperCase();
+          await retryMessages.put(id, { conversation: chunks[i] });
+          const result = await sock.sendMessage(
+            message.to + "@s.whatsapp.net",
+            { text: chunks[i] },
+            { messageId: id },
+          );
+          if (result?.message) await retryMessages.put(id, result.message);
+          state = {
+            sent: i + 1,
+            providerId: result?.key?.id,
+            updatedAt: Date.now(),
+          };
+          await save(journal, state);
+        }
       }
       await cloud({
         action: "ack",
         id: message.id,
         success: true,
         providerId: state.providerId,
+        status: state.version === 2 ? "submitted" : "sent",
       });
     }
     nextPoll =
-      messages.length || processed ? 2500 : Math.min(15000, nextPoll + 2500);
+      messages.length || processed ? 500 : Math.min(3000, nextPoll + 500);
     lastError = "";
   } catch (e) {
     lastError = e.message;
     console.warn("[Bridge]", e.message);
   } finally {
     working = false;
-    if (!stopping) workTimer = setTimeout(worker, nextPoll).unref();
+    const delay = wakeRequested ? 0 : nextPoll;
+    wakeRequested = false;
+    if (!stopping) workTimer = setTimeout(worker, delay).unref();
   }
 }
 async function start() {
@@ -237,8 +337,18 @@ async function start() {
     const { version } = await fetchLatestBaileysVersion();
     const current = makeWASocket({
       version,
-      auth: state,
-      getMessage: (key) => retryMessages.get(key),
+      auth: {
+        creds: state.creds,
+        keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "error" })),
+      },
+      getMessage: async (key) => {
+        const original = await retryMessages.get(key);
+        console.info(
+          "[Delivery retry]",
+          JSON.stringify({ id: key.id, found: Boolean(original) }),
+        );
+        return original;
+      },
       logger: pino({ level: "error" }),
       syncFullHistory: false,
       browser: ["El Arca", "Chrome", "1.0"],
@@ -246,6 +356,12 @@ async function start() {
         /@(g\.us|newsletter|broadcast)$/.test(jid || ""),
     });
     sock = current;
+    current.ev.on("messages.update", (updates) => {
+      for (const { key, update } of updates)
+        void captureReceipt(key, update.status).catch((e) =>
+          console.warn("[Receipt]", e.message),
+        );
+    });
     current.ev.on("creds.update", () => saveCreds().catch(fatal));
     current.ev.on("connection.update", (update) => {
       if (current !== sock) return;
@@ -308,7 +424,10 @@ async function start() {
             sender = resolved || "";
           }
           if (!sender && lidToPhone.has(jid)) sender = lidToPhone.get(jid);
-          const senderPhone = sender.split("@")[0].replace(/\D/g, "");
+          const senderPhone = sender
+            .split("@")[0]
+            .split(":")[0]
+            .replace(/\D/g, "");
           if (!/^\d{8,15}$/.test(senderPhone)) {
             console.warn(
               "[WhatsApp] Identidad pendiente de resolver; no se otorgan permisos a LIDs.",
@@ -326,6 +445,7 @@ async function start() {
             senderPhone,
             userText,
             messageId: id,
+            chatJid: jid,
           };
           if (content.audioMessage) {
             const media = content.audioMessage;

@@ -2,8 +2,10 @@ import mongoose, { Schema, Document, Model } from "mongoose";
 
 export interface IWhatsAppLog extends Document {
   messageId?: string;
+  outboundId?: string;
   aiModel?: string;
   tokens?: number;
+  aiFailed?: boolean;
   status?: string;
   direction?: string;
   deletedAt?: Date;
@@ -23,8 +25,10 @@ export interface IWhatsAppLog extends Document {
 const WhatsAppLogSchema = new Schema<IWhatsAppLog>(
   {
     messageId: { type: String, index: true },
+    outboundId: { type: String, index: true },
     aiModel: { type: String, default: "" },
     tokens: { type: Number, default: 0 },
+    aiFailed: { type: Boolean, default: false },
     status: { type: String, default: "completed" },
     direction: { type: String, default: "automatic" },
     deletedAt: { type: Date },

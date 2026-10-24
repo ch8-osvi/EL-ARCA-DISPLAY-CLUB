@@ -249,6 +249,78 @@ async function main() {
     console.log(
       "PASS: rutas reales de administradores y bloqueados, concurrencia, duplicados, propietario, roles y pausa/reactivación",
     );
+    const inbox = load("src/lib/whatsapp/inbox.ts");
+    const { WhatsAppLog } = load("src/lib/models/WhatsAppLog.ts");
+    const { advanceDelivery } = load("src/lib/whatsapp/delivery.ts");
+    const gemini = load("src/lib/ai/gemini.ts");
+    gemini.queryGemini = async () => ({
+      text: "Tenemos **Redmi 9A**.",
+      tokens: 10,
+      actions: [],
+      model: "integration-mock",
+    });
+    const incoming = await inbox.receiveMessage(
+      "incoming-test",
+      "5350000001",
+      "Consulta Redmi 9A",
+      "bridge",
+      undefined,
+      "137516950794417@lid",
+    );
+    let row = await WhatsAppLog.findOne({ messageId: incoming });
+    assert.equal(row.status, "received");
+    assert.equal(row.role, "client");
+    assert.match(row.botReply, /Pendiente/);
+    assert.equal(await inbox.processNextMessage(), true);
+    const outgoing = await states.BotOutbound.findById("reply:" + incoming);
+    assert.equal(outgoing.chatJid, "137516950794417@lid");
+    assert.equal(
+      outgoing.text,
+      "Tenemos *Redmi 9A*.\n\n_Asistente automático de El Arca Display Club_",
+    );
+    await inbox.receiveMessage(
+      "incoming-test",
+      "5350000001",
+      "Consulta Redmi 9A",
+      "bridge",
+      undefined,
+      "137516950794417@lid",
+    );
+    assert.equal(await WhatsAppLog.countDocuments({ messageId: incoming }), 1);
+    assert.equal(
+      (await WhatsAppLog.findOne({ messageId: incoming })).status,
+      "queued",
+    );
+    await states.BotOutbound.updateOne(
+      { _id: outgoing._id },
+      { $set: { leaseUntil: new Date(Date.now() + 90000), status: "sending" } },
+    );
+    await advanceDelivery(outgoing._id, "submitted", "provider-test");
+    assert.ok((await states.BotOutbound.findById(outgoing._id)).leaseUntil);
+    await advanceDelivery(outgoing._id, "delivered", "provider-test");
+    await advanceDelivery(outgoing._id, "submitted", "provider-test");
+    await advanceDelivery(outgoing._id, "sent", "provider-test");
+    assert.equal(
+      (await states.BotOutbound.findById(outgoing._id)).status,
+      "delivered",
+    );
+    assert.equal(
+      (await WhatsAppLog.findOne({ messageId: incoming })).status,
+      "delivered",
+    );
+    await advanceDelivery(outgoing._id, "read", "provider-test");
+    await advanceDelivery(outgoing._id, "failed", "provider-test");
+    assert.equal(
+      (await WhatsAppLog.findOne({ messageId: incoming })).status,
+      "read",
+    );
+    assert.equal(
+      await identity.isPhoneAuthorizedAdmin("137516950794417"),
+      false,
+    );
+    console.log(
+      "PASS: entrada visible antes de IA, registro único, respuesta al LID sin permisos extra, formato WhatsApp y recibos que nunca retroceden",
+    );
     console.log(
       "Integración completa en base aislada; no se cambiaron permisos del negocio.",
     );

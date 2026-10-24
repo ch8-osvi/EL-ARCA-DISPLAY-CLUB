@@ -84,6 +84,10 @@ const csvCell = (value: unknown) =>
   '"';
 const statusLabel: Record<string, string> = {
   queued: "En cola",
+  received: "Recibido",
+  processing: "La IA está preparando la respuesta",
+  submitted: "Esperando confirmación de WhatsApp",
+  not_replied: "Sin respuesta automática",
   sending: "Enviando",
   sent: "Enviado a WhatsApp",
   delivered: "Entregado",
@@ -209,14 +213,15 @@ export default function AdminWhatsAppPage() {
     [],
   );
   const refresh = useCallback(
-    async (signal?: AbortSignal) => {
+    async (signal?: AbortSignal, quiet = false) => {
       if (signal?.aborted) return;
+      if (quiet && activeRequest.current) return;
       activeRequest.current?.abort();
       const controller = new AbortController();
       activeRequest.current = controller;
       const abort = () => controller.abort();
       signal?.addEventListener("abort", abort, { once: true });
-      setLoading(true);
+      if (!quiet) setLoading(true);
       try {
         const params = new URLSearchParams({
           page: String(page),
@@ -305,11 +310,19 @@ export default function AdminWhatsAppPage() {
     const controller = new AbortController();
     const first = setTimeout(() => void refresh(controller.signal), 300);
     const interval = setInterval(() => {
-      if (!document.hidden || soundRef.current) void refresh(controller.signal);
-    }, 15000);
+      if (!document.hidden || soundRef.current)
+        void refresh(controller.signal, true);
+    }, 3000);
+    const onFocus = () => {
+      if (!document.hidden) void refresh(controller.signal, true);
+    };
+    document.addEventListener("visibilitychange", onFocus);
+    window.addEventListener("focus", onFocus);
     return () => {
       clearTimeout(first);
       clearInterval(interval);
+      document.removeEventListener("visibilitychange", onFocus);
+      window.removeEventListener("focus", onFocus);
       controller.abort();
     };
   }, [authorized, refresh]);
@@ -946,8 +959,17 @@ export default function AdminWhatsAppPage() {
                               <td className="py-3 px-4 max-w-xs truncate font-medium text-white">
                                 {log.userMessage}
                               </td>
-                              <td className="py-3 px-4 max-w-md truncate text-gray-400">
-                                {log.botReply.replace(/[*_#]/g, "")}
+                              <td className="py-3 px-4 max-w-md text-gray-400">
+                                <div className="truncate">
+                                  {log.botReply.replace(/[*_#]/g, "")}
+                                </div>
+                                {log.status && statusLabel[log.status] && (
+                                  <span
+                                    className={`inline-block mt-1 text-[10px] ${log.status === "failed" ? "text-red-300" : ["delivered", "read"].includes(log.status) ? "text-emerald-300" : "text-gray-500"}`}
+                                  >
+                                    {statusLabel[log.status]}
+                                  </span>
+                                )}
                               </td>
                               <td className="py-3 px-4 text-right whitespace-nowrap">
                                 {log.actionExecuted ? (

@@ -26,6 +26,79 @@ function load(file, mocks = {}) {
   return m.exports;
 }
 const audio = load("src/lib/whatsapp/audio.ts");
+const format = load("src/lib/whatsapp/format.ts");
+const transport = load("src/lib/whatsapp/transport.ts");
+test("formato WhatsApp: un asterisco para negrita, mantiene código y no cambia precios o contenido", () => {
+  for (const [input, output] of [
+    ["Tenemos **Redmi 9A** a **$12 USD**.", "Tenemos *Redmi 9A* a *$12 USD*."],
+    ["***Redmi*** y *Samsung*", "*Redmi* y *Samsung*"],
+    ["`**literal**` y **negrita**", "`**literal**` y *negrita*"],
+    ["```\n**código**\n```\n**Modelo**", "```\n**código**\n```\n*Modelo*"],
+  ]) {
+    assert.equal(format.formatWhatsAppText(input), output);
+    assert.equal(format.formatWhatsAppText(output), output);
+  }
+});
+test("ruta de respuesta: conserva LID verificado y no acepta grupos ni otro teléfono", () => {
+  assert.equal(
+    transport.verifiedChatJid("5350000001", "137516950794417@lid"),
+    "137516950794417@lid",
+  );
+  assert.equal(
+    transport.verifiedChatJid("5350000001", "5350000001:2@s.whatsapp.net"),
+    "5350000001@s.whatsapp.net",
+  );
+  assert.throws(() =>
+    transport.verifiedChatJid("5350000001", "5350000002@s.whatsapp.net"),
+  );
+  assert.throws(() => transport.verifiedChatJid("5350000001", "12345@g.us"));
+});
+test("envío: usa chat original, ID nativo persistido, claves disponibles antes de enviar y dispositivos actualizados", async () => {
+  const { sendQueuedText } = require("../../whatsapp-bridge/send-text");
+  const records = new Map(),
+    attempts = [],
+    saved = [];
+  const cache = {
+    getRecord: async (id) => records.get(id),
+    put: async (id, message, metadata) =>
+      records.set(id, { message, metadata }),
+  };
+  let fail = true;
+  const sock = {
+    user: { id: "5350000099:1@s.whatsapp.net" },
+    relayMessage: async (jid, content, options) => {
+      assert.ok(records.has(options.messageId));
+      assert.ok(saved.some((s) => s.providerId === options.messageId));
+      attempts.push({ jid, content, options });
+      if (fail) {
+        fail = false;
+        throw Error("Caída simulada");
+      }
+    },
+  };
+  const state = { version: 2, sent: 0 };
+  const input = {
+    sock,
+    message: {
+      id: "test-queue",
+      to: "5350000001",
+      chatJid: "137516950794417@lid",
+      text: "*Modelo* ".repeat(700),
+    },
+    state,
+    cache,
+    saveState: async (s) => saved.push({ ...s }),
+  };
+  await assert.rejects(sendQueuedText(input), /Caída simulada/);
+  await sendQueuedText(input);
+  assert.equal(attempts.length, 2);
+  assert.match(state.providerId, /^3EB0/);
+  assert.equal(attempts[0].options.messageId, attempts[1].options.messageId);
+  assert.equal(attempts[1].jid, input.message.chatJid);
+  assert.equal(attempts[1].options.useUserDevicesCache, false);
+  assert.deepEqual(attempts[0].content, attempts[1].content);
+  assert.equal(state.sent, 1);
+});
 test("notas de voz: valida formato, base64, duración y tamaño antes de llamar a IA", () => {
   assert.equal(audio.validateAudio(undefined), undefined);
   assert.equal(
@@ -123,6 +196,7 @@ function serviceFixture({
     "@/lib/models/WhatsAppLog": {
       WhatsAppLog: {
         create: async (entry) => logs.push(entry),
+        updateOne: async (_query, update) => logs.push(update.$set),
         aggregate: async () => [],
       },
     },
@@ -176,6 +250,8 @@ function serviceFixture({
     },
     "./outbox": {},
     "./audio": audio,
+    "./format": format,
+    "./transport": transport,
   });
   return { service, calls, logs, proposals };
 }

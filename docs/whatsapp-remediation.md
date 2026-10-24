@@ -98,6 +98,16 @@ Se comprobó visualmente el panel y la pestaña de administradores, y el filtro 
 
 Validación de esta entrega: 30 pruebas automatizadas correctas, compilación de producción correcta e integración en base aislada con las rutas reales de administradores/bloqueados. En producción, una frase de voz sintética se transcribió como una consulta sobre Samsung A12 y recibió respuesta del catálogo; un audio inválido devolvió HTTP 400. Las comprobaciones de sesión, webhook falso, CSRF y revocación de sesión pasaron. El puente recuperó su vinculación y el formulario QR se abrió correctamente en el navegador con la clave privada elegida. El filtro de clientes redujo la tabla a tres filas conservando exactamente su altura. No se enviaron mensajes de prueba a clientes. La comprobación final del aviso de cifrado en los teléfonos receptores requiere una conversación real posterior; no se afirma su desaparición universal.
 
+## Revisión de entrega y latencia
+
+- Se conserva el identificador real del chat recibido (incluido LID), ligado al teléfono verificado. Nunca se usa un LID para conceder permisos. Antes se sustituía siempre por el número telefónico, a diferencia del puente original.
+- Los nuevos envíos usan IDs nativos de Baileys, persistidos antes del envío y reutilizados tras una caída. El contenido original queda disponible para reintentos. Se consulta la lista actual de dispositivos del destinatario y se conserva el caché de claves con escritura persistente. Los mensajes nuevos no se fragmentan artificialmente cada 3.500 caracteres.
+- El trabajador se despierta al recibir una consulta; deja de esperar el sondeo de hasta 15 segundos. El panel consulta cada tres segundos y al recuperar el foco, con actualizaciones silenciosas que conservan el diseño.
+- La entrada se registra antes de llamar a Gemini. El mismo registro cambia de recibido a procesamiento y luego a cola; los reintentos no generan otra fila.
+- Escribir en el socket ya no se considera confirmación de entrega. El puente comunica los recibos de WhatsApp y el panel distingue pendiente de confirmación, aceptado por WhatsApp, entregado y leído. Los recibos tardíos no hacen retroceder estados.
+- La salida WhatsApp convierte negrita Markdown de doble asterisco a un asterisco, preservando el contenido literal de los bloques de código. La IA web conserva su formato Markdown.
+- El ajuste de Antigravity evita cerrar todo el proceso por errores temporales conocidos de Signal. No repara por sí solo una sesión de cifrado ni demuestra que un destinatario pueda leer un mensaje. Se conserva su intención con clasificación precisa de errores.
+
 ## Límites operativos explícitos
 
 - La PC y WhatsApp deben permanecer disponibles. El panel marca desconexión tras 60 segundos sin señal; la cola conserva pendientes hasta siete días.

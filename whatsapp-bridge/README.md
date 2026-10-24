@@ -29,7 +29,7 @@ La configuración privada vive en whatsapp-bridge/.env. BRIDGE_SECRET debe coinc
 
 ## Disponibilidad y consumo
 
-La PC debe permanecer encendida, conectada a Internet y sin suspensión. La nube conserva mensajes pendientes hasta 7 días; los mensajes antiguos no se ejecutan después de caducar. El sondeo aumenta progresivamente hasta 15 segundos cuando no hay trabajo. No se promete disponibilidad permanente gratuita de un proveedor externo.
+La PC debe permanecer encendida, conectada a Internet y sin suspensión. La nube conserva mensajes pendientes hasta 7 días; los mensajes antiguos no se ejecutan después de caducar. Las entradas nuevas despiertan el trabajador inmediatamente; el sondeo de reposo tiene un máximo de tres segundos. No se promete disponibilidad permanente gratuita de un proveedor externo.
 
 El panel muestra la última señal; tras 60 segundos sin heartbeat informa desconexión. Enviado significa aceptado por WhatsApp, no leído por el destinatario. Se descargan notas de voz de hasta 2 MB y tres minutos, se envían firmadas al servidor y Gemini las transcribe antes de consultar el catálogo y preparar una respuesta escrita. No hay respuesta de voz ni OCR de fotografías. Los audios incomprensibles o demasiado largos solicitan aclaración. El audio temporal se elimina de la entrada al completar el procesamiento; si queda pendiente caduca con la entrada a los siete días. El historial guarda la transcripción y suma el consumo de transcripción y respuesta. Los bloqueados y conversaciones pausadas no consumen Gemini por audio.
 

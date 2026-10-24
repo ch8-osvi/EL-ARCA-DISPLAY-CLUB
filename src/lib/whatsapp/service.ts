@@ -20,6 +20,8 @@ import {
 } from "./identity";
 import { enqueueMessage } from "./outbox";
 import { validateAudio, type VoiceAudio } from "./audio";
+import { formatWhatsAppText } from "./format";
+import { interactionId } from "./transport";
 export { normalizePhoneNumber, resolveCanonicalPhone } from "./identity";
 
 export async function isPhoneAuthorizedAdmin(phone: string) {
@@ -47,13 +49,14 @@ export async function logInteraction(
   actionExecuted = "",
   extra: Record<string, unknown> = {},
 ) {
-  await WhatsAppLog.create({
+  const entry = {
     senderPhone: phone,
     role,
     userMessage,
     botReply: botReply || "(Sin respuesta automática)",
     responseTimeMs,
     actionExecuted,
+    aiFailed: extra.status === "failed",
     expiresAt: new Date(
       Date.now() +
         Math.max(
@@ -63,7 +66,14 @@ export async function logInteraction(
           86400000,
     ),
     ...extra,
-  });
+  };
+  if (typeof extra.messageId === "string")
+    await WhatsAppLog.updateOne(
+      { _id: interactionId(extra.messageId) },
+      { $set: entry },
+      { upsert: true },
+    );
+  else await WhatsAppLog.create(entry);
 }
 export async function sendWhatsAppMessage(
   to: string,
@@ -285,6 +295,7 @@ export async function processWhatsAppAiMessage(
     action = "",
     extra: Record<string, unknown> = {},
   ) => {
+    if (!options.webAdmin) reply = formatWhatsAppText(reply);
     const turns = [
       { sender: "user", text: text.slice(0, 6000), time: new Date() },
       ...(reply

@@ -196,7 +196,7 @@ export default function BoxEditor({
       )}
 
       {/* Selector de producto */}
-      <div className="rounded-xl border border-dashed border-white/15 p-3 space-y-2">
+      <div className="rounded-xl border border-dashed border-white/15 p-3 space-y-2 relative z-30">
         <div className="flex flex-col sm:flex-row gap-2">
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-gray-500 absolute left-3 top-2.5" />
@@ -217,7 +217,7 @@ export default function BoxEditor({
               className="w-full pl-9 pr-3 py-2 bg-[#10131E] border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm focus:outline-none focus:border-[#D4AF37] transition-all"
             />
             {open && !selected && (
-              <ul className="absolute z-30 mt-1 w-full max-h-64 overflow-y-auto rounded-xl border border-[#D4AF37]/30 bg-[#0D0F17] shadow-2xl">
+              <ul className="absolute z-50 mt-1 w-full max-h-64 overflow-y-auto rounded-xl border border-[#D4AF37]/40 bg-[#0D0F17] shadow-2xl shadow-black">
                 {results.length === 0 ? (
                   <li className="px-3 py-3 text-xs text-gray-400">
                     Sin resultados{stockFilter === 'stock' ? ' con stock. Prueba el filtro "Todos".' : '.'}

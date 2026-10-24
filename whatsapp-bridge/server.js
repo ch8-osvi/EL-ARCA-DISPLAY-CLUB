@@ -61,7 +61,7 @@ app.disable("x-powered-by");
 app.use(express.urlencoded({ extended: false, limit: "2kb" }));
 app.use((req, res, next) => {
   res.set("Cache-Control", "no-store");
-  res.set("Referrer-Policy", "no-referrer");
+  res.set("Referrer-Policy", "same-origin");
   res.set("X-Content-Type-Options", "nosniff");
   res.set(
     "Content-Security-Policy",
@@ -406,7 +406,15 @@ async function shutdown(code = 0) {
   setTimeout(() => process.exit(code), 3000).unref();
 }
 function fatal(e) {
-  console.error("[Error fatal]", e?.message || "Error");
+  const msg = e?.message || String(e);
+  if (
+    /bad mac|decrypt|session|timed out|boom|websocket|prekey/i.test(msg) ||
+    e?.name === "SessionError"
+  ) {
+    console.warn("[Advertencia no fatal Baileys]:", msg);
+    return;
+  }
+  console.error("[Error fatal]", msg);
   void shutdown(1);
 }
 process.on("uncaughtException", fatal);

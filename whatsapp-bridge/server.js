@@ -417,6 +417,33 @@ async function startBaileysSocket() {
     }
   });
 
+  // Mapeo dinámico y universal de WhatsApp LID -> Teléfono Real
+  const dynamicLidToPhone = new Map([['113198191661280', ADMIN_PHONE || '5352031972']]);
+
+  // Captura eventos de intercambio de número de teléfono y contactos para resolver cualquier LID a teléfono
+  sock.ev.on('chats.phoneNumberShare', ({ lid, jid }) => {
+    if (lid && jid) {
+      const cleanLid = lid.split('@')[0].replace(/\D/g, '');
+      const cleanPhone = jid.split('@')[0].replace(/\D/g, '');
+      if (cleanLid && cleanPhone) {
+        dynamicLidToPhone.set(cleanLid, cleanPhone);
+        console.log(`[Baileys LID Resuelto] ${cleanLid} -> +${cleanPhone}`);
+      }
+    }
+  });
+
+  sock.ev.on('contacts.upsert', (contacts) => {
+    for (const c of contacts) {
+      if (c.lid && c.id) {
+        const cleanLid = c.lid.split('@')[0].replace(/\D/g, '');
+        const cleanPhone = c.id.split('@')[0].replace(/\D/g, '');
+        if (cleanLid && cleanPhone) {
+          dynamicLidToPhone.set(cleanLid, cleanPhone);
+        }
+      }
+    }
+  });
+
   // ===========================================================================
   // MENSAJES ENTRANTES (Reenvío a Vercel Webhook + Gemini)
   // ===========================================================================
@@ -435,18 +462,12 @@ async function startBaileysSocket() {
       let senderPhone = remoteJid.split('@')[0].replace(/\D/g, '');
       const rawLid = remoteJid.endsWith('@lid') ? senderPhone : null;
 
-      // Mapeo de identificadores WhatsApp LID a números de teléfono reales
-      // 113198191661280 es el LID asignado al dispositivo del administrador Osvaldo (+53 52031972)
-      const LID_TO_PHONE = {
-        '113198191661280': ADMIN_PHONE || '5352031972',
-      };
-
-      // Si Baileys incluye número alternativo en el mensaje
+      // Si Baileys incluye número alternativo en el mensaje o fue resuelto dinámicamente
       const altJid = msg.key.remoteJidAlt || msg.key.participantPn || msg.key.senderPn || '';
       if (altJid && (altJid.includes('@s.whatsapp.net') || /^\d+$/.test(altJid))) {
         senderPhone = altJid.split('@')[0].replace(/\D/g, '');
-      } else if (rawLid && LID_TO_PHONE[rawLid]) {
-        senderPhone = LID_TO_PHONE[rawLid];
+      } else if (rawLid && dynamicLidToPhone.has(rawLid)) {
+        senderPhone = dynamicLidToPhone.get(rawLid);
       }
 
       // Extraer texto del mensaje

@@ -15,6 +15,12 @@ export async function GET() {
     const todayKey = getHavanaDateKey(now);
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
 
+    // Auto-reparación no bloqueante de registros antiguos con LID de WhatsApp
+    WhatsAppLog.updateMany(
+      { senderPhone: '113198191661280' },
+      { $set: { senderPhone: '5352031972', role: 'admin' } }
+    ).catch(() => {});
+
     const [totalLogs, todayLogs, recentLogs, config, rateDoc] = await Promise.all([
       WhatsAppLog.countDocuments({}),
       WhatsAppLog.countDocuments({ createdAt: { $gte: startOfToday } }),
@@ -30,7 +36,14 @@ export async function GET() {
     let adminCommandsToday = 0;
 
     for (const log of recentLogs) {
-      if (log.role === 'client') {
+      const isOsvaldo =
+        log.senderPhone === '113198191661280' ||
+        log.senderPhone === '5352031972' ||
+        (log.senderPhone || '').endsWith('52031972');
+
+      const resolvedRole = isOsvaldo ? 'admin' : log.role;
+
+      if (resolvedRole === 'client') {
         uniqueClientsAllTime.add(log.senderPhone);
         if (new Date(log.timestamp).getTime() >= startOfToday.getTime()) {
           uniqueClientsToday.add(log.senderPhone);
@@ -73,16 +86,22 @@ export async function GET() {
         botPhone: config.botPhone || '5363657247',
         topBrands,
       },
-      recentLogs: recentLogs.map((l) => ({
-        id: String(l._id),
-        timestamp: l.timestamp || l.createdAt,
-        senderPhone: l.senderPhone,
-        role: l.role,
-        userMessage: l.userMessage,
-        botReply: l.botReply,
-        actionExecuted: l.actionExecuted || '',
-        responseTimeMs: l.responseTimeMs || 0,
-      })),
+      recentLogs: recentLogs.map((l) => {
+        const isOsvaldo =
+          l.senderPhone === '113198191661280' ||
+          l.senderPhone === '5352031972' ||
+          (l.senderPhone || '').endsWith('52031972');
+        return {
+          id: String(l._id),
+          timestamp: l.timestamp || l.createdAt,
+          senderPhone: isOsvaldo ? '5352031972' : l.senderPhone,
+          role: isOsvaldo ? 'admin' : l.role,
+          userMessage: l.userMessage,
+          botReply: l.botReply,
+          actionExecuted: l.actionExecuted || '',
+          responseTimeMs: l.responseTimeMs || 0,
+        };
+      }),
     });
   } catch (err: any) {
     console.error('[WhatsApp Admin Stats Error]', err);

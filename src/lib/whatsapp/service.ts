@@ -35,17 +35,33 @@ export function normalizePhoneNumber(phone: string): string {
   return (phone || '').replace(/\D/g, '');
 }
 
+/** Resolves WhatsApp internal LIDs (Linked Device Identifiers) to real telephone numbers */
+export function resolveCanonicalPhone(phone: string): string {
+  const clean = normalizePhoneNumber(phone);
+  // WhatsApp LID asignado por Baileys al dispositivo de Osvaldo (+53 52031972)
+  if (clean === '113198191661280') {
+    return '5352031972';
+  }
+  return clean;
+}
+
 /** Check if the phone belongs to the verified business owner or dynamic admins */
 export async function isPhoneAuthorizedAdmin(phone: string): Promise<boolean> {
-  const normalized = normalizePhoneNumber(phone);
+  const normalized = resolveCanonicalPhone(phone);
   if (!normalized) return false;
-  if (normalized === '5352031972' || normalized.endsWith('52031972')) return true;
+  if (
+    normalized === '5352031972' ||
+    normalized.endsWith('52031972') ||
+    normalized === '113198191661280'
+  ) {
+    return true;
+  }
   const envAdmin = normalizePhoneNumber(process.env.ADMIN_PHONE_NUMBER || '');
   if (envAdmin && (normalized === envAdmin || normalized.endsWith(envAdmin))) return true;
   try {
     const config = await getWhatsAppConfig();
     return (config.adminPhones || []).some((p) => {
-      const clean = normalizePhoneNumber(p);
+      const clean = resolveCanonicalPhone(p);
       return clean === normalized || normalized.endsWith(clean);
     });
   } catch {
@@ -55,12 +71,12 @@ export async function isPhoneAuthorizedAdmin(phone: string): Promise<boolean> {
 
 /** Check if the phone is blacklisted/blocked */
 export async function isPhoneBlacklisted(phone: string): Promise<boolean> {
-  const normalized = normalizePhoneNumber(phone);
+  const normalized = resolveCanonicalPhone(phone);
   if (!normalized) return false;
   try {
     const config = await getWhatsAppConfig();
     return (config.blacklistedPhones || []).some((p) => {
-      const clean = normalizePhoneNumber(p);
+      const clean = resolveCanonicalPhone(p);
       return clean === normalized || normalized.endsWith(clean);
     });
   } catch {
@@ -70,9 +86,14 @@ export async function isPhoneBlacklisted(phone: string): Promise<boolean> {
 
 /** Legacy sync helper */
 export function isAdminUser(phone: string): boolean {
-  const normalized = normalizePhoneNumber(phone);
+  const normalized = resolveCanonicalPhone(phone);
   const adminPhone = normalizePhoneNumber(process.env.ADMIN_PHONE_NUMBER || '5352031972');
-  return normalized === adminPhone || normalized === '5352031972' || normalized.endsWith('52031972');
+  return (
+    normalized === adminPhone ||
+    normalized === '5352031972' ||
+    normalized.endsWith('52031972') ||
+    normalized === '113198191661280'
+  );
 }
 
 /** Helper to log WhatsApp conversation turns to MongoDB */
@@ -85,9 +106,11 @@ export async function logInteraction(
   actionExecuted = ''
 ) {
   try {
+    const canonical = resolveCanonicalPhone(senderPhone);
+    const resolvedRole = (await isPhoneAuthorizedAdmin(canonical)) ? 'admin' : role;
     await WhatsAppLog.create({
-      senderPhone: normalizePhoneNumber(senderPhone),
-      role,
+      senderPhone: canonical,
+      role: resolvedRole,
       userMessage,
       botReply,
       actionExecuted,
@@ -243,7 +266,7 @@ export async function processWhatsAppAiMessage(userMessage: string, senderPhone:
   const startTime = Date.now();
   await connectToDatabase();
 
-  const cleanPhone = normalizePhoneNumber(senderPhone);
+  const cleanPhone = resolveCanonicalPhone(senderPhone);
 
   // 1. Blacklist check (Bloqueo de números)
   if (await isPhoneBlacklisted(cleanPhone)) {

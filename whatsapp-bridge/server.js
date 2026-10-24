@@ -429,10 +429,25 @@ async function startBaileysSocket() {
 
       const remoteJid = msg.key.remoteJid || '';
 
-      // Ignorar mensajes de grupos o estados/stories
-      if (remoteJid.endsWith('@g.us') || remoteJid === 'status@broadcast') continue;
+      // Ignorar mensajes de grupos, canales/newsletters o estados/stories
+      if (remoteJid.endsWith('@g.us') || remoteJid.endsWith('@newsletter') || remoteJid.includes('@broadcast')) continue;
 
-      const senderPhone = remoteJid.split('@')[0].replace(/\D/g, '');
+      let senderPhone = remoteJid.split('@')[0].replace(/\D/g, '');
+      const rawLid = remoteJid.endsWith('@lid') ? senderPhone : null;
+
+      // Mapeo de identificadores WhatsApp LID a números de teléfono reales
+      // 113198191661280 es el LID asignado al dispositivo del administrador Osvaldo (+53 52031972)
+      const LID_TO_PHONE = {
+        '113198191661280': ADMIN_PHONE || '5352031972',
+      };
+
+      // Si Baileys incluye número alternativo en el mensaje
+      const altJid = msg.key.remoteJidAlt || msg.key.participantPn || msg.key.senderPn || '';
+      if (altJid && (altJid.includes('@s.whatsapp.net') || /^\d+$/.test(altJid))) {
+        senderPhone = altJid.split('@')[0].replace(/\D/g, '');
+      } else if (rawLid && LID_TO_PHONE[rawLid]) {
+        senderPhone = LID_TO_PHONE[rawLid];
+      }
 
       // Extraer texto del mensaje
       const userText =
@@ -443,7 +458,7 @@ async function startBaileysSocket() {
 
       if (!userText.trim()) continue;
 
-      console.log(`[Inbound WhatsApp] De: +${senderPhone} | Mensaje: "${userText}"`);
+      console.log(`[Inbound WhatsApp] De: +${senderPhone}${rawLid ? ` (LID: ${rawLid})` : ''} | Mensaje: "${userText}"`);
 
       // Enviar a Vercel Webhook para procesamiento con Gemini y MongoDB
       try {
@@ -454,6 +469,7 @@ async function startBaileysSocket() {
             source: 'baileys_bridge',
             secret: BRIDGE_SECRET,
             senderPhone,
+            senderLid: rawLid,
             chatId: remoteJid,
             userText: userText.trim(),
             messageId: msg.key.id,

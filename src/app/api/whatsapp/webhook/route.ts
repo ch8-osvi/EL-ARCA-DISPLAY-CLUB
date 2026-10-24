@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { processWhatsAppAiMessage, sendWhatsAppMessage, normalizePhoneNumber } from '@/lib/whatsapp/service';
+import {
+  processWhatsAppAiMessage,
+  sendWhatsAppMessage,
+  normalizePhoneNumber,
+  resolveCanonicalPhone,
+} from '@/lib/whatsapp/service';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -51,7 +56,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Unauthorized bridge request' }, { status: 401 });
       }
 
-      const senderPhone = normalizePhoneNumber(body.senderPhone || body.chatId || '');
+      const senderPhone = resolveCanonicalPhone(body.senderPhone || body.chatId || '');
       const userText = (body.userText || body.text || '').trim();
       const messageId = body.messageId;
 

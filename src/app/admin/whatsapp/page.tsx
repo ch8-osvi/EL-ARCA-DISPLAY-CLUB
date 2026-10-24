@@ -528,10 +528,18 @@ export default function AdminWhatsAppPage() {
                           month: 'short',
                         });
 
+                        const isOwner =
+                          log.senderPhone === '113198191661280' ||
+                          log.senderPhone === '5352031972' ||
+                          log.senderPhone.endsWith('52031972');
+
+                        const displayPhone = isOwner ? '5352031972' : log.senderPhone;
+                        const displayRole = isOwner ? 'admin' : log.role;
+
                         return (
                           <tr
                             key={log.id}
-                            onClick={() => setSelectedLog(log)}
+                            onClick={() => setSelectedLog({ ...log, senderPhone: displayPhone, role: displayRole })}
                             className="hover:bg-white/5 transition-colors cursor-pointer group"
                           >
                             <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px] text-gray-400">
@@ -539,18 +547,18 @@ export default function AdminWhatsAppPage() {
                             </td>
                             <td className="py-3 px-4 whitespace-nowrap">
                               <a
-                                href={`https://wa.me/${log.senderPhone}`}
+                                href={`https://wa.me/${displayPhone}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()}
                                 className="font-mono font-bold text-white hover:text-emerald-400 transition-colors inline-flex items-center gap-1"
                               >
-                                +{log.senderPhone}
+                                +{displayPhone}
                                 <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                               </a>
                             </td>
                             <td className="py-3 px-4 whitespace-nowrap">
-                              {log.role === 'admin' ? (
+                              {displayRole === 'admin' ? (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/30">
                                   👑 Admin
                                 </span>
@@ -643,7 +651,7 @@ export default function AdminWhatsAppPage() {
                       <div className="font-mono font-bold text-white text-xs">+{phone}</div>
                       <div className="text-[11px] text-gray-400">
                         {phone === '5352031972' || phone.endsWith('52031972')
-                          ? 'Dueño Principal (Osvaldo - Protegido)'
+                          ? 'Dueño Principal (Osvaldo - Protegido • WhatsApp LID Vinculado)'
                           : 'Administrador Secundario'}
                       </div>
                     </div>

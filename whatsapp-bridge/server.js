@@ -20,7 +20,7 @@ const {
 } = require('@whiskeysockets/baileys');
 
 // Configuración de Entorno
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 7860;
 const MONGODB_URI = process.env.MONGODB_URI || '';
 const VERCEL_WEBHOOK_URL =
   process.env.VERCEL_WEBHOOK_URL ||

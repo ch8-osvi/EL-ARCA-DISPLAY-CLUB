@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
+  AlertTriangle,
   ArrowLeft,
   Boxes,
   CheckCircle2,
@@ -51,6 +52,7 @@ export default function EtiquetasPage() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [showValidationErrors, setShowValidationErrors] = useState(false);
   const [overflowMap, setOverflowMap] = useState<Record<string, boolean>>({});
+  const [showClearConfirmModal, setShowClearConfirmModal] = useState(false);
 
   // Modo: "box" (Cajas con lista de modelos) vs "single" (Stickers individuales 4x2 cm monoproducto)
   const [mode, setMode] = useState<LabelMode>('box');
@@ -278,9 +280,7 @@ export default function EtiquetasPage() {
   };
 
   const handleClearAllSingle = () => {
-    if (confirm('¿Deseas limpiar todos los stickers individuales?')) {
-      setSingleItems([]);
-    }
+    setShowClearConfirmModal(true);
   };
 
   // Handlers para modo caja
@@ -367,15 +367,7 @@ export default function EtiquetasPage() {
                 <button
                   id="btn-labels-clear-all"
                   type="button"
-                  onClick={() => {
-                    if (mode === 'box') {
-                      if (confirm('¿Deseas reiniciar todas las etiquetas? Se borrarán las cajas actuales.')) {
-                        clearAllBoxes();
-                      }
-                    } else {
-                      handleClearAllSingle();
-                    }
-                  }}
+                  onClick={() => setShowClearConfirmModal(true)}
                   title="Limpiar"
                   className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 font-bold text-xs flex items-center gap-1.5 transition-all"
                 >
@@ -682,6 +674,55 @@ export default function EtiquetasPage() {
               showEmptySlots={false}
             />
           ))}
+        </div>
+      )}
+
+      {/* Modal de Confirmación Nativo de la App */}
+      {showClearConfirmModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="glass-panel max-w-sm w-full p-6 rounded-3xl border border-amber-500/40 shadow-2xl text-center space-y-4 animate-fade-in bg-[#10131E]/95">
+            <div className="w-12 h-12 mx-auto rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-[#E5C158]">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            
+            <div className="space-y-1.5">
+              <h3 className="text-base font-bold text-white">
+                {mode === 'box' ? '¿Reiniciar todas las cajas?' : '¿Limpiar todos los stickers?'}
+              </h3>
+              <p className="text-xs text-gray-400 leading-relaxed">
+                {mode === 'box'
+                  ? 'Se borrarán las cajas configuradas actualmente y se creará una nueva caja limpia.'
+                  : 'Se vaciará la lista de stickers individuales preparados para imprimir.'}
+              </p>
+            </div>
+
+            <div className="pt-2 grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowClearConfirmModal(false)}
+                className="py-2.5 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 font-bold text-xs transition-colors"
+              >
+                Cancelar
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => {
+                  if (mode === 'box') {
+                    clearAllBoxes();
+                    triggerToast('Cajas reiniciadas con éxito');
+                  } else {
+                    setSingleItems([]);
+                    triggerToast('Stickers eliminados');
+                  }
+                  setShowClearConfirmModal(false);
+                }}
+                className="py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs shadow-lg shadow-rose-950/40 transition-colors"
+              >
+                Sí, Limpiar
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

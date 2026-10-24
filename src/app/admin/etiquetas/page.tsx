@@ -12,10 +12,11 @@ import {
   PackagePlus,
   Printer,
   RotateCcw,
+  Tag,
   ShieldAlert,
   Sparkles,
 } from 'lucide-react';
-import Navbar from '@/components/Navbar';
+
 import BoxEditor, { StockFilter } from '@/components/labels/BoxEditor';
 import LabelPreview from '@/components/labels/LabelPreview';
 import LabelSettingsPanel from '@/components/labels/LabelSettingsPanel';
@@ -222,64 +223,101 @@ export default function EtiquetasPage() {
   return (
     <>
       {/* 1. INTERFAZ EN PANTALLA (se oculta automáticamente en @media print) */}
-      <div className="labels-screen min-h-screen bg-[#090A0F] text-white flex flex-col">
-        <Navbar isAdmin={true} onLogout={() => {}} totalProducts={products.length} />
+      <div className="labels-screen min-h-screen bg-[#090A0F] text-white flex flex-col font-sans">
+        {/* Header Bar idéntico al de /admin/duplicados y /admin/pos/historial */}
+        <header className="sticky top-0 z-40 w-full glass-panel border-b border-[#D4AF37]/15 backdrop-blur-xl bg-[#090A0F]/90">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-4">
+            <Link
+              href="/admin"
+              className="flex items-center gap-2 text-[#D4AF37] hover:text-white transition-colors group"
+            >
+              <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
+              <span className="text-sm font-bold">Panel Admin</span>
+            </Link>
 
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-          {/* Barra de Navegación y Título */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-white/10">
-            <div>
-              <Link
-                href="/admin"
-                className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-[#D4AF37] font-semibold transition-colors mb-2"
-              >
-                <ArrowLeft className="w-4 h-4" /> Volver al Panel Admin
-              </Link>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-[#E5C158]">
-                  <Boxes className="w-5 h-5" />
-                </div>
-                <div>
-                  <h1 className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-2">
-                    ETIQUETADOR
-                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-[#10131E] border border-white/10 text-gray-400">
-                      Cajas Físicas
-                    </span>
-                  </h1>
-                  <p className="text-xs text-gray-400">
-                    Crea, configura y previsualiza etiquetas para impresión en hoja A4.
-                  </p>
-                </div>
+            <div className="flex items-center gap-3">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-xs font-bold text-cyan-300">
+                <Tag className="w-3.5 h-3.5 text-cyan-400" />
+                Etiquetador de Cajas
+              </span>
+
+              {/* Botones rápidos Imprimir y Limpiar en cabecera */}
+              <div className="flex items-center gap-2">
+                <button
+                  id="btn-labels-clear-all"
+                  type="button"
+                  onClick={() => {
+                    if (confirm('¿Deseas reiniciar todas las etiquetas? Se borrarán las cajas actuales.')) {
+                      clearAll();
+                    }
+                  }}
+                  title="Limpiar todas las etiquetas"
+                  className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 font-bold text-xs flex items-center gap-1.5 transition-all"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Limpiar</span>
+                </button>
+
+                <button
+                  id="btn-labels-print-main"
+                  type="button"
+                  onClick={handlePrint}
+                  className="px-4 py-1.5 rounded-xl gold-gradient-bg text-black font-extrabold text-xs shadow-gold-glow hover:scale-105 active:scale-95 transition-all flex items-center gap-1.5"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Imprimir / PDF</span>
+                </button>
               </div>
             </div>
-
-            {/* Acciones principales: Imprimir y Limpiar */}
-            <div className="flex items-center gap-3 self-end md:self-auto">
-              <button
-                id="btn-labels-clear-all"
-                type="button"
-                onClick={() => {
-                  if (confirm('¿Deseas reiniciar todas las etiquetas? Se borrarán las cajas actuales.')) {
-                    clearAll();
-                  }
-                }}
-                className="px-3.5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 font-bold text-xs flex items-center gap-1.5 transition-all"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                Limpiar
-              </button>
-
-              <button
-                id="btn-labels-print-main"
-                type="button"
-                onClick={handlePrint}
-                className="px-5 py-2.5 rounded-xl gold-gradient-bg text-black font-extrabold text-xs shadow-gold-glow hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
-              >
-                <Printer className="w-4 h-4" />
-                Imprimir / PDF
-              </button>
-            </div>
           </div>
+        </header>
+
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+          {/* Hero Section Banner idéntico al estilo de duplicados */}
+          <section className="glass-panel rounded-3xl p-6 sm:p-8 border border-amber-500/30 relative overflow-hidden flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+            <div className="space-y-2 max-w-2xl">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#171B2B] border border-white/10 text-xs font-bold text-[#E5C158]">
+                <Sparkles className="w-3.5 h-3.5 text-[#D4AF37]" />
+                Identificación de Paquetería y Cajas Físicas
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                Etiquetador de Cajas
+              </h1>
+              <p className="text-xs sm:text-sm text-gray-300 leading-relaxed">
+                Organiza e imprime etiquetas físicas para las cajas de repuestos y displays. Ajusta las dimensiones en milímetros para hoja A4, añade múltiples modelos por caja y previsualiza la distribución real de impresión sin afectar el inventario.
+              </p>
+            </div>
+
+            {/* Quick Metrics */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="px-4 py-3 rounded-2xl bg-[#10131E] border border-white/10 text-center min-w-[110px]">
+                <span className="text-[10px] uppercase font-bold text-gray-400 block tracking-wider">
+                  Cajas
+                </span>
+                <span className="text-xl font-extrabold text-[#F3E0A9]">
+                  {totalBoxesCount}
+                </span>
+              </div>
+
+              <div className="px-4 py-3 rounded-2xl bg-[#10131E] border border-white/10 text-center min-w-[110px]">
+                <span className="text-[10px] uppercase font-bold text-gray-400 block tracking-wider">
+                  Piezas
+                </span>
+                <span className="text-xl font-extrabold text-[#E5C158]">
+                  {totalPiecesCount}
+                </span>
+              </div>
+
+              <div className="px-4 py-3 rounded-2xl bg-[#10131E] border border-white/10 text-center min-w-[110px]">
+                <span className="text-[10px] uppercase font-bold text-gray-400 block tracking-wider">
+                  Hojas A4
+                </span>
+                <span className="text-xl font-extrabold text-white">
+                  {pages.length}
+                </span>
+              </div>
+            </div>
+          </section>
 
           {/* Banner informativo de instrucciones de escala de impresión */}
           <div className="glass-panel rounded-2xl p-4 border border-blue-500/30 bg-blue-500/10 flex items-start gap-3">

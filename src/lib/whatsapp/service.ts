@@ -207,7 +207,7 @@ export async function sendWhatsAppMessage(to: string, messageText: string): Prom
           to: cleanTo,
           text: messageText,
         }),
-        signal: AbortSignal.timeout(3500),
+        signal: AbortSignal.timeout(8000),
       });
       if (res.ok) {
         return true;
@@ -759,12 +759,12 @@ DIRECTRICES DE ESTILO PARA WHATSAPP:
       `${historyBlock}` +
       `MENSAJE ACTUAL DE OSVALDO:\n"${cleanPrompt}"`;
 
-    const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-flash-lite-latest'];
+    const candidateModels = ['gemini-2.0-flash', 'gemini-1.5-flash'];
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
     
     for (let i = 0; i < candidateModels.length; i++) {
       const model = candidateModels[i];
-      if (i > 0) await sleep(1500);
+      if (i > 0) await sleep(1000);
       try {
         const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
         const res = await fetch(geminiUrl, {
@@ -946,12 +946,12 @@ En el catálogo, muchas pantallas son compatibles con varios modelos a la vez, l
     `${clientHistoryBlock}` +
     `MENSAJE DEL CLIENTE:\n"${cleanPrompt}"`;
 
-  const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-flash-lite-latest'];
+  const candidateModels = ['gemini-2.0-flash', 'gemini-1.5-flash'];
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
   for (let i = 0; i < candidateModels.length; i++) {
     const model = candidateModels[i];
-    if (i > 0) await sleep(1500);
+    if (i > 0) await sleep(1000);
     try {
       const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
       const res = await fetch(geminiUrl, {

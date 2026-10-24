@@ -282,7 +282,7 @@ export default function AdminWhatsAppPage() {
     setSendErrorFallback(null);
     let delivered = false;
 
-    // Intento 1: A través de la API Next.js /api/whatsapp/admin/send
+    // Intento 1: A través de la API Next.js /api/whatsapp/admin/send (con margen amplio de 12s para evitar falsos negativos)
     try {
       const res = await fetch('/api/whatsapp/admin/send', {
         method: 'POST',
@@ -291,7 +291,7 @@ export default function AdminWhatsAppPage() {
           to: selectedLog.senderPhone,
           text: directReplyText.trim(),
         }),
-        signal: AbortSignal.timeout(4000),
+        signal: AbortSignal.timeout(12000),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.success) {
@@ -301,8 +301,8 @@ export default function AdminWhatsAppPage() {
       // Endpoint cloud timeout o bridge unreachable
     }
 
-    // Intento 2: Si estamos en el navegador de la PC donde corre el bot en local
-    if (!delivered) {
+    // Intento 2: Si estamos navegando en localhost y falló el endpoint API
+    if (!delivered && typeof window !== 'undefined' && window.location.hostname === 'localhost') {
       try {
         const localRes = await fetch('http://localhost:7860/send', {
           method: 'POST',
@@ -312,14 +312,14 @@ export default function AdminWhatsAppPage() {
             text: directReplyText.trim(),
             secret: 'el_arca_bridge_secret_2026',
           }),
-          signal: AbortSignal.timeout(3000),
+          signal: AbortSignal.timeout(8000),
         });
         const localData = await localRes.json().catch(() => ({}));
         if (localRes.ok && localData.success) {
           delivered = true;
         }
       } catch {
-        // Local bridge no accesible directamente
+        // Local bridge no accesible
       }
     }
 
@@ -508,10 +508,10 @@ export default function AdminWhatsAppPage() {
 
   return (
     <div className="min-h-screen bg-[#07090E] text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-black">
-      {/* Toast Notification */}
+      {/* Toast Notification Centrada Horizontalmente */}
       {toastMessage && (
-        <div className="fixed top-6 right-6 z-50 px-5 py-3 rounded-2xl bg-[#131C2E] border border-amber-500/40 text-amber-300 font-bold text-sm shadow-2xl flex items-center gap-3 animate-fade-in">
-          <Sparkles className="w-4 h-4 text-amber-400" />
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl bg-[#131C2E] border border-amber-500/40 text-amber-300 font-bold text-sm shadow-2xl flex items-center gap-3 animate-fade-in backdrop-blur-md">
+          <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
           <span>{toastMessage}</span>
         </div>
       )}
@@ -528,30 +528,11 @@ export default function AdminWhatsAppPage() {
           </Link>
 
           <div className="flex items-center gap-2.5">
-            <button
-              onClick={toggleSound}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
-                soundEnabled
-                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
-                  : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'
-              }`}
-              title={soundEnabled ? 'Click para silenciar alertas y notificaciones' : 'Click para activar alertas sonoras y notificaciones de escritorio'}
-            >
-              {soundEnabled ? (
-                <>
-                  <Volume2 className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-                  <span>Sonido: Activo</span>
-                </>
-              ) : (
-                <>
-                  <VolumeX className="w-3.5 h-3.5 text-gray-400" />
-                  <span>Sonido: Silenciado</span>
-                </>
-              )}
-            </button>
-
-            <div className="hidden sm:inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-bold text-gray-300">
+            {/* Indicador de Estado del Bot con Dot Verde Parpadeante */}
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-xs font-bold text-emerald-300 shadow-sm">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400/50" />
               <span>Bot: +53 {metrics?.botPhone || '63657247'}</span>
+              <span className="hidden sm:inline-block text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-200 font-extrabold">Activo</span>
             </div>
 
             <button
@@ -752,22 +733,27 @@ export default function AdminWhatsAppPage() {
                   <span>CSV</span>
                 </button>
 
-                {/* Toggle Sonido */}
+                {/* Toggle Sonido y Notificaciones en la tabla de SMS */}
                 <button
-                  onClick={() => {
-                    const next = !soundEnabled;
-                    setSoundEnabled(next);
-                    if (next) playNotificationSound();
-                    triggerToast(next ? 'Sonido de nuevos mensajes activado' : 'Sonido silenciado');
-                  }}
-                  className={`px-2.5 py-2 rounded-xl text-xs font-bold inline-flex items-center gap-1 border transition-colors ${
+                  onClick={toggleSound}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 border transition-all ${
                     soundEnabled
-                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                      : 'text-gray-400 border-white/10 hover:bg-white/5'
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/35 shadow-sm shadow-amber-950/30'
+                      : 'text-gray-400 hover:text-white hover:bg-white/5 border-white/10'
                   }`}
-                  title={soundEnabled ? 'Silenciar alertas' : 'Activar timbre con nuevos mensajes'}
+                  title={soundEnabled ? 'Click para silenciar alertas' : 'Click para activar alertas sonoras y notificaciones'}
                 >
-                  {soundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+                  {soundEnabled ? (
+                    <>
+                      <Volume2 className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                      <span className="hidden sm:inline">Sonido</span>
+                    </>
+                  ) : (
+                    <>
+                      <VolumeX className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Silenciado</span>
+                    </>
+                  )}
                 </button>
 
                 {/* Vaciar Registros */}

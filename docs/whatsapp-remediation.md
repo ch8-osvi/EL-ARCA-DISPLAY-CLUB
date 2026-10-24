@@ -58,6 +58,10 @@ La revisión adicional de dependencias actualizó Next.js a 15.5.28 y corrigió 
 
 La compilación de producción y las 22 pruebas unitarias/regresión pasaron. También se comprobaron por HTTP el rechazo de cookies falsas, webhooks sin firma y cambios desde otro origen, el acceso autenticado a configuración/estadísticas y la revocación efectiva tras cerrar sesión. No se enviaron mensajes a clientes para estas comprobaciones.
 
+La misma comprobación HTTP pasó en producción, junto con una consulta real a Gemini que devolvió la tasa vigente del negocio. Se reinició únicamente el puente anterior verificado de El Arca: recuperó la vinculación existente y quedó escuchando en `127.0.0.1:7860`, con conexión WhatsApp activa. Se conservaron las alertas sonoras y de escritorio y se evita dispararlas por abrir registros antiguos o archivarlos.
+
+Limitación de observabilidad de esta revisión: el conector de registros de Vercel devolvió 403; la alternativa CLI no emitió muestras durante una ventana de 25 segundos. Eso no demuestra ausencia de errores históricos. La evidencia positiva corresponde a la compilación, pruebas, respuestas HTTP, consulta Gemini y conexión del puente.
+
 La suite cubre firma y caducidad de sesiones, cookies falsificadas, CSRF, firmas de puente/Meta, esquemas, stock cero, cantidades inválidas, contrato de órdenes, variantes, parser JSON, búsqueda ambigua, ajuste negativo y cliente Gemini. Se actualizaron las pruebas anteriores que daban por válida una cookie literal `authenticated`.
 
 La prueba de integración crea y elimina una base aislada y comprueba:

@@ -78,6 +78,7 @@ export default function AdminWhatsAppPage() {
   const [sound, setSound] = useState(false);
   const soundRef = useRef(false);
   const lastId = useRef("");
+  const newestSeenAt = useRef(0);
   const audio = useRef<AudioContext | null>(null);
   const requestId = useRef("");
   const activeRequest = useRef(false);
@@ -128,11 +129,13 @@ export default function AdminWhatsAppPage() {
           );
         const next: Data = await stats.json();
         const incoming = next.recentLogs[0]?.id;
+        const incomingAt = new Date(next.recentLogs[0]?.timestamp || 0).getTime();
         if (
           soundRef.current &&
           lastId.current &&
           incoming &&
           incoming !== lastId.current &&
+          incomingAt > newestSeenAt.current &&
           next.recentLogs[0]?.senderPhone !== "web-admin"
         ) {
           const ctx = audio.current;
@@ -146,8 +149,13 @@ export default function AdminWhatsAppPage() {
             osc.start();
             osc.stop(ctx.currentTime + 0.15);
           }
+          if ('Notification' in window && Notification.permission === 'granted') {
+            const notification = new Notification('El Arca — Nuevo mensaje de WhatsApp', { body: 'Hay una nueva interacción en el panel.', icon: '/favicon.ico' });
+            notification.onclick = () => window.focus();
+          }
         }
         if (incoming) lastId.current = incoming;
+        newestSeenAt.current = Math.max(newestSeenAt.current, incomingAt || 0);
         setData(next);
         setConfig(await cfg.json());
         setError("");
@@ -166,7 +174,7 @@ export default function AdminWhatsAppPage() {
     const controller = new AbortController();
     const first = setTimeout(() => void refresh(controller.signal), 300);
     const interval = setInterval(() => {
-      if (!document.hidden) void refresh(controller.signal);
+      if (!document.hidden || soundRef.current) void refresh(controller.signal);
     }, 15000);
     return () => {
       clearTimeout(first);
@@ -447,6 +455,7 @@ export default function AdminWhatsAppPage() {
                 onClick={() => {
                   if (!audio.current) audio.current = new AudioContext();
                   void audio.current.resume();
+                  if (!sound && 'Notification' in window && Notification.permission === 'default') void Notification.requestPermission();
                   setSound(!sound);
                 }}
               >

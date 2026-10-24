@@ -33,6 +33,7 @@ export async function advanceDelivery(
   if (message)
     await WhatsAppLog.updateMany(
       {
+        status: { $nin: higher[status] },
         $or: [
           { outboundId: id },
           { messageId: id },

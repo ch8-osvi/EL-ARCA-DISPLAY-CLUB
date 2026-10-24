@@ -469,7 +469,9 @@ export default function AdminWhatsAppPage() {
     setRole(value);
     setPage(1);
   };
-  const selectedLog = selected;
+  const selectedLog = selected
+    ? data?.recentLogs.find((log) => log.id === selected.id) || selected
+    : null;
   const setSelectedLog = (log: Log | null) => {
     setSelected(log);
     setReply("");

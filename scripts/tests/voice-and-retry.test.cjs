@@ -41,8 +41,8 @@ test("formato WhatsApp: un asterisco para negrita, mantiene código y no cambia 
 });
 test("ruta de respuesta: conserva LID verificado y no acepta grupos ni otro teléfono", () => {
   assert.equal(
-    transport.verifiedChatJid("5350000001", "137516950794417@lid"),
-    "137516950794417@lid",
+    transport.verifiedChatJid("5350000001", "123456789012345@lid"),
+    "123456789012345@lid",
   );
   assert.equal(
     transport.verifiedChatJid("5350000001", "5350000001:2@s.whatsapp.net"),
@@ -82,7 +82,7 @@ test("envío: usa chat original, ID nativo persistido, claves disponibles antes 
     message: {
       id: "test-queue",
       to: "5350000001",
-      chatJid: "137516950794417@lid",
+      chatJid: "123456789012345@lid",
       text: "*Modelo* ".repeat(700),
     },
     state,

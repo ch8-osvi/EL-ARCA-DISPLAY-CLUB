@@ -61,6 +61,7 @@ function wakeWorker() {
   if (!stopping) workTimer = setTimeout(worker, 0).unref();
 }
 const lidToPhone = new Map();
+let flushAuth = async () => {};
 let sock = null,
   connected = false,
   phone = "",
@@ -95,6 +96,7 @@ app.get(["/", "/health", "/ping"], (req, res) =>
   res.json({
     service: "El Arca local bridge",
     connected,
+    busy: working || submitting,
     lastError: lastError ? "Se requiere revisión del registro local" : "",
     time: new Date().toISOString(),
   }),
@@ -137,6 +139,12 @@ app.get("/scan", async (req, res) => {
       qrImage: authorized && qr ? await QRCode.toDataURL(qr) : "",
     }),
   );
+});
+app.post("/control/shutdown", (req, res) => {
+  if (!equalSecret(req.headers["x-bridge-control"], SECRET))
+    return res.sendStatus(401);
+  res.json({ stopping: true });
+  setTimeout(() => void shutdown(), 50).unref();
 });
 // All outbound requests go through the authenticated cloud queue. No public /send or logout endpoint.
 async function cloud(action) {
@@ -333,7 +341,8 @@ async function start() {
   if (stopping || reconnecting) return;
   reconnecting = true;
   try {
-    const { state, saveCreds } = await authStore(AUTH);
+    const { state, saveCreds, flush } = await authStore(AUTH);
+    flushAuth = flush;
     const { version } = await fetchLatestBaileysVersion();
     const current = makeWASocket({
       version,
@@ -407,6 +416,7 @@ async function start() {
     });
     current.ev.on("messages.upsert", async (event) => {
       try {
+        if (stopping) return;
         if (event.type !== "notify") return;
         for (const msg of event.messages) {
           const jid = msg.key.remoteJid || "";
@@ -522,9 +532,18 @@ async function start() {
 async function shutdown(code = 0) {
   if (stopping) return;
   stopping = true;
+  clearTimeout(workTimer);
+  while (working || submitting || flushingReceipts)
+    await new Promise((resolve) => setTimeout(resolve, 100));
   connected = false;
   await cloud({ action: "heartbeat", connected: false, phone }).catch(() => {});
-  sock?.end(new Error("Cierre del puente"));
+  try {
+    sock?.end(new Error("Cierre del puente"));
+    await flushAuth();
+  } catch (e) {
+    code = 1;
+    console.error("[Shutdown] No se completó el guardado:", e?.name || "Error");
+  }
   server.close(() => process.exit(code));
   setTimeout(() => process.exit(code), 3000).unref();
 }

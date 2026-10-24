@@ -107,6 +107,9 @@ Validación de esta entrega: 30 pruebas automatizadas correctas, compilación de
 - Escribir en el socket ya no se considera confirmación de entrega. El puente comunica los recibos de WhatsApp y el panel distingue pendiente de confirmación, aceptado por WhatsApp, entregado y leído. Los recibos tardíos no hacen retroceder estados.
 - La salida WhatsApp convierte negrita Markdown de doble asterisco a un asterisco, preservando el contenido literal de los bloques de código. La IA web conserva su formato Markdown.
 - El ajuste de Antigravity evita cerrar todo el proceso por errores temporales conocidos de Signal. No repara por sí solo una sesión de cifrado ni demuestra que un destinatario pueda leer un mensaje. Se conserva su intención con clasificación precisa de errores.
+- Se añadió un cierre de mantenimiento accesible solo en localhost con el secreto privado del puente. Espera a terminar el trabajo y guardar las claves antes de cerrar; no usa la contraseña pública del panel ni elimina la vinculación.
+
+Validación de esta revisión: 33 pruebas automatizadas, compilación y pruebas de integración en base aislada. Se verificaron recibos simultáneos para evitar que el historial retroceda de leído a enviado. Con autorización del propietario se hicieron dos envíos únicamente a su número y se procesó su respuesta real «Hola prueba». La primera entrega por teléfono necesitó dos reintentos; la respuesta posterior por LID no tuvo reintentos, tardó 889 ms en la IA y notificó lectura unos 3,4 segundos después del envío. El segundo envío por LID también llegó sin reintentos. El propietario confirmó que la respuesta y la segunda prueba se veían sin el cartel de espera y con la negrita correcta. No se enviaron pruebas a clientes.
 
 ## Límites operativos explícitos
 

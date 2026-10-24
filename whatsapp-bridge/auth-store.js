@@ -65,6 +65,9 @@ async function authStore(folder) {
       },
     },
     saveCreds: () => write("creds.json", creds),
+    flush: async () => {
+      while (locks.size) await Promise.all([...locks.values()]);
+    },
   };
 }
 module.exports = { authStore };

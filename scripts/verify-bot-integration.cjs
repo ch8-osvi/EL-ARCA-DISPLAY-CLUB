@@ -265,7 +265,7 @@ async function main() {
       "Consulta Redmi 9A",
       "bridge",
       undefined,
-      "137516950794417@lid",
+      "123456789012345@lid",
     );
     let row = await WhatsAppLog.findOne({ messageId: incoming });
     assert.equal(row.status, "received");
@@ -273,7 +273,7 @@ async function main() {
     assert.match(row.botReply, /Pendiente/);
     assert.equal(await inbox.processNextMessage(), true);
     const outgoing = await states.BotOutbound.findById("reply:" + incoming);
-    assert.equal(outgoing.chatJid, "137516950794417@lid");
+    assert.equal(outgoing.chatJid, "123456789012345@lid");
     assert.equal(
       outgoing.text,
       "Tenemos *Redmi 9A*.\n\n_Asistente automático de El Arca Display Club_",
@@ -284,7 +284,7 @@ async function main() {
       "Consulta Redmi 9A",
       "bridge",
       undefined,
-      "137516950794417@lid",
+      "123456789012345@lid",
     );
     assert.equal(await WhatsAppLog.countDocuments({ messageId: incoming }), 1);
     assert.equal(
@@ -314,8 +314,29 @@ async function main() {
       (await WhatsAppLog.findOne({ messageId: incoming })).status,
       "read",
     );
+    await states.BotOutbound.updateOne(
+      { _id: outgoing._id },
+      { $set: { status: "sending" } },
+    );
+    await WhatsAppLog.updateOne(
+      { messageId: incoming },
+      { $set: { status: "queued" } },
+    );
+    await Promise.all([
+      advanceDelivery(outgoing._id, "sent", "provider-test"),
+      advanceDelivery(outgoing._id, "delivered", "provider-test"),
+      advanceDelivery(outgoing._id, "read", "provider-test"),
+    ]);
     assert.equal(
-      await identity.isPhoneAuthorizedAdmin("137516950794417"),
+      (await states.BotOutbound.findById(outgoing._id)).status,
+      "read",
+    );
+    assert.equal(
+      (await WhatsAppLog.findOne({ messageId: incoming })).status,
+      "read",
+    );
+    assert.equal(
+      await identity.isPhoneAuthorizedAdmin("123456789012345"),
       false,
     );
     console.log(

@@ -17,7 +17,7 @@ export const MIN_MARGIN_MM = 5;
 export const MAX_MARGIN_MM = 30;
 export const MIN_GAP_MM = 0;
 export const MAX_GAP_MM = 20;
-export const MIN_LABEL_CM = 3;
+export const MIN_LABEL_CM = 1.5;
 
 export const DEFAULT_SETTINGS: LabelSettings = {
   widthCm: 8,

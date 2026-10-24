@@ -12,16 +12,17 @@ import {
   PackagePlus,
   Printer,
   RotateCcw,
-  Tag,
   ShieldAlert,
   Sparkles,
+  Tag,
 } from 'lucide-react';
-
 import BoxEditor, { StockFilter } from '@/components/labels/BoxEditor';
 import LabelPreview from '@/components/labels/LabelPreview';
 import LabelSettingsPanel from '@/components/labels/LabelSettingsPanel';
 import LabelSheet from '@/components/labels/LabelSheet';
+import SingleStickersManager, { SingleStickerItem } from '@/components/labels/SingleStickersManager';
 import {
+  SettingsInput,
   parseSettings,
   useLabelDraft,
 } from '@/components/labels/useLabelDraft';
@@ -31,11 +32,16 @@ import {
   BoxLabelDraft,
   boxTotal,
   computeGrid,
+  createUid,
   paginate,
   totalsByProduct,
   validateBox,
 } from '@/lib/labelLayout';
 import { Product } from '@/lib/types';
+
+export type LabelMode = 'box' | 'single';
+
+const SINGLE_STORAGE_KEY = 'el_arca_single_stickers_draft_v1';
 
 export default function EtiquetasPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -46,12 +52,16 @@ export default function EtiquetasPage() {
   const [showValidationErrors, setShowValidationErrors] = useState(false);
   const [overflowMap, setOverflowMap] = useState<Record<string, boolean>>({});
 
+  // Modo: "box" (Cajas con lista de modelos) vs "single" (Stickers individuales 4x2 cm monoproducto)
+  const [mode, setMode] = useState<LabelMode>('box');
+
+  // Estado del modo Cajas (useLabelDraft)
   const {
     boxes,
-    hydrated,
-    settingsInput,
-    setSettingsInput,
-    resetSettings,
+    hydrated: boxHydrated,
+    settingsInput: boxSettingsInput,
+    setSettingsInput: setBoxSettingsInput,
+    resetSettings: resetBoxSettings,
     addLine,
     setLineQty,
     removeLine,
@@ -59,11 +69,49 @@ export default function EtiquetasPage() {
     addBox,
     duplicateBox,
     removeBox,
-    clearAll,
+    clearAll: clearAllBoxes,
     refreshSnapshots,
   } = useLabelDraft();
 
-  // Verificación de sesión de admin (patrón exacto de /admin/duplicados)
+  // Estado del modo Stickers Monoproducto
+  const [singleSettingsInput, setSingleSettingsInput] = useState<SettingsInput>({
+    widthCm: '4',
+    heightCm: '2',
+    marginMm: '8',
+    gapMm: '3',
+  });
+  const [singleItems, setSingleItems] = useState<SingleStickerItem[]>([]);
+  const [singleHydrated, setSingleHydrated] = useState(false);
+
+  // Cargar borrador de stickers individuales
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SINGLE_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed.items)) setSingleItems(parsed.items);
+        if (parsed.settings) setSingleSettingsInput(parsed.settings);
+      }
+    } catch {
+      /* ignore */
+    }
+    setSingleHydrated(true);
+  }, []);
+
+  // Guardar borrador de stickers individuales
+  useEffect(() => {
+    if (!singleHydrated) return;
+    try {
+      localStorage.setItem(
+        SINGLE_STORAGE_KEY,
+        JSON.stringify({ items: singleItems, settings: singleSettingsInput })
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [singleItems, singleSettingsInput, singleHydrated]);
+
+  // Auth check
   useEffect(() => {
     const auth = sessionStorage.getItem('el_arca_admin_auth');
     if (auth === 'true') {
@@ -76,7 +124,7 @@ export default function EtiquetasPage() {
     setTimeout(() => setToastMessage(null), ms);
   };
 
-  // Carga de catálogo completa (incluye stock 0 para permitir seleccionar todo)
+  // Carga de inventario
   useEffect(() => {
     if (!isAuthenticated) return;
     let active = true;
@@ -96,14 +144,13 @@ export default function EtiquetasPage() {
         console.warn('Fallo al obtener inventario remoto en /admin/etiquetas, usando respaldo local');
       }
 
-      // Respaldo de localStorage si la API estuviese offline
       try {
         const local = localStorage.getItem('el_arca_products');
         if (local && active) {
           setProducts(JSON.parse(local));
         }
       } catch {
-        /* sin respaldo disponible */
+        /* no local */
       } finally {
         if (active) setLoadingProducts(false);
       }
@@ -118,57 +165,125 @@ export default function EtiquetasPage() {
     };
   }, [isAuthenticated]);
 
-  // Mapa rápido de productos por ID
+  // Mapa rápido de productos
   const productsById = useMemo(() => {
     const map = new Map<string, Product>();
-    for (const p of products) {
-      map.set(p.id, p);
-    }
+    for (const p of products) map.set(p.id, p);
     return map;
   }, [products]);
 
-  // Si los nombres en la base de datos se normalizaron/actualizaron, refrescar snapshots
   useEffect(() => {
-    if (hydrated && productsById.size > 0) {
+    if (boxHydrated && productsById.size > 0) {
       refreshSnapshots(productsById);
     }
-  }, [hydrated, productsById, refreshSnapshots]);
+  }, [boxHydrated, productsById, refreshSnapshots]);
 
   const knownProductIds = useMemo(() => {
     if (loadingProducts || products.length === 0) return null;
     return new Set(products.map((p) => p.id));
   }, [loadingProducts, products]);
 
-  // Cálculo de grilla A4
-  const settings = useMemo(() => parseSettings(settingsInput), [settingsInput]);
-  const grid = useMemo(() => computeGrid(settings), [settings]);
+  // Grilla activa según el modo
+  const activeSettingsInput = mode === 'box' ? boxSettingsInput : singleSettingsInput;
+  const setActiveSettingsInput = mode === 'box' ? setBoxSettingsInput : setSingleSettingsInput;
+  const activeSettings = useMemo(() => parseSettings(activeSettingsInput), [activeSettingsInput]);
+  const grid = useMemo(() => computeGrid(activeSettings), [activeSettings]);
 
-  // Validación de cada caja
+  const handleResetSettings = () => {
+    if (mode === 'box') {
+      resetBoxSettings();
+    } else {
+      setSingleSettingsInput({
+        widthCm: '4',
+        heightCm: '2',
+        marginMm: '8',
+        gapMm: '3',
+      });
+    }
+  };
+
+  // Validaciones del modo caja
   const boxIssuesList = useMemo(() => {
     return boxes.map((b) => validateBox(b, knownProductIds));
   }, [boxes, knownProductIds]);
 
-  const hasGlobalErrors = useMemo(() => {
+  const hasGlobalBoxErrors = useMemo(() => {
     return boxIssuesList.some(
       (issue) => issue.errors.length > 0 || Object.keys(issue.lineErrors).length > 0
     );
   }, [boxIssuesList]);
 
-  // Totales acumulados por producto
   const totalsAcrossBoxes = useMemo(() => totalsByProduct(boxes), [boxes]);
-
   const totalBoxesCount = boxes.length;
-  const totalPiecesCount = useMemo(() => {
-    return boxes.reduce((acc, b) => acc + boxTotal(b), 0);
-  }, [boxes]);
+  const totalBoxPiecesCount = useMemo(() => boxes.reduce((acc, b) => acc + boxTotal(b), 0), [boxes]);
 
-  // Paginación para imprimir y vista previa
+  // Lista aplanada de displays para modo individual (según el número de copias)
+  const flattenedSingleProducts = useMemo(() => {
+    const list: Product[] = [];
+    for (const item of singleItems) {
+      for (let i = 0; i < item.copies; i++) {
+        list.push(item.product);
+      }
+    }
+    return list;
+  }, [singleItems]);
+
+  // Paginación activa
   const pages = useMemo(() => {
     if (!grid.ok || grid.perPage <= 0) return [];
-    return paginate(boxes, grid.perPage);
-  }, [boxes, grid]);
+    if (mode === 'box') {
+      return paginate(boxes, grid.perPage);
+    } else {
+      return paginate(flattenedSingleProducts, grid.perPage);
+    }
+  }, [mode, boxes, flattenedSingleProducts, grid]);
 
-  // Callback de desbordamiento de texto detectado en BoxLabel
+  // Handlers para modo individual
+  const handleAddSingleItem = (product: Product, copies: number) => {
+    setSingleItems((prev) => {
+      const idx = prev.findIndex((it) => it.productId === product.id);
+      if (idx !== -1) {
+        const next = [...prev];
+        next[idx] = { ...next[idx], copies: next[idx].copies + copies };
+        triggerToast(`Se sumaron +${copies} stickers a ${product.modelo}`);
+        return next;
+      }
+      return [...prev, { uid: createUid(), productId: product.id, product, copies }];
+    });
+  };
+
+  const handleUpdateSingleCopies = (uid: string, copies: number) => {
+    setSingleItems((prev) => prev.map((it) => (it.uid === uid ? { ...it, copies } : it)));
+  };
+
+  const handleRemoveSingleItem = (uid: string) => {
+    setSingleItems((prev) => prev.filter((it) => it.uid !== uid));
+  };
+
+  const handleAddFromStock = () => {
+    const inStock = products.filter((p) => (p.stock ?? 0) > 0);
+    if (inStock.length === 0) {
+      triggerToast('No hay productos con stock actualmente.');
+      return;
+    }
+    setSingleItems(
+      inStock.map((p) => ({
+        uid: createUid(),
+        productId: p.id,
+        product: p,
+        copies: p.stock ?? 1,
+      }))
+    );
+    triggerToast(`¡Cargados ${inStock.length} modelos según su stock físico!`);
+  };
+
+  const handleClearAllSingle = () => {
+    if (confirm('¿Deseas limpiar todos los stickers individuales?')) {
+      setSingleItems([]);
+    }
+  };
+
+  // Handlers para modo caja
   const handleOverflowChange = (boxUid: string, overflow: boolean) => {
     setOverflowMap((prev) => {
       if (prev[boxUid] === overflow) return prev;
@@ -176,7 +291,6 @@ export default function EtiquetasPage() {
     });
   };
 
-  // Wrapper para añadir línea con aviso si sumó cantidad
   const handleAddLine = (boxUid: string, product: Product, qty: number) => {
     const targetBox = boxes.find((b) => b.uid === boxUid);
     const existing = targetBox?.lines.some((l) => l.productId === product.id);
@@ -186,16 +300,23 @@ export default function EtiquetasPage() {
     }
   };
 
-  // Manejo de impresión
+  // Impresión
   const handlePrint = () => {
     if (!grid.ok) {
-      triggerToast('No se puede imprimir: la configuración de etiqueta no es válida.');
+      triggerToast('No se puede imprimir: la configuración de dimensiones no es válida.');
       return;
     }
-    if (boxes.length === 0 || hasGlobalErrors) {
-      setShowValidationErrors(true);
-      triggerToast('Corrige los errores antes de imprimir.');
-      return;
+    if (mode === 'box') {
+      if (boxes.length === 0 || hasGlobalBoxErrors) {
+        setShowValidationErrors(true);
+        triggerToast('Corrige los errores antes de imprimir.');
+        return;
+      }
+    } else {
+      if (flattenedSingleProducts.length === 0) {
+        triggerToast('Añade al menos un display para imprimir stickers.');
+        return;
+      }
     }
     window.print();
   };
@@ -238,7 +359,7 @@ export default function EtiquetasPage() {
             <div className="flex items-center gap-3">
               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-xs font-bold text-cyan-300">
                 <Tag className="w-3.5 h-3.5 text-cyan-400" />
-                Etiquetador de Cajas
+                {mode === 'box' ? 'Etiquetas para Cajas' : 'Stickers Individuales (Bolsitas)'}
               </span>
 
               {/* Botones rápidos Imprimir y Limpiar en cabecera */}
@@ -247,11 +368,15 @@ export default function EtiquetasPage() {
                   id="btn-labels-clear-all"
                   type="button"
                   onClick={() => {
-                    if (confirm('¿Deseas reiniciar todas las etiquetas? Se borrarán las cajas actuales.')) {
-                      clearAll();
+                    if (mode === 'box') {
+                      if (confirm('¿Deseas reiniciar todas las etiquetas? Se borrarán las cajas actuales.')) {
+                        clearAllBoxes();
+                      }
+                    } else {
+                      handleClearAllSingle();
                     }
                   }}
-                  title="Limpiar todas las etiquetas"
+                  title="Limpiar"
                   className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 font-bold text-xs flex items-center gap-1.5 transition-all"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
@@ -273,51 +398,106 @@ export default function EtiquetasPage() {
         </header>
 
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-          {/* Hero Section Banner idéntico al estilo de duplicados */}
+          {/* Hero Section Banner */}
           <section className="glass-panel rounded-3xl p-6 sm:p-8 border border-amber-500/30 relative overflow-hidden flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
             <div className="space-y-2 max-w-2xl">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#171B2B] border border-white/10 text-xs font-bold text-[#E5C158]">
                 <Sparkles className="w-3.5 h-3.5 text-[#D4AF37]" />
-                Identificación de Paquetería y Cajas Físicas
+                Identificación de Paquetería y Displays
               </div>
               <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-                Etiquetador de Cajas
+                {mode === 'box' ? 'Etiquetador de Cajas' : 'Stickers Individuales (Bolsitas)'}
               </h1>
               <p className="text-xs sm:text-sm text-gray-300 leading-relaxed">
-                Organiza e imprime etiquetas físicas para las cajas de repuestos y displays. Ajusta las dimensiones en milímetros para hoja A4, añade múltiples modelos por caja y previsualiza la distribución real de impresión sin afectar el inventario.
+                {mode === 'box'
+                  ? 'Organiza e imprime etiquetas físicas para cajas con varios modelos de displays. Ajusta las dimensiones en milímetros para hoja A4 sin alterar el inventario.'
+                  : 'Genera micro-etiquetas de 4×2 cm con el modelo y la calidad en grande para pegar directamente en las bolsitas de burbujas de cada display individual.'}
               </p>
             </div>
 
             {/* Quick Metrics */}
             <div className="flex items-center gap-3 flex-wrap">
-              <div className="px-4 py-3 rounded-2xl bg-[#10131E] border border-white/10 text-center min-w-[110px]">
-                <span className="text-[10px] uppercase font-bold text-gray-400 block tracking-wider">
-                  Cajas
-                </span>
-                <span className="text-xl font-extrabold text-[#F3E0A9]">
-                  {totalBoxesCount}
-                </span>
-              </div>
+              {mode === 'box' ? (
+                <>
+                  <div className="px-4 py-3 rounded-2xl bg-[#10131E] border border-white/10 text-center min-w-[110px]">
+                    <span className="text-[10px] uppercase font-bold text-gray-400 block tracking-wider">Cajas</span>
+                    <span className="text-xl font-extrabold text-[#F3E0A9]">{totalBoxesCount}</span>
+                  </div>
+                  <div className="px-4 py-3 rounded-2xl bg-[#10131E] border border-white/10 text-center min-w-[110px]">
+                    <span className="text-[10px] uppercase font-bold text-gray-400 block tracking-wider">Piezas</span>
+                    <span className="text-xl font-extrabold text-[#E5C158]">{totalBoxPiecesCount}</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="px-4 py-3 rounded-2xl bg-[#10131E] border border-white/10 text-center min-w-[110px]">
+                    <span className="text-[10px] uppercase font-bold text-gray-400 block tracking-wider">Modelos</span>
+                    <span className="text-xl font-extrabold text-[#F3E0A9]">{singleItems.length}</span>
+                  </div>
+                  <div className="px-4 py-3 rounded-2xl bg-[#10131E] border border-white/10 text-center min-w-[110px]">
+                    <span className="text-[10px] uppercase font-bold text-gray-400 block tracking-wider">Stickers</span>
+                    <span className="text-xl font-extrabold text-[#E5C158]">{flattenedSingleProducts.length}</span>
+                  </div>
+                </>
+              )}
 
               <div className="px-4 py-3 rounded-2xl bg-[#10131E] border border-white/10 text-center min-w-[110px]">
-                <span className="text-[10px] uppercase font-bold text-gray-400 block tracking-wider">
-                  Piezas
-                </span>
-                <span className="text-xl font-extrabold text-[#E5C158]">
-                  {totalPiecesCount}
-                </span>
-              </div>
-
-              <div className="px-4 py-3 rounded-2xl bg-[#10131E] border border-white/10 text-center min-w-[110px]">
-                <span className="text-[10px] uppercase font-bold text-gray-400 block tracking-wider">
-                  Hojas A4
-                </span>
-                <span className="text-xl font-extrabold text-white">
-                  {pages.length}
-                </span>
+                <span className="text-[10px] uppercase font-bold text-gray-400 block tracking-wider">Hojas A4</span>
+                <span className="text-xl font-extrabold text-white">{pages.length}</span>
               </div>
             </div>
           </section>
+
+          {/* Conmutador de Modo: Etiquetas para Cajas vs Stickers Individuales */}
+          <div className="glass-panel rounded-2xl p-2.5 border border-white/10 flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-gray-300 ml-2">Modo de Etiquetado:</span>
+              <div className="inline-flex rounded-xl p-1 bg-[#10131E] border border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setMode('box')}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${
+                    mode === 'box'
+                      ? 'gold-gradient-bg text-black shadow-md'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <Boxes className="w-4 h-4" />
+                  <span>Etiquetas para Cajas (8×8 cm / 6×6 cm)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('single');
+                    // Ajustar preset automático a 4x2 cm si venía de 8x8 cm
+                    if (Number(singleSettingsInput.widthCm) > 6) {
+                      setSingleSettingsInput({
+                        widthCm: '4',
+                        heightCm: '2',
+                        marginMm: '8',
+                        gapMm: '3',
+                      });
+                    }
+                  }}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${
+                    mode === 'single'
+                      ? 'gold-gradient-bg text-black shadow-md'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <Tag className="w-4 h-4" />
+                  <span>Stickers para Bolsitas (4×2 cm Monoproducto)</span>
+                </button>
+              </div>
+            </div>
+
+            <span className="text-xs text-gray-400 mr-2">
+              {mode === 'box'
+                ? 'Ideal para identificar cajas de cartón con múltiples repuestos'
+                : 'Ideal para pegar en la bolsita protectora de cada pantalla individual'}
+            </span>
+          </div>
 
           {/* Banner informativo de instrucciones de escala de impresión */}
           <div className="glass-panel rounded-2xl p-4 border border-blue-500/30 bg-blue-500/10 flex items-start gap-3">
@@ -331,9 +511,10 @@ export default function EtiquetasPage() {
 
           {/* Configuración de medidas físicas A4 */}
           <LabelSettingsPanel
-            value={settingsInput}
-            onChange={setSettingsInput}
-            onReset={resetSettings}
+            mode={mode}
+            value={activeSettingsInput}
+            onChange={setActiveSettingsInput}
+            onReset={handleResetSettings}
             grid={grid}
           />
 
@@ -368,76 +549,96 @@ export default function EtiquetasPage() {
               </div>
             </div>
 
-            {/* Contador total */}
             <div className="text-xs text-gray-400 flex items-center gap-3">
               <span>
-                Cajas: <strong className="text-white">{totalBoxesCount}</strong>
+                {mode === 'box' ? 'Cajas' : 'Modelos'}:{' '}
+                <strong className="text-white">
+                  {mode === 'box' ? totalBoxesCount : singleItems.length}
+                </strong>
               </span>
               <span>•</span>
               <span>
-                Piezas totales: <strong className="text-[#E5C158]">{totalPiecesCount}</strong>
+                {mode === 'box' ? 'Piezas totales' : 'Stickers totales'}:{' '}
+                <strong className="text-[#E5C158]">
+                  {mode === 'box' ? totalBoxPiecesCount : flattenedSingleProducts.length}
+                </strong>
               </span>
               <span>•</span>
               <span>
-                Hojas A4 estimadas: <strong className="text-white">{pages.length}</strong>
+                Hojas A4: <strong className="text-white">{pages.length}</strong>
               </span>
             </div>
           </div>
 
           {/* Grid Principal: Columna izquierda (Editor) vs Columna derecha (Vista Previa en Vivo) */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            {/* COLUMNA IZQUIERDA: Listado de Cajas */}
+            {/* COLUMNA IZQUIERDA */}
             <div className="lg:col-span-7 space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-base font-extrabold text-white flex items-center gap-2">
-                  <PackagePlus className="w-4 h-4 text-[#D4AF37]" /> Cajas a Identificar
-                </h2>
-                <button
-                  id="btn-labels-add-box"
-                  type="button"
-                  onClick={() => {
-                    const newUid = addBox();
-                    setTimeout(() => {
-                      document.getElementById(`label-box-${newUid}`)?.scrollIntoView({ behavior: 'smooth' });
-                    }, 50);
-                  }}
-                  className="px-3.5 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-[#E5C158] border border-[#D4AF37]/40 font-bold text-xs flex items-center gap-1.5 transition-all"
-                >
-                  <PackagePlus className="w-4 h-4" />
-                  Nueva Caja
-                </button>
-              </div>
+              {mode === 'box' ? (
+                <>
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-base font-extrabold text-white flex items-center gap-2">
+                      <PackagePlus className="w-4 h-4 text-[#D4AF37]" /> Cajas a Identificar
+                    </h2>
+                    <button
+                      id="btn-labels-add-box"
+                      type="button"
+                      onClick={() => {
+                        const newUid = addBox();
+                        setTimeout(() => {
+                          document.getElementById(`label-box-${newUid}`)?.scrollIntoView({ behavior: 'smooth' });
+                        }, 50);
+                      }}
+                      className="px-3.5 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-[#E5C158] border border-[#D4AF37]/40 font-bold text-xs flex items-center gap-1.5 transition-all"
+                    >
+                      <PackagePlus className="w-4 h-4" />
+                      Nueva Caja
+                    </button>
+                  </div>
 
-              {boxes.map((box, idx) => (
-                <BoxEditor
-                  key={box.uid}
-                  box={box}
-                  index={idx + 1}
+                  {boxes.map((box, idx) => (
+                    <BoxEditor
+                      key={box.uid}
+                      box={box}
+                      index={idx + 1}
+                      products={products}
+                      productsById={productsById}
+                      stockFilter={stockFilter}
+                      issues={boxIssuesList[idx] || { errors: [], lineErrors: {} }}
+                      showErrors={showValidationErrors}
+                      overflow={Boolean(overflowMap[box.uid])}
+                      totalsAcrossBoxes={totalsAcrossBoxes}
+                      onAddLine={handleAddLine}
+                      onLineQtyChange={setLineQty}
+                      onRemoveLine={removeLine}
+                      onNoteChange={setNote}
+                      onDuplicate={duplicateBox}
+                      onRemove={removeBox}
+                    />
+                  ))}
+
+                  <button
+                    id="btn-labels-add-box-bottom"
+                    type="button"
+                    onClick={() => addBox()}
+                    className="w-full py-3.5 rounded-2xl border border-dashed border-white/20 hover:border-[#D4AF37]/60 text-gray-400 hover:text-[#E5C158] font-bold text-xs flex items-center justify-center gap-2 transition-all hover:bg-white/5"
+                  >
+                    <PackagePlus className="w-4 h-4" />
+                    Agregar otra caja
+                  </button>
+                </>
+              ) : (
+                <SingleStickersManager
                   products={products}
-                  productsById={productsById}
                   stockFilter={stockFilter}
-                  issues={boxIssuesList[idx] || { errors: [], lineErrors: {} }}
-                  showErrors={showValidationErrors}
-                  overflow={Boolean(overflowMap[box.uid])}
-                  totalsAcrossBoxes={totalsAcrossBoxes}
-                  onAddLine={handleAddLine}
-                  onLineQtyChange={setLineQty}
-                  onRemoveLine={removeLine}
-                  onNoteChange={setNote}
-                  onDuplicate={duplicateBox}
-                  onRemove={removeBox}
+                  items={singleItems}
+                  onAddItem={handleAddSingleItem}
+                  onUpdateCopies={handleUpdateSingleCopies}
+                  onRemoveItem={handleRemoveSingleItem}
+                  onAddFromStock={handleAddFromStock}
+                  onClearAll={handleClearAllSingle}
                 />
-              ))}
-
-              <button
-                id="btn-labels-add-box-bottom"
-                type="button"
-                onClick={() => addBox()}
-                className="w-full py-3.5 rounded-2xl border border-dashed border-white/20 hover:border-[#D4AF37]/60 text-gray-400 hover:text-[#E5C158] font-bold text-xs flex items-center justify-center gap-2 transition-all hover:bg-white/5"
-              >
-                <PackagePlus className="w-4 h-4" />
-                Agregar otra caja
-              </button>
+              )}
             </div>
 
             {/* COLUMNA DERECHA: Vista Previa en Tiempo Real de Hoja A4 */}
@@ -447,13 +648,17 @@ export default function EtiquetasPage() {
                   <Layers className="w-4 h-4 text-[#D4AF37]" /> Vista Previa A4
                 </h2>
                 <span className="text-[11px] text-gray-400">
-                  {grid.ok ? `${grid.perPage} etiquetas por página` : 'Error de medidas'}
+                  {grid.ok
+                    ? `${grid.perPage} ${mode === 'box' ? 'etiquetas' : 'stickers'} por página`
+                    : 'Error de medidas'}
                 </span>
               </div>
 
               <div className="glass-panel rounded-2xl p-4 sm:p-5 border border-white/10 max-h-[80vh] overflow-y-auto">
                 <LabelPreview
+                  mode={mode}
                   boxes={boxes}
+                  singleProducts={flattenedSingleProducts}
                   grid={grid}
                   onOverflowChange={handleOverflowChange}
                 />
@@ -466,10 +671,12 @@ export default function EtiquetasPage() {
       {/* 2. ÁREA DE IMPRESIÓN EXCLUSIVA (se activa solo al llamar window.print()) */}
       {grid.ok && (
         <div className="labels-print-area" aria-hidden="true">
-          {pages.map((pageBoxes, pi) => (
+          {pages.map((pageItems, pi) => (
             <LabelSheet
               key={`print-page-${pi}`}
-              boxes={pageBoxes}
+              mode={mode}
+              boxes={mode === 'box' ? (pageItems as BoxLabelDraft[]) : []}
+              singleProducts={mode === 'single' ? (pageItems as Product[]) : []}
               startIndex={pi * grid.perPage}
               grid={grid}
               showEmptySlots={false}

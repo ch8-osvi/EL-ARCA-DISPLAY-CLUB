@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "sync-excel": "python scripts/parse-excel.py"
+    "sync-excel": "python scripts/parse-excel.py",
+    "bot:start": "node whatsapp-bridge/server.js"
   },
   "dependencies": {
     "@vercel/analytics": "^1.6.1",

@@ -5,12 +5,18 @@
  * 100% Gratuito - Compatible con números de Cuba (+53) - Persistencia en MongoDB Atlas
  */
 
-require('dotenv').config();
+const path = require('path');
+const fs = require('fs');
+
+// Cargar variables de entorno (desde whatsapp-bridge/.env o desde raíz .env.local)
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+if (!process.env.MONGODB_URI) {
+  require('dotenv').config({ path: path.join(__dirname, '../.env.local') });
+}
+
 const express = require('express');
 const QRCode = require('qrcode');
 const pino = require('pino');
-const path = require('path');
-const fs = require('fs');
 const { MongoClient } = require('mongodb');
 const {
   default: makeWASocket,
@@ -346,7 +352,6 @@ async function startBaileysSocket() {
     version,
     auth: state,
     logger: pino({ level: 'warn' }),
-    printQRInTerminal: true,
     browser: ['El Arca Display Club', 'Chrome', '1.0.0'],
     syncFullHistory: false,
     generateHighQualityLinkPreview: false,

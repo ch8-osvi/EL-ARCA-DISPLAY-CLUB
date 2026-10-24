@@ -960,58 +960,63 @@ export default function AdminPage() {
             </p>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto shrink-0">
-            {/* Button 1: Upload Excel */}
-            <button
-              id="btn-open-excel-modal"
-              onClick={() => setShowExcelModal(true)}
-              className="h-12 px-4 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-sm w-full sm:w-auto"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>Cargar Excel</span>
-            </button>
+          {/* Action Buttons: 2 filas organizadas */}
+          <div className="flex flex-col gap-2.5 w-full lg:w-auto shrink-0">
+            {/* Fila 1: Asistente IA, Cargar Excel, Exportar Excel */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 w-full">
+              {/* Asistente IA */}
+              <Link
+                id="btn-open-ai-assistant"
+                href="/admin/ia"
+                className="h-11 px-4 rounded-xl bg-gradient-to-r from-purple-600/30 to-indigo-600/30 hover:from-purple-600/50 hover:to-indigo-600/50 text-purple-200 border border-purple-500/50 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-[1.02] shadow-md shadow-purple-950/40"
+              >
+                <Sparkles className="w-4 h-4 text-purple-300 animate-pulse shrink-0" />
+                <span>Asistente IA ✨</span>
+              </Link>
 
-            {/* Button 2: Export Excel */}
-            <button
-              id="btn-export-excel"
-              onClick={handleExportExcel}
-              className="h-12 px-4 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-sm w-full sm:w-auto"
-            >
-              <Download className="w-4 h-4 text-blue-400 shrink-0" />
-              <span>Exportar Excel</span>
-            </button>
+              {/* Cargar Excel */}
+              <button
+                id="btn-open-excel-modal"
+                onClick={() => setShowExcelModal(true)}
+                className="h-11 px-4 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-[1.02] shadow-sm"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>Cargar Excel</span>
+              </button>
 
-            {/* Button 3: AI Assistant */}
-            <Link
-              id="btn-open-ai-assistant"
-              href="/admin/ia"
-              className="h-12 px-4 rounded-xl bg-gradient-to-r from-purple-600/30 to-indigo-600/30 hover:from-purple-600/50 hover:to-indigo-600/50 text-purple-200 border border-purple-500/50 font-extrabold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-md shadow-purple-950/40 w-full sm:w-auto"
-            >
-              <Sparkles className="w-4 h-4 text-purple-300 animate-pulse shrink-0" />
-              <span>Asistente IA ✨</span>
-            </Link>
+              {/* Exportar Excel */}
+              <button
+                id="btn-export-excel"
+                onClick={handleExportExcel}
+                className="h-11 px-4 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-[1.02] shadow-sm"
+              >
+                <Download className="w-4 h-4 text-blue-400 shrink-0" />
+                <span>Exportar Excel</span>
+              </button>
+            </div>
 
-            {/* Button 4: Merge Duplicates */}
+            {/* Fila 2: Etiquetador, Unir Duplicados */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full">
+              {/* Etiquetador */}
+              <Link
+                id="btn-open-labels"
+                href="/admin/etiquetas"
+                className="h-11 px-4 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-[1.02] shadow-sm"
+              >
+                <Tag className="w-4 h-4 text-cyan-400 shrink-0" />
+                <span>Etiquetador</span>
+              </Link>
 
-            {/* Button 5: Labels */}
-            <Link
-              id="btn-open-labels"
-              href="/admin/etiquetas"
-              className="h-12 px-4 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-[#E5C158] border border-[#D4AF37]/40 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-sm w-full sm:w-auto"
-            >
-              <Tag className="w-4 h-4 text-[#D4AF37] shrink-0" />
-              <span>ETIQUETADOR</span>
-            </Link>
-
-            <Link
-              id="btn-open-duplicates"
-              href="/admin/duplicados"
-              className="h-12 px-4 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-[#E5C158] border border-[#D4AF37]/40 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-sm w-full sm:w-auto"
-            >
-              <GitMerge className="w-4 h-4 text-[#D4AF37] shrink-0" />
-              <span>Unir Duplicados</span>
-            </Link>
+              {/* Unir Duplicados */}
+              <Link
+                id="btn-open-duplicates"
+                href="/admin/duplicados"
+                className="h-11 px-4 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-[#E5C158] border border-[#D4AF37]/40 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-[1.02] shadow-sm"
+              >
+                <GitMerge className="w-4 h-4 text-[#D4AF37] shrink-0" />
+                <span>Unir Duplicados</span>
+              </Link>
+            </div>
           </div>
         </section>
 

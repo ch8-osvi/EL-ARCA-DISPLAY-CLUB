@@ -551,6 +551,7 @@ async function startBaileysSocket() {
           body: JSON.stringify({
             source: 'baileys_bridge',
             secret: BRIDGE_SECRET,
+            botPhone: connectedPhone || BOT_PHONE,
             senderPhone,
             senderLid: rawLid,
             chatId: remoteJid,

@@ -12,7 +12,7 @@ import {
   executeRegistrarVentaRapida,
   executeAgregarOActualizarProductoWhatsApp,
 } from './tools';
-import { executeAgregarLoteBulk, executeFusionarProductos } from '@/lib/ai/adminTools';
+import { executeAgregarLoteBulk, executeFusionarProductos, getCatalogoForContext } from '@/lib/ai/adminTools';
 import { parseBatchProductsFromText } from '@/lib/ai/batchParser';
 import { getActiveExchangeRate } from '@/lib/exchangeRate';
 import { roundCupPrice } from '@/lib/searchUtils';
@@ -682,15 +682,9 @@ export async function processWhatsAppAiMessage(userMessage: string, senderPhone:
       topMasVendidos: topModels,
       inventarioTotalModelos: products.length,
       inventarioAgotados: products.filter((p) => p.stock === 0).length,
-      catalogoProductos: products.map((p) => ({
-        marca: p.marca,
-        modelo: p.modelo,
-        calidad: p.calidad,
-        precioUSD: p.precio,
-        stock: p.stock,
-        disponibilidad: p.stock > 0 ? `${p.stock} uds disponibles` : 'Agotado (0 stock)',
-      })),
     };
+
+    const catalogContext = await getCatalogoForContext();
 
     const adminInstruction = `Eres el Asistente Ejecutivo IA y socio de máxima confianza de Osvaldo en su negocio "EL ARCA DISPLAY CLUB" (taller especializado y distribuidora de pantallas de celulares en Cienfuegos, Cuba).
 Estás chateando con él directamente en su WhatsApp.
@@ -756,10 +750,17 @@ DIRECTRICES DE ESTILO PARA WHATSAPP:
 
     const payloadText =
       `DATOS REALES DEL NEGOCIO:\n${JSON.stringify(adminContext, null, 2)}\n\n` +
+      `CATÁLOGO DE PRODUCTOS (AUDITADO EN TIEMPO REAL):\n${catalogContext}\n\n` +
       `${historyBlock}` +
       `MENSAJE ACTUAL DE OSVALDO:\n"${cleanPrompt}"`;
 
-    const candidateModels = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+    const candidateModels = [
+      'gemini-flash-lite-latest',
+      'gemini-3.6-flash',
+      'gemini-2.5-flash',
+      'gemini-2.0-flash',
+      'gemini-1.5-flash',
+    ];
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
     
     for (let i = 0; i < candidateModels.length; i++) {
@@ -770,10 +771,11 @@ DIRECTRICES DE ESTILO PARA WHATSAPP:
         const res = await fetch(geminiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(18000),
           body: JSON.stringify({
+            system_instruction: { parts: [{ text: adminInstruction }] },
             contents: [{ role: 'user', parts: [{ text: payloadText }] }],
-            systemInstruction: { parts: [{ text: adminInstruction }] },
-            generationConfig: { temperature: 0.2, maxOutputTokens: 1024 },
+            generationConfig: { temperature: 0.15, maxOutputTokens: 1024 },
           }),
         });
 
@@ -857,26 +859,10 @@ DIRECTRICES DE ESTILO PARA WHATSAPP:
     .select('marca modelo calidad precio stock')
     .lean();
 
-  const publicCatalog = activeProducts.map((p) => {
-    let disponibilidad = 'Stock disponible';
-    if (p.stock <= 0) {
-      disponibilidad = 'Agotado temporalmente';
-    } else if (p.stock === 1) {
-      disponibilidad = 'Bajo stock (última unidad disponible)';
-    } else if (p.stock === 2) {
-      disponibilidad = 'Bajo stock (últimas unidades disponibles)';
-    }
-
+  const catalogLines = activeProducts.map((p) => {
     const cupPrice = roundCupPrice(p.precio, currentExchangeRate);
-
-    return {
-      marca: p.marca,
-      modelo: p.modelo,
-      calidad: p.calidad,
-      precioUSD: p.precio,
-      precioCUP: Number.isFinite(cupPrice) ? cupPrice : null,
-      disponibilidad,
-    };
+    const status = p.stock <= 0 ? 'Agotado temporalmente' : p.stock <= 2 ? 'Últimas unidades' : 'Disponible';
+    return `• ${p.marca} ${p.modelo} (${p.calidad}): $${p.precio.toFixed(2)} USD (~$${Number.isFinite(cupPrice) ? cupPrice.toLocaleString() : 0} CUP) [${status}]`;
   });
 
   const clientHistory = getChatHistory(cleanPhone);
@@ -942,11 +928,17 @@ En el catálogo, muchas pantallas son compatibles con varios modelos a la vez, l
       : '';
 
   const clientPayload =
-    `CATÁLOGO DE PRODUCTOS (Precios USD y equivalencia en CUP a tasa ${currentExchangeRate}):\n${JSON.stringify(publicCatalog, null, 2)}\n\n` +
+    `CATÁLOGO DISPONIBLE DE PANTALLAS (Tasa oficial: 1 USD = ${currentExchangeRate} CUP):\n${catalogLines.join('\n')}\n\n` +
     `${clientHistoryBlock}` +
     `MENSAJE DEL CLIENTE:\n"${cleanPrompt}"`;
 
-  const candidateModels = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+  const candidateModels = [
+    'gemini-flash-lite-latest',
+    'gemini-3.6-flash',
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash',
+  ];
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
   for (let i = 0; i < candidateModels.length; i++) {
@@ -957,10 +949,11 @@ En el catálogo, muchas pantallas son compatibles con varios modelos a la vez, l
       const res = await fetch(geminiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(18000),
         body: JSON.stringify({
+          system_instruction: { parts: [{ text: clientInstruction }] },
           contents: [{ role: 'user', parts: [{ text: clientPayload }] }],
-          systemInstruction: { parts: [{ text: clientInstruction }] },
-          generationConfig: { temperature: 0.3, maxOutputTokens: 800 },
+          generationConfig: { temperature: 0.25, maxOutputTokens: 800 },
         }),
       });
 

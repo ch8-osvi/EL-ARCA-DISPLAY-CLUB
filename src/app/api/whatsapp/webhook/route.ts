@@ -5,6 +5,7 @@ import {
   normalizePhoneNumber,
   resolveCanonicalPhone,
 } from '@/lib/whatsapp/service';
+import { getWhatsAppConfig } from '@/lib/models/WhatsAppConfig';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -54,6 +55,19 @@ export async function POST(req: NextRequest) {
       const expectedSecret = process.env.WHATSAPP_BRIDGE_SECRET || 'el_arca_bridge_secret_2026';
       if (body.secret && body.secret !== expectedSecret) {
         return NextResponse.json({ error: 'Unauthorized bridge request' }, { status: 401 });
+      }
+
+      if (body.botPhone) {
+        const cleanBot = normalizePhoneNumber(body.botPhone);
+        if (cleanBot) {
+          getWhatsAppConfig().then(async (cfg) => {
+            if (cfg && (cfg.botPhone !== cleanBot || cfg.botStatus !== 'online')) {
+              cfg.botPhone = cleanBot;
+              cfg.botStatus = 'online';
+              await cfg.save();
+            }
+          }).catch(() => {});
+        }
       }
 
       const senderPhone = resolveCanonicalPhone(body.senderPhone || body.chatId || '');

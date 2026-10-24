@@ -29,6 +29,7 @@ import {
   Sparkles,
   GitMerge,
   Tag,
+  MessageSquare,
   TrendingUp,
   TrendingDown,
   ChevronDown,
@@ -995,8 +996,17 @@ export default function AdminPage() {
               </button>
             </div>
 
-            {/* Fila 2: Etiquetador, Unir Duplicados */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full">
+            {/* Fila 2: IA WhatsApp, Etiquetador, Unir Duplicados */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 w-full">
+              {/* IA WhatsApp */}
+              <Link
+                id="btn-open-whatsapp-bot"
+                href="/admin/whatsapp"
+                className="h-11 px-4 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-[1.02] shadow-sm shadow-emerald-950/40"
+              >
+                <MessageSquare className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>IA WhatsApp 💬</span>
+              </Link>
               {/* Etiquetador */}
               <Link
                 id="btn-open-labels"

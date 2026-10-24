@@ -1,0 +1,727 @@
+'use client';
+
+import React, { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
+import {
+  ArrowLeft,
+  MessageSquare,
+  Users,
+  ShieldAlert,
+  QrCode,
+  Search,
+  RefreshCw,
+  Sparkles,
+  CheckCircle2,
+  AlertTriangle,
+  Clock,
+  Phone,
+  Plus,
+  Trash2,
+  ExternalLink,
+  DollarSign,
+  TrendingUp,
+  Cpu,
+  Lock,
+} from 'lucide-react';
+
+interface WhatsAppLogItem {
+  id: string;
+  timestamp: string;
+  senderPhone: string;
+  role: 'admin' | 'client';
+  userMessage: string;
+  botReply: string;
+  actionExecuted: string;
+  responseTimeMs: number;
+}
+
+interface Metrics {
+  totalLogs: number;
+  todayLogsCount: number;
+  clientQueriesToday: number;
+  adminCommandsToday: number;
+  uniqueClientsTodayCount: number;
+  uniqueClientsTotalCount: number;
+  activeRate: number;
+  botStatus: string;
+  botPhone: string;
+  topBrands: { brand: string; count: number }[];
+}
+
+export default function AdminWhatsAppPage() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [authError, setAuthError] = useState(false);
+
+  const [activeTab, setActiveTab] = useState<'logs' | 'admins' | 'blacklist' | 'qr'>('logs');
+  const [loading, setLoading] = useState(true);
+  const [metrics, setMetrics] = useState<Metrics | null>(null);
+  const [logs, setLogs] = useState<WhatsAppLogItem[]>([]);
+  const [adminPhones, setAdminPhones] = useState<string[]>([]);
+  const [blacklistedPhones, setBlacklistedPhones] = useState<string[]>([]);
+
+  // Search & Filter
+  const [searchTerm, setSearchTerm] = useState('');
+  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'client'>('all');
+
+  // Modal de detalle
+  const [selectedLog, setSelectedLog] = useState<WhatsAppLogItem | null>(null);
+
+  // Form inputs
+  const [newAdminPhone, setNewAdminPhone] = useState('');
+  const [newBlacklistPhone, setNewBlacklistPhone] = useState('');
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const triggerToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  // Auth check
+  useEffect(() => {
+    const auth = sessionStorage.getItem('el_arca_admin_auth');
+    if (auth === 'true') {
+      setIsAuthenticated(true);
+    }
+  }, []);
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passwordInput === '120397') {
+      sessionStorage.setItem('el_arca_admin_auth', 'true');
+      setIsAuthenticated(true);
+      setAuthError(false);
+    } else {
+      setAuthError(true);
+    }
+  };
+
+  // Carga de datos
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [statsRes, configRes] = await Promise.all([
+        fetch('/api/whatsapp/admin/stats'),
+        fetch('/api/whatsapp/admin/config'),
+      ]);
+
+      if (statsRes.ok) {
+        const statsData = await statsRes.json();
+        setMetrics(statsData.metrics);
+        setLogs(statsData.recentLogs || []);
+      }
+
+      if (configRes.ok) {
+        const configData = await configRes.json();
+        setAdminPhones(configData.adminPhones || []);
+        setBlacklistedPhones(configData.blacklistedPhones || []);
+      }
+    } catch (err) {
+      console.error('Error fetching WhatsApp data:', err);
+      triggerToast('Error cargando datos de WhatsApp');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchData();
+      const interval = setInterval(fetchData, 30000); // Polling cada 30s
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated]);
+
+  // Handlers para admins y blacklist
+  const handleConfigAction = async (action: string, phone: string) => {
+    try {
+      const res = await fetch('/api/whatsapp/admin/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, phone }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAdminPhones(data.adminPhones || []);
+        setBlacklistedPhones(data.blacklistedPhones || []);
+        triggerToast('Configuración actualizada correctamente');
+      } else {
+        triggerToast(data.error || 'Error al actualizar');
+      }
+    } catch (err) {
+      triggerToast('Error de conexión');
+    }
+  };
+
+  const filteredLogs = useMemo(() => {
+    return logs.filter((log) => {
+      if (roleFilter !== 'all' && log.role !== roleFilter) return false;
+      if (!searchTerm.trim()) return true;
+      const term = searchTerm.toLowerCase();
+      return (
+        log.senderPhone.includes(term) ||
+        log.userMessage.toLowerCase().includes(term) ||
+        log.botReply.toLowerCase().includes(term) ||
+        (log.actionExecuted && log.actionExecuted.toLowerCase().includes(term))
+      );
+    });
+  }, [logs, roleFilter, searchTerm]);
+
+  // Si no está autenticado, muestra login del panel admin
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-[#07090E] flex items-center justify-center p-4">
+        <div className="max-w-md w-full glass-panel rounded-3xl p-8 border border-amber-500/30 text-center space-y-6">
+          <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mx-auto text-[#D4AF37]">
+            <Lock className="w-8 h-8" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-extrabold text-white">Panel WhatsApp IA</h1>
+            <p className="text-gray-400 text-sm mt-1">Acceso restringido para administración de El Arca</p>
+          </div>
+          <form onSubmit={handleLogin} className="space-y-4">
+            <input
+              type="password"
+              placeholder="Contraseña de Administrador"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              className="w-full px-4 py-3 bg-[#0B0F19] border border-gray-700 rounded-xl text-white focus:outline-none focus:border-amber-400 text-center text-lg"
+              autoFocus
+            />
+            {authError && <p className="text-red-400 text-xs font-bold">Contraseña incorrecta</p>}
+            <button
+              type="submit"
+              className="w-full py-3 rounded-xl gold-gradient-bg text-black font-extrabold text-sm shadow-gold-glow hover:scale-105 active:scale-95 transition-all"
+            >
+              Entrar al Panel
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#07090E] text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-black">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed top-6 right-6 z-50 px-5 py-3 rounded-2xl bg-[#131C2E] border border-amber-500/40 text-amber-300 font-bold text-sm shadow-2xl flex items-center gap-3 animate-fade-in">
+          <Sparkles className="w-4 h-4 text-amber-400" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Top Navigation Bar */}
+      <header className="sticky top-0 z-40 bg-[#07090E]/90 backdrop-blur-xl border-b border-amber-500/20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-4">
+          <Link
+            href="/admin"
+            className="flex items-center gap-2 text-[#D4AF37] hover:text-white transition-colors group"
+          >
+            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
+            <span className="text-sm font-bold">Volver al Panel Admin</span>
+          </Link>
+
+          <div className="flex items-center gap-3">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-xs font-bold text-emerald-300">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Bot Activo: +53 {metrics?.botPhone || '63657247'}</span>
+            </div>
+
+            <button
+              onClick={fetchData}
+              disabled={loading}
+              title="Refrescar datos"
+              className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 transition-all hover:scale-105"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        {/* Hero Section Banner */}
+        <section className="glass-panel rounded-3xl p-6 sm:p-8 border border-amber-500/30 relative overflow-hidden flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+          <div className="space-y-2 max-w-2xl">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#171B2B] border border-white/10 text-xs font-bold text-[#E5C158]">
+              <Sparkles className="w-3.5 h-3.5 text-[#D4AF37]" />
+              Centro de Operaciones y Atención Automatizada
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+              IA WhatsApp <span className="text-gradient-gold">El Arca</span>
+            </h1>
+            <p className="text-gray-400 text-sm sm:text-base leading-relaxed">
+              Supervisa las conversaciones de clientes, órdenes ejecutadas por el administrador, gestiona listas de acceso y monitorea el servicio en tiempo real.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <a
+              href="http://localhost:7860/scan?key=elarca2026"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-200 border border-white/15 font-bold text-xs flex items-center gap-2 transition-all hover:scale-105"
+            >
+              <QrCode className="w-4 h-4 text-amber-400" />
+              <span>Ver Pantalla QR</span>
+              <ExternalLink className="w-3 h-3 text-gray-400" />
+            </a>
+          </div>
+        </section>
+
+        {/* Quick Stats Grid */}
+        <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="glass-panel p-5 rounded-2xl border border-white/10 relative overflow-hidden">
+            <div className="flex items-center justify-between text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">
+              <span>Mensajes Hoy</span>
+              <MessageSquare className="w-4 h-4 text-emerald-400" />
+            </div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-white">
+              {metrics?.todayLogsCount ?? 0}
+            </div>
+            <div className="text-[11px] text-gray-400 mt-1">
+              Total acumulado: {metrics?.totalLogs ?? 0} msgs
+            </div>
+          </div>
+
+          <div className="glass-panel p-5 rounded-2xl border border-white/10 relative overflow-hidden">
+            <div className="flex items-center justify-between text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">
+              <span>Clientes Atendidos</span>
+              <Users className="w-4 h-4 text-cyan-400" />
+            </div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-white">
+              {metrics?.uniqueClientsTodayCount ?? 0}
+            </div>
+            <div className="text-[11px] text-gray-400 mt-1">
+              Clientes únicos totales: {metrics?.uniqueClientsTotalCount ?? 0}
+            </div>
+          </div>
+
+          <div className="glass-panel p-5 rounded-2xl border border-white/10 relative overflow-hidden">
+            <div className="flex items-center justify-between text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">
+              <span>Órdenes Admin</span>
+              <Cpu className="w-4 h-4 text-amber-400" />
+            </div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-amber-300">
+              {metrics?.adminCommandsToday ?? 0}
+            </div>
+            <div className="text-[11px] text-gray-400 mt-1">
+              Comandos de precio, stock y ventas
+            </div>
+          </div>
+
+          <div className="glass-panel p-5 rounded-2xl border border-white/10 relative overflow-hidden">
+            <div className="flex items-center justify-between text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">
+              <span>Tasa de Cambio</span>
+              <DollarSign className="w-4 h-4 text-yellow-400" />
+            </div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-white">
+              1x{metrics?.activeRate ?? 340} <span className="text-xs font-bold text-gray-400">CUP</span>
+            </div>
+            <div className="text-[11px] text-gray-400 mt-1">
+              Precios calculados en tiempo real
+            </div>
+          </div>
+        </section>
+
+        {/* Tab Selector */}
+        <div className="flex items-center gap-2 border-b border-white/10 pb-2 overflow-x-auto">
+          <button
+            onClick={() => setActiveTab('logs')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+              activeTab === 'logs'
+                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                : 'text-gray-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <MessageSquare className="w-4 h-4" />
+            <span>Historial de Conversaciones ({logs.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('admins')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+              activeTab === 'admins'
+                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                : 'text-gray-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>Administradores ({adminPhones.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('blacklist')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+              activeTab === 'blacklist'
+                ? 'bg-red-500/20 text-red-300 border border-red-500/40'
+                : 'text-gray-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <ShieldAlert className="w-4 h-4" />
+            <span>Lista Negra / Bloqueados ({blacklistedPhones.length})</span>
+          </button>
+        </div>
+
+        {/* TAB 1: HISTORIAL DE LOGS */}
+        {activeTab === 'logs' && (
+          <div className="space-y-4">
+            {/* Filter & Search Bar */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Buscar por teléfono, modelo, pregunta o respuesta..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 bg-[#0B0F19] border border-white/10 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setRoleFilter('all')}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold ${
+                    roleFilter === 'all'
+                      ? 'bg-white/15 text-white border border-white/20'
+                      : 'text-gray-400 hover:bg-white/5'
+                  }`}
+                >
+                  Todos
+                </button>
+                <button
+                  onClick={() => setRoleFilter('client')}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold ${
+                    roleFilter === 'client'
+                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                      : 'text-gray-400 hover:bg-white/5'
+                  }`}
+                >
+                  Clientes
+                </button>
+                <button
+                  onClick={() => setRoleFilter('admin')}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold ${
+                    roleFilter === 'admin'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                      : 'text-gray-400 hover:bg-white/5'
+                  }`}
+                >
+                  Administrador
+                </button>
+              </div>
+            </div>
+
+            {/* Logs Table / Cards */}
+            {filteredLogs.length === 0 ? (
+              <div className="glass-panel p-12 rounded-3xl border border-white/10 text-center space-y-3">
+                <MessageSquare className="w-10 h-10 text-gray-500 mx-auto" />
+                <p className="text-gray-300 font-bold text-sm">No hay registros que coincidan con la búsqueda</p>
+                <p className="text-gray-500 text-xs">Los mensajes recibidos en WhatsApp aparecerán aquí en vivo.</p>
+              </div>
+            ) : (
+              <div className="glass-panel rounded-2xl border border-white/10 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-gray-300">
+                    <thead className="bg-[#0B0F19] text-gray-400 uppercase font-bold border-b border-white/10 text-[10px] tracking-wider">
+                      <tr>
+                        <th className="py-3 px-4">Fecha / Hora</th>
+                        <th className="py-3 px-4">Teléfono</th>
+                        <th className="py-3 px-4">Rol</th>
+                        <th className="py-3 px-4">Mensaje del Usuario</th>
+                        <th className="py-3 px-4">Respuesta del Bot</th>
+                        <th className="py-3 px-4 text-right">Acción</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {filteredLogs.map((log) => {
+                        const dateObj = new Date(log.timestamp);
+                        const timeStr = dateObj.toLocaleTimeString('es-CU', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        });
+                        const dateStr = dateObj.toLocaleDateString('es-CU', {
+                          day: '2-digit',
+                          month: 'short',
+                        });
+
+                        return (
+                          <tr
+                            key={log.id}
+                            onClick={() => setSelectedLog(log)}
+                            className="hover:bg-white/5 transition-colors cursor-pointer group"
+                          >
+                            <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px] text-gray-400">
+                              {dateStr} {timeStr}
+                            </td>
+                            <td className="py-3 px-4 whitespace-nowrap">
+                              <a
+                                href={`https://wa.me/${log.senderPhone}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="font-mono font-bold text-white hover:text-emerald-400 transition-colors inline-flex items-center gap-1"
+                              >
+                                +{log.senderPhone}
+                                <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </a>
+                            </td>
+                            <td className="py-3 px-4 whitespace-nowrap">
+                              {log.role === 'admin' ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                  👑 Admin
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                                  👤 Cliente
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 max-w-xs truncate font-medium text-white">
+                              {log.userMessage}
+                            </td>
+                            <td className="py-3 px-4 max-w-md truncate text-gray-400">
+                              {log.botReply.replace(/[*_#]/g, '')}
+                            </td>
+                            <td className="py-3 px-4 text-right whitespace-nowrap">
+                              {log.actionExecuted ? (
+                                <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
+                                  {log.actionExecuted}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-gray-500">
+                                  {log.responseTimeMs ? `${log.responseTimeMs}ms` : 'Consulta'}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 2: GESTIÓN DE ADMINISTRADORES */}
+        {activeTab === 'admins' && (
+          <div className="glass-panel p-6 rounded-3xl border border-white/10 space-y-6 max-w-3xl mx-auto">
+            <div className="space-y-1">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <Users className="w-5 h-5 text-amber-400" />
+                <span>Números Autorizados con Acceso Administrador</span>
+              </h2>
+              <p className="text-gray-400 text-xs">
+                Los teléfonos incluidos en esta lista tienen permisos totales para cambiar precios, consultar stock real, registrar ventas y consultar balances en lenguaje natural por WhatsApp.
+              </p>
+            </div>
+
+            {/* Add Admin Form */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (newAdminPhone.trim()) {
+                  handleConfigAction('add_admin', newAdminPhone.trim());
+                  setNewAdminPhone('');
+                }
+              }}
+              className="flex gap-2"
+            >
+              <input
+                type="text"
+                placeholder="Ej: 5352031972 o 52031972"
+                value={newAdminPhone}
+                onChange={(e) => setNewAdminPhone(e.target.value)}
+                className="flex-1 px-4 py-2.5 bg-[#0B0F19] border border-white/10 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-amber-400 font-mono"
+              />
+              <button
+                type="submit"
+                className="px-5 py-2.5 rounded-xl gold-gradient-bg text-black font-extrabold text-xs shadow-gold-glow flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Agregar Admin</span>
+              </button>
+            </form>
+
+            {/* Admin List */}
+            <div className="space-y-2">
+              {adminPhones.map((phone) => (
+                <div
+                  key={phone}
+                  className="p-3.5 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between gap-4"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-xs">
+                      👑
+                    </div>
+                    <div>
+                      <div className="font-mono font-bold text-white text-xs">+{phone}</div>
+                      <div className="text-[11px] text-gray-400">
+                        {phone === '5352031972' || phone.endsWith('52031972')
+                          ? 'Dueño Principal (Osvaldo - Protegido)'
+                          : 'Administrador Secundario'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {phone !== '5352031972' && !phone.endsWith('52031972') && (
+                    <button
+                      onClick={() => handleConfigAction('remove_admin', phone)}
+                      className="p-2 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors"
+                      title="Quitar permisos"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: LISTA NEGRA / BLOQUEO */}
+        {activeTab === 'blacklist' && (
+          <div className="glass-panel p-6 rounded-3xl border border-red-500/20 space-y-6 max-w-3xl mx-auto">
+            <div className="space-y-1">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <ShieldAlert className="w-5 h-5 text-red-400" />
+                <span>Lista Negra (Números Bloqueados)</span>
+              </h2>
+              <p className="text-gray-400 text-xs">
+                El bot ignorará silenciosamente cualquier mensaje proveniente de estos números. Útil para bloquear clientes conflictivos, competencia desleal o bots de spam.
+              </p>
+            </div>
+
+            {/* Add Blacklist Form */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (newBlacklistPhone.trim()) {
+                  handleConfigAction('add_blacklist', newBlacklistPhone.trim());
+                  setNewBlacklistPhone('');
+                }
+              }}
+              className="flex gap-2"
+            >
+              <input
+                type="text"
+                placeholder="Ej: 5358999999"
+                value={newBlacklistPhone}
+                onChange={(e) => setNewBlacklistPhone(e.target.value)}
+                className="flex-1 px-4 py-2.5 bg-[#0B0F19] border border-white/10 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-red-400 font-mono"
+              />
+              <button
+                type="submit"
+                className="px-5 py-2.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 font-extrabold text-xs flex items-center gap-1.5 transition-all"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Bloquear Número</span>
+              </button>
+            </form>
+
+            {/* Blacklist List */}
+            <div className="space-y-2">
+              {blacklistedPhones.length === 0 ? (
+                <div className="p-8 text-center text-gray-500 text-xs">
+                  No hay ningún número bloqueado en este momento.
+                </div>
+              ) : (
+                blacklistedPhones.map((phone) => (
+                  <div
+                    key={phone}
+                    className="p-3.5 rounded-xl bg-red-500/5 border border-red-500/20 flex items-center justify-between gap-4"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-red-500/20 text-red-400 flex items-center justify-center font-bold text-xs">
+                        🚫
+                      </div>
+                      <div>
+                        <div className="font-mono font-bold text-white text-xs">+{phone}</div>
+                        <div className="text-[11px] text-gray-400">Totalmente bloqueado para el bot</div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => handleConfigAction('remove_blacklist', phone)}
+                      className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                      title="Desbloquear"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* Modal de Detalle de Mensaje */}
+      {selectedLog && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="glass-panel max-w-xl w-full rounded-3xl p-6 sm:p-8 border border-white/20 space-y-5 animate-fade-in">
+            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <span>Detalle de Conversación</span>
+                  {selectedLog.role === 'admin' ? (
+                    <span className="text-[10px] font-extrabold bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full">
+                      Admin
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-extrabold bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded-full">
+                      Cliente
+                    </span>
+                  )}
+                </h3>
+                <p className="text-gray-400 font-mono text-xs mt-0.5">
+                  +{selectedLog.senderPhone} • {new Date(selectedLog.timestamp).toLocaleString('es-CU')}
+                </p>
+              </div>
+
+              <button
+                onClick={() => setSelectedLog(null)}
+                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-gray-300 text-xs font-bold"
+              >
+                Cerrar
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <span className="text-gray-400 font-bold block mb-1">Pregunta / Comando del Usuario:</span>
+                <div className="p-3 rounded-xl bg-[#0B0F19] border border-white/10 text-white font-medium whitespace-pre-wrap">
+                  {selectedLog.userMessage}
+                </div>
+              </div>
+
+              <div>
+                <span className="text-gray-400 font-bold block mb-1">Respuesta entregada por la IA:</span>
+                <div className="p-3 rounded-xl bg-[#0B0F19] border border-white/10 text-emerald-300 whitespace-pre-wrap leading-relaxed">
+                  {selectedLog.botReply}
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center justify-between border-t border-white/10 text-[11px] text-gray-500">
+              <span>Tiempo de procesamiento: {selectedLog.responseTimeMs}ms</span>
+              <a
+                href={`https://wa.me/${selectedLog.senderPhone}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-amber-400 hover:underline font-bold flex items-center gap-1"
+              >
+                <span>Abrir chat en WhatsApp Web</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

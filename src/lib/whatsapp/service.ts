@@ -14,17 +14,77 @@ import {
 } from './tools';
 import { executeAgregarLoteBulk } from '@/lib/ai/adminTools';
 import { parseBatchProductsFromText } from '@/lib/ai/batchParser';
+import { getActiveExchangeRate } from '@/lib/exchangeRate';
+import { roundCupPrice } from '@/lib/searchUtils';
+import { WhatsAppLog } from '@/lib/models/WhatsAppLog';
+import { getWhatsAppConfig } from '@/lib/models/WhatsAppConfig';
 
 /** Standardizes phone numbers to digits only */
 export function normalizePhoneNumber(phone: string): string {
   return (phone || '').replace(/\D/g, '');
 }
 
-/** Check if the phone belongs to the verified business owner */
+/** Check if the phone belongs to the verified business owner or dynamic admins */
+export async function isPhoneAuthorizedAdmin(phone: string): Promise<boolean> {
+  const normalized = normalizePhoneNumber(phone);
+  if (!normalized) return false;
+  if (normalized === '5352031972' || normalized.endsWith('52031972')) return true;
+  const envAdmin = normalizePhoneNumber(process.env.ADMIN_PHONE_NUMBER || '');
+  if (envAdmin && (normalized === envAdmin || normalized.endsWith(envAdmin))) return true;
+  try {
+    const config = await getWhatsAppConfig();
+    return (config.adminPhones || []).some((p) => {
+      const clean = normalizePhoneNumber(p);
+      return clean === normalized || normalized.endsWith(clean);
+    });
+  } catch {
+    return false;
+  }
+}
+
+/** Check if the phone is blacklisted/blocked */
+export async function isPhoneBlacklisted(phone: string): Promise<boolean> {
+  const normalized = normalizePhoneNumber(phone);
+  if (!normalized) return false;
+  try {
+    const config = await getWhatsAppConfig();
+    return (config.blacklistedPhones || []).some((p) => {
+      const clean = normalizePhoneNumber(p);
+      return clean === normalized || normalized.endsWith(clean);
+    });
+  } catch {
+    return false;
+  }
+}
+
+/** Legacy sync helper */
 export function isAdminUser(phone: string): boolean {
   const normalized = normalizePhoneNumber(phone);
   const adminPhone = normalizePhoneNumber(process.env.ADMIN_PHONE_NUMBER || '5352031972');
   return normalized === adminPhone || normalized === '5352031972' || normalized.endsWith('52031972');
+}
+
+/** Helper to log WhatsApp conversation turns to MongoDB */
+export async function logInteraction(
+  senderPhone: string,
+  role: 'admin' | 'client',
+  userMessage: string,
+  botReply: string,
+  responseTimeMs: number,
+  actionExecuted = ''
+) {
+  try {
+    await WhatsAppLog.create({
+      senderPhone: normalizePhoneNumber(senderPhone),
+      role,
+      userMessage,
+      botReply,
+      actionExecuted,
+      responseTimeMs,
+    });
+  } catch (err) {
+    console.warn('[WhatsApp Log Warning]', err);
+  }
 }
 
 /** In-memory conversation turns per phone (15-minute sliding window) */
@@ -169,14 +229,54 @@ export async function sendWhatsAppMessage(to: string, messageText: string): Prom
 
 /** Processes an incoming WhatsApp text message through Gemini with Admin/Client security isolation */
 export async function processWhatsAppAiMessage(userMessage: string, senderPhone: string): Promise<string> {
+  const startTime = Date.now();
   await connectToDatabase();
-  const isAdmin = isAdminUser(senderPhone);
+
+  const cleanPhone = normalizePhoneNumber(senderPhone);
+
+  // 1. Blacklist check (Bloqueo de números)
+  if (await isPhoneBlacklisted(cleanPhone)) {
+    console.log(`[WhatsApp Bot] Número en lista negra: +${cleanPhone}. Mensaje ignorado.`);
+    return '';
+  }
+
+  const isAdmin = await isPhoneAuthorizedAdmin(cleanPhone);
   const cleanPrompt = (userMessage || '').trim();
   const promptLower = cleanPrompt.toLowerCase();
   const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
 
+  // Tasa de cambio activa desde la base de datos de El Arca
+  const rateDoc = await getActiveExchangeRate();
+  const currentExchangeRate = rateDoc && rateDoc.rate ? rateDoc.rate : 340;
+
+  // PREGUNTA DIRECTA DE IDENTIDAD: "¿Soy administrador?", "¿Quién soy?"
+  if (
+    promptLower.includes('soy administrador') ||
+    promptLower.includes('soy admin') ||
+    promptLower === 'quien soy' ||
+    promptLower === 'quién soy'
+  ) {
+    let reply: string;
+    if (isAdmin) {
+      reply =
+        `👑 *¡Hola Osvaldo!* Sí, estás reconocido como *Administrador* de El Arca Display Club.\n\n` +
+        `Tienes acceso total para:\n` +
+        `• *Cambiar precios:* _"cambiar precio de [modelo] a [precio]"_\n` +
+        `• *Consultar stock real:* _"stock de [modelo]"_\n` +
+        `• *Ver finanzas:* _"cuanto vendi hoy"_, _"deudores"_\n` +
+        `• *Registrar ventas y lotes masivos.*`;
+    } else {
+      reply =
+        `👋 Hola. Este número está registrado como *Cliente / Técnico* de El Arca Display Club.\n\n` +
+        `Tienes acceso a todo nuestro catálogo de pantallas, disponibilidad y precios vigentes.\n\n` +
+        `¿Qué modelo estás buscando hoy?`;
+    }
+    await logInteraction(cleanPhone, isAdmin ? 'admin' : 'client', cleanPrompt, reply, Date.now() - startTime);
+    return reply;
+  }
+
   // =========================================================================
-  // PIPELINE A: ADMINISTRADOR / DUEÑO (+53 52031972)
+  // PIPELINE A: ADMINISTRADOR / DUEÑO (+53 52031972 o Admins Configurados)
   // =========================================================================
   if (isAdmin) {
     // -----------------------------------------------------------------------
@@ -187,8 +287,9 @@ export async function processWhatsAppAiMessage(userMessage: string, senderPhone:
     if (parsedBatch.length >= 2) {
       console.log(`[WhatsApp Inbound] Admin Batch Ingestion detected: ${parsedBatch.length} products`);
       const result = await executeAgregarLoteBulk(parsedBatch);
-      appendChatHistory(senderPhone, 'Osvaldo', cleanPrompt);
-      appendChatHistory(senderPhone, 'Asistente', result.message);
+      appendChatHistory(cleanPhone, 'Osvaldo', cleanPrompt);
+      appendChatHistory(cleanPhone, 'Asistente', result.message);
+      await logInteraction(cleanPhone, 'admin', cleanPrompt, result.message, Date.now() - startTime, 'AGREGAR_LOTE');
       return result.message;
     }
 
@@ -199,8 +300,9 @@ export async function processWhatsAppAiMessage(userMessage: string, senderPhone:
     const directPrice = parseDirectPriceCommand(cleanPrompt);
     if (directPrice) {
       const result = await executeActualizarPrecioProducto(directPrice.model, directPrice.price);
-      appendChatHistory(senderPhone, 'Osvaldo', cleanPrompt);
-      appendChatHistory(senderPhone, 'Asistente', result.message);
+      appendChatHistory(cleanPhone, 'Osvaldo', cleanPrompt);
+      appendChatHistory(cleanPhone, 'Asistente', result.message);
+      await logInteraction(cleanPhone, 'admin', cleanPrompt, result.message, Date.now() - startTime, 'ACTUALIZAR_PRECIO');
       return result.message;
     }
 
@@ -212,15 +314,17 @@ export async function processWhatsAppAiMessage(userMessage: string, senderPhone:
       const product = await findProductSmart(directStock);
       let reply: string;
       if (product) {
+        const cupEq = roundCupPrice(product.precio, currentExchangeRate);
         reply =
           `📦 *${product.marca} ${product.modelo} (${product.calidad})*\n\n` +
-          `• Precio de venta: *$${product.precio.toFixed(2)} USD* 💵\n` +
+          `• Precio de venta: *$${product.precio.toFixed(2)} USD* (${Number.isFinite(cupEq) ? `*$${cupEq.toLocaleString()} CUP* a tasa 1x${currentExchangeRate}` : ''})\n` +
           `• Stock en almacén: *${product.stock} unidades* ${product.stock > 0 ? '✅ Disponible' : '⚠️ Agotado'}`;
       } else {
         reply = `❌ No encontré ningún producto que coincida con "${directStock}" en el catálogo.`;
       }
-      appendChatHistory(senderPhone, 'Osvaldo', cleanPrompt);
-      appendChatHistory(senderPhone, 'Asistente', reply);
+      appendChatHistory(cleanPhone, 'Osvaldo', cleanPrompt);
+      appendChatHistory(cleanPhone, 'Asistente', reply);
+      await logInteraction(cleanPhone, 'admin', cleanPrompt, reply, Date.now() - startTime, 'CONSULTA_STOCK');
       return reply;
     }
 
@@ -478,32 +582,36 @@ Si es una consulta normal de información (precios, stock, ventas, etc.), respon
             const matchPagado = candidateText.match(/\[ACCION:MARCAR_PAGADO\s*:\s*#?([a-zA-Z0-9]+)\s*\]/i);
             if (matchPagado) {
               const result = await executeMarcarOrdenPagada(matchPagado[1].trim());
-              appendChatHistory(senderPhone, 'Osvaldo', cleanPrompt);
-              appendChatHistory(senderPhone, 'Asistente', result.message);
+              appendChatHistory(cleanPhone, 'Osvaldo', cleanPrompt);
+              appendChatHistory(cleanPhone, 'Asistente', result.message);
+              await logInteraction(cleanPhone, 'admin', cleanPrompt, result.message, Date.now() - startTime, 'MARCAR_PAGADO');
               return result.message;
             }
 
             const matchPendiente = candidateText.match(/\[ACCION:MARCAR_PENDIENTE\s*:\s*#?([a-zA-Z0-9]+)\s*\]/i);
             if (matchPendiente) {
               const result = await executeMarcarOrdenPendiente(matchPendiente[1].trim());
-              appendChatHistory(senderPhone, 'Osvaldo', cleanPrompt);
-              appendChatHistory(senderPhone, 'Asistente', result.message);
+              appendChatHistory(cleanPhone, 'Osvaldo', cleanPrompt);
+              appendChatHistory(cleanPhone, 'Asistente', result.message);
+              await logInteraction(cleanPhone, 'admin', cleanPrompt, result.message, Date.now() - startTime, 'MARCAR_PENDIENTE');
               return result.message;
             }
 
             const matchPrecio = candidateText.match(/\[ACCION:ACTUALIZAR_PRECIO\s*:\s*([^:]+?)\s*:\s*[\$]?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:USD|usd)?\s*\]/i);
             if (matchPrecio) {
               const result = await executeActualizarPrecioProducto(matchPrecio[1].trim(), parseFloat(matchPrecio[2]));
-              appendChatHistory(senderPhone, 'Osvaldo', cleanPrompt);
-              appendChatHistory(senderPhone, 'Asistente', result.message);
+              appendChatHistory(cleanPhone, 'Osvaldo', cleanPrompt);
+              appendChatHistory(cleanPhone, 'Asistente', result.message);
+              await logInteraction(cleanPhone, 'admin', cleanPrompt, result.message, Date.now() - startTime, 'ACTUALIZAR_PRECIO');
               return result.message;
             }
 
             const matchStock = candidateText.match(/\[ACCION:AJUSTAR_STOCK\s*:\s*([^:]+?)\s*:\s*([+-]?[0-9]+)\s*\]/i);
             if (matchStock) {
               const result = await executeAjustarStockProducto(matchStock[1].trim(), parseInt(matchStock[2], 10));
-              appendChatHistory(senderPhone, 'Osvaldo', cleanPrompt);
-              appendChatHistory(senderPhone, 'Asistente', result.message);
+              appendChatHistory(cleanPhone, 'Osvaldo', cleanPrompt);
+              appendChatHistory(cleanPhone, 'Asistente', result.message);
+              await logInteraction(cleanPhone, 'admin', cleanPrompt, result.message, Date.now() - startTime, 'AJUSTAR_STOCK');
               return result.message;
             }
 
@@ -516,8 +624,9 @@ Si es una consulta normal de información (precios, stock, ventas, etc.), respon
                 moneda: matchVenta[4].trim().toUpperCase() as 'USD' | 'CUP',
                 pagado: matchVenta[5].toLowerCase() === 'true',
               });
-              appendChatHistory(senderPhone, 'Osvaldo', cleanPrompt);
-              appendChatHistory(senderPhone, 'Asistente', result.message);
+              appendChatHistory(cleanPhone, 'Osvaldo', cleanPrompt);
+              appendChatHistory(cleanPhone, 'Asistente', result.message);
+              await logInteraction(cleanPhone, 'admin', cleanPrompt, result.message, Date.now() - startTime, 'VENTA_RAPIDA');
               return result.message;
             }
 
@@ -530,13 +639,15 @@ Si es una consulta normal de información (precios, stock, ventas, etc.), respon
                 precio: parseFloat(matchAgregar[4]),
                 cantidad: parseInt(matchAgregar[5], 10),
               });
-              appendChatHistory(senderPhone, 'Osvaldo', cleanPrompt);
-              appendChatHistory(senderPhone, 'Asistente', result.message);
+              appendChatHistory(cleanPhone, 'Osvaldo', cleanPrompt);
+              appendChatHistory(cleanPhone, 'Asistente', result.message);
+              await logInteraction(cleanPhone, 'admin', cleanPrompt, result.message, Date.now() - startTime, 'AGREGAR_PRODUCTO');
               return result.message;
             }
 
-            appendChatHistory(senderPhone, 'Osvaldo', cleanPrompt);
-            appendChatHistory(senderPhone, 'Asistente', candidateText);
+            appendChatHistory(cleanPhone, 'Osvaldo', cleanPrompt);
+            appendChatHistory(cleanPhone, 'Asistente', candidateText);
+            await logInteraction(cleanPhone, 'admin', cleanPrompt, candidateText, Date.now() - startTime, 'CONSULTA_GENERAL');
             return candidateText;
           }
         } else {
@@ -568,41 +679,53 @@ Si es una consulta normal de información (precios, stock, ventas, etc.), respon
       disponibilidad = 'Bajo stock (últimas unidades disponibles)';
     }
 
+    const cupPrice = roundCupPrice(p.precio, currentExchangeRate);
+
     return {
       marca: p.marca,
       modelo: p.modelo,
       calidad: p.calidad,
       precioUSD: p.precio,
-      estadoStock: disponibilidad,
+      precioCUP: Number.isFinite(cupPrice) ? cupPrice : null,
+      disponibilidad,
     };
   });
 
-  const clientInstruction = `Eres el asesor oficial de ventas y atención al cliente de "EL ARCA DISPLAY CLUB" (taller especializado y distribuidora de pantallas de celulares en La Habana).
-Estás respondiendo a un cliente o técnico por WhatsApp.
+  const clientHistory = getChatHistory(cleanPhone);
+  const isOngoing = clientHistory.length > 0;
 
-REGLAS ESTRICTAS DE INFORMACIÓN DE STOCK Y PRIVACIDAD (OBLIGATORIAS):
-1. NUNCA menciones la cantidad numérica exacta de pantallas que quedan en el almacén. Está TERMINANTEMENTE PROHIBIDO decir números como "nos quedan 14", "hay 5 unidades", "tenemos 20", etc.
-2. Si el producto tiene estado 'Stock disponible', di simplemente que hay "Stock disponible" o "Disponible para entrega inmediata".
-3. Si el producto tiene estado 'Bajo stock (última unidad disponible)' o similar, advierte amablemente: "⚠️ Queda bajo stock / últimas piezas disponibles".
-4. Si no está en el catálogo o no hay existencias, di amablemente: "❌ En este momento está agotado o no disponible".
-5. NUNCA menciones ventas del negocio, ganancias, deudores, cuentas por cobrar, costos de compra a proveedores ni mermas. Esos datos son confidenciales y no existen para ti.
-6. Si el cliente pregunta cosas ajenas a repuestos o finanzas del taller, di amablemente que eres el asesor de pantallas y repuestos de El Arca.
-7. Brinda información clara y cordial: precios en dólares USD (ej: *$25 USD*), modelos compatibles y calidades disponibles (Original con marco, Original sin marco, Incell, OLED).
-8. Aceptamos pago en USD y en CUP según la tasa de cambio vigente del mercado informal. Si el cliente pide precio en CUP, calcula con base a la tasa habitual pero aclara que el precio base de referencia es en USD.
-9. Usa formato de WhatsApp con negritas (*texto*), viñetas con guiones (-) y emojis amables. Sé breve, servicial y profesional.`;
+  const clientInstruction = `Eres el asesor de ventas y atención al cliente de "EL ARCA DISPLAY CLUB" (taller especializado y distribuidora de pantallas de celulares en Cienfuegos, Cuba).
+Estás chateando en tiempo real con un cliente o técnico por WhatsApp.
+
+TASA OFICIAL DE CAMBIO HOY EN EL ARCA: 1 USD = ${currentExchangeRate} CUP.
+ESTADO DE LA CHARLA: ${
+    isOngoing
+      ? 'CONVERSACIÓN EN CURSO (ESTÁ TERMINANTEMENTE PROHIBIDO volver a saludar con "¡Hola! Bienvenido a EL ARCA...". Responde de forma directa, ágil y conversacional como un humano real).'
+      : 'PRIMER CONTACTO (Saluda amablemente de forma concisa: "¡Hola! 👋 Bienvenido a EL ARCA DISPLAY CLUB 📱").'
+  }
+
+REGLAS ESTRICTAS DE INFORMACIÓN Y PRIVACIDAD (OBLIGATORIAS):
+1. PRIVACIDAD DE STOCK: NUNCA menciones la cantidad numérica exacta de pantallas que quedan en existencia (PROHIBIDO decir números como "nos quedan 14", "hay 5 unidades", etc.).
+   - Si la disponibilidad es 'Stock disponible', di simplemente "Stock disponible 🟢".
+   - Si es 'Bajo stock', di amablemente "⚠️ Bajo stock (últimas unidades)".
+   - Si no está o dice 'Agotado', di "❌ Agotado temporalmente".
+2. UBICACIÓN REAL DEL NEGOCIO: Estamos ubicados en Cienfuegos, Cuba. Si el cliente pregunta dónde estamos o si hacemos envíos, aclara que el taller y almacén central está en Cienfuegos y que se realizan envíos a otras provincias previa coordinación. NO digas que estamos en La Habana.
+3. PRECIO EN USD Y CUP: Muestra SIEMPRE el precio en USD y acompáñalo con el equivalente en CUP calculado y redondeado usando la tasa oficial de ${currentExchangeRate} CUP. Ejemplo: "*$12 USD* (o *$${(12 * currentExchangeRate).toLocaleString()} CUP* a tasa de 1x${currentExchangeRate})".
+4. CALIDADES: Explica brevemente la calidad disponible (Original con marco, Original sin marco, Incell, OLED) y que todas las pantallas cuentan con garantía de prueba en taller antes de pegar/instalar.
+5. SEGURIDAD: NUNCA menciones ganancias, costos de compra, deudores ni finanzas del negocio. Esos datos son confidenciales.
+6. TONO: Amable, directo, cubano profesional y servicial con negritas (*texto*) y emojis sobrios.`;
 
   if (!geminiApiKey) {
     return '¡Hola! En este momento nuestro sistema de atención automatizada está en mantenimiento. Por favor escríbenos en unos minutos.';
   }
 
-  const clientHistory = getChatHistory(senderPhone);
   const clientHistoryBlock =
     clientHistory.length > 0
       ? `HISTORIAL DE LA CONVERSACIÓN RECIENTE:\n${clientHistory.map((h) => `${h.sender}: "${h.text}"`).join('\n')}\n\n`
       : '';
 
   const clientPayload =
-    `CATÁLOGO PÚBLICO ACTUAL:\n${JSON.stringify(publicCatalog, null, 2)}\n\n` +
+    `CATÁLOGO PÚBLICO ACTUAL (Precios USD y CUP a tasa ${currentExchangeRate}):\n${JSON.stringify(publicCatalog, null, 2)}\n\n` +
     `${clientHistoryBlock}` +
     `PREGUNTA DEL CLIENTE:\n"${cleanPrompt}"`;
 
@@ -628,9 +751,11 @@ REGLAS ESTRICTAS DE INFORMACIÓN DE STOCK Y PRIVACIDAD (OBLIGATORIAS):
         const data = await res.json();
         const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
         if (text) {
-          appendChatHistory(senderPhone, 'Cliente', cleanPrompt);
-          appendChatHistory(senderPhone, 'Asistente', text);
-          return text;
+          const finalReply = `${text.trim()}\n\n_Mensaje generado automáticamente por el asistente IA de El Arca Display Club_`;
+          appendChatHistory(cleanPhone, 'Cliente', cleanPrompt);
+          appendChatHistory(cleanPhone, 'Asistente', finalReply);
+          await logInteraction(cleanPhone, 'client', cleanPrompt, finalReply, Date.now() - startTime);
+          return finalReply;
         }
       }
     } catch (err) {
@@ -638,5 +763,7 @@ REGLAS ESTRICTAS DE INFORMACIÓN DE STOCK Y PRIVACIDAD (OBLIGATORIAS):
     }
   }
 
-  return '¡Hola! En este momento no pude consultar el inventario. Por favor escribe de nuevo en un minuto y con gusto te atiendo.';
+  const fallbackMsg = '¡Hola! En este momento no pude consultar el inventario. Por favor escribe de nuevo en un minuto y con gusto te atiendo.\n\n_Mensaje generado automáticamente por el asistente IA de El Arca Display Club_';
+  await logInteraction(cleanPhone, 'client', cleanPrompt, fallbackMsg, Date.now() - startTime);
+  return fallbackMsg;
 }

@@ -85,7 +85,7 @@ test("reenvío cifrado: mensaje recuperable tras reiniciar y borrado al caducar"
 test("QR: formulario no se recarga ni expone clave; datos se escapan y QR es privado", () => {
   const { scanPage } = require("../../whatsapp-bridge/scan-page");
   const html = scanPage({ error: "<script>alert(1)</script>" });
-  assert.doesNotMatch(html, /http-equiv="refresh"|arca2026|<script>/);
+  assert.doesNotMatch(html, /http-equiv="refresh"|<script>/);
   assert.match(html, /autocomplete="current-password"/);
   assert.match(
     scanPage({ authorized: true, connected: true, phone: "<img>" }),

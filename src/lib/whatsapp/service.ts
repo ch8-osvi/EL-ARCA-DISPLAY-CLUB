@@ -451,7 +451,7 @@ Si es una consulta normal de información (precios, stock, ventas, etc.), respon
       `${historyBlock}` +
       `MENSAJE ACTUAL DE OSVALDO:\n"${cleanPrompt}"`;
 
-    const candidateModels = ['gemini-flash-lite-latest', 'gemini-3.6-flash'];
+    const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-flash-lite-latest'];
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
     
     for (let i = 0; i < candidateModels.length; i++) {
@@ -558,22 +558,38 @@ Si es una consulta normal de información (precios, stock, ventas, etc.), respon
     .select('marca modelo calidad precio stock')
     .lean();
 
-  const publicCatalog = activeProducts.map((p) => ({
-    marca: p.marca,
-    modelo: p.modelo,
-    calidad: p.calidad,
-    precioUSD: p.precio,
-    stockDisponible: p.stock > 0 ? `${p.stock} unidades` : 'Agotado',
-  }));
+  const publicCatalog = activeProducts.map((p) => {
+    let disponibilidad = 'Stock disponible';
+    if (p.stock <= 0) {
+      disponibilidad = 'Agotado';
+    } else if (p.stock === 1) {
+      disponibilidad = 'Bajo stock (última unidad disponible)';
+    } else if (p.stock === 2) {
+      disponibilidad = 'Bajo stock (últimas unidades disponibles)';
+    }
 
-  const clientInstruction = `Eres el asesor de ventas y atención al cliente de "EL ARCA DISPLAY CLUB" (taller y distribuidora de pantallas de celulares).
+    return {
+      marca: p.marca,
+      modelo: p.modelo,
+      calidad: p.calidad,
+      precioUSD: p.precio,
+      estadoStock: disponibilidad,
+    };
+  });
+
+  const clientInstruction = `Eres el asesor oficial de ventas y atención al cliente de "EL ARCA DISPLAY CLUB" (taller especializado y distribuidora de pantallas de celulares en La Habana).
 Estás respondiendo a un cliente o técnico por WhatsApp.
 
-REGLAS DE SEGURIDAD Y PRIVACIDAD ESTRICTAS (OBLIGATORIAS):
-1. NUNCA menciones ventas del negocio, ganancias, deudores, cuentas por cobrar ni mermas. Esos datos NO existen para ti.
-2. Si el cliente pregunta cosas ajenas al catálogo o sobre finanzas, di amablemente que eres el asesor de repuestos y pantallas disponibles.
-3. Da información clara y cordial: precios en dólares USD, modelos compatibles, calidades disponibles (Original, Incell, OLED, etc.) y si hay stock.
-4. Usa formato de WhatsApp con negritas (*texto*), viñetas con guiones (-) y emojis amables. Sé breve y profesional.`;
+REGLAS ESTRICTAS DE INFORMACIÓN DE STOCK Y PRIVACIDAD (OBLIGATORIAS):
+1. NUNCA menciones la cantidad numérica exacta de pantallas que quedan en el almacén. Está TERMINANTEMENTE PROHIBIDO decir números como "nos quedan 14", "hay 5 unidades", "tenemos 20", etc.
+2. Si el producto tiene estado 'Stock disponible', di simplemente que hay "Stock disponible" o "Disponible para entrega inmediata".
+3. Si el producto tiene estado 'Bajo stock (última unidad disponible)' o similar, advierte amablemente: "⚠️ Queda bajo stock / últimas piezas disponibles".
+4. Si no está en el catálogo o no hay existencias, di amablemente: "❌ En este momento está agotado o no disponible".
+5. NUNCA menciones ventas del negocio, ganancias, deudores, cuentas por cobrar, costos de compra a proveedores ni mermas. Esos datos son confidenciales y no existen para ti.
+6. Si el cliente pregunta cosas ajenas a repuestos o finanzas del taller, di amablemente que eres el asesor de pantallas y repuestos de El Arca.
+7. Brinda información clara y cordial: precios en dólares USD (ej: *$25 USD*), modelos compatibles y calidades disponibles (Original con marco, Original sin marco, Incell, OLED).
+8. Aceptamos pago en USD y en CUP según la tasa de cambio vigente del mercado informal. Si el cliente pide precio en CUP, calcula con base a la tasa habitual pero aclara que el precio base de referencia es en USD.
+9. Usa formato de WhatsApp con negritas (*texto*), viñetas con guiones (-) y emojis amables. Sé breve, servicial y profesional.`;
 
   if (!geminiApiKey) {
     return '¡Hola! En este momento nuestro sistema de atención automatizada está en mantenimiento. Por favor escríbenos en unos minutos.';
@@ -590,7 +606,7 @@ REGLAS DE SEGURIDAD Y PRIVACIDAD ESTRICTAS (OBLIGATORIAS):
     `${clientHistoryBlock}` +
     `PREGUNTA DEL CLIENTE:\n"${cleanPrompt}"`;
 
-  const candidateModels = ['gemini-flash-lite-latest', 'gemini-3.6-flash'];
+  const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-flash-lite-latest'];
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
   for (let i = 0; i < candidateModels.length; i++) {

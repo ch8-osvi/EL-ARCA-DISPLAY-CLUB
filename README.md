@@ -66,7 +66,7 @@ Una cotización o lista pegada sin esa intención no se ejecuta directamente. De
 | Variable                 | Uso                                                                    |
 | ------------------------ | ---------------------------------------------------------------------- |
 | `MONGODB_URI`            | Base del negocio; mantenida sin rotación                               |
-| `ADMIN_PASSWORD`         | Contraseña administrativa de al menos 12 caracteres                    |
+| `ADMIN_PASSWORD`         | Contraseña administrativa de al menos 8 caracteres                     |
 | `ADMIN_SESSION_SECRET`   | Firma de sesiones; al menos 32 caracteres aleatorios                   |
 | `ADMIN_PHONE_NUMBER`     | Teléfono completo del propietario; comparación exacta                  |
 | `WHATSAPP_BRIDGE_SECRET` | Firma de las peticiones de la PC a Vercel                              |

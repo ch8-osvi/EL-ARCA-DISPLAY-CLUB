@@ -34,7 +34,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json(),
       expected = process.env.ADMIN_PASSWORD;
-    if (!expected || expected.length < 12)
+    if (!expected || expected.length < 8)
       return Response.json(
         { error: "Acceso administrativo pendiente de configurar" },
         { status: 503 },

@@ -20,6 +20,7 @@ const {
 const { authStore } = require("./auth-store");
 const { messageStore } = require("./message-store");
 const { scanPage } = require("./scan-page");
+const { recoverableSignalError } = require("./errors");
 const { signedHeaders, equalSecret, extractText } = require("./security");
 const PORT = Number(process.env.PORT || 7860),
   HOST = "127.0.0.1";
@@ -87,24 +88,20 @@ let attempts = [];
 app.post("/scan/login", (req, res) => {
   attempts = attempts.filter((t) => Date.now() - t < 900000);
   if (attempts.length >= 8)
-    return res
-      .status(429)
-      .send(
-        scanPage({
-          error:
-            "Demasiados intentos. Espera 15 minutos antes de volver a entrar.",
-        }),
-      );
+    return res.status(429).send(
+      scanPage({
+        error:
+          "Demasiados intentos. Espera 15 minutos antes de volver a entrar.",
+      }),
+    );
   attempts.push(Date.now());
   if (!equalSecret(req.body.key, SCAN_KEY))
-    return res
-      .status(401)
-      .send(
-        scanPage({
-          error:
-            "Contraseña incorrecta. Comprueba la clave e inténtalo de nuevo.",
-        }),
-      );
+    return res.status(401).send(
+      scanPage({
+        error:
+          "Contraseña incorrecta. Comprueba la clave e inténtalo de nuevo.",
+      }),
+    );
   attempts = [];
   res.cookie("bridge_ui", uiSession, {
     httpOnly: true,
@@ -332,10 +329,16 @@ async function start() {
           };
           if (content.audioMessage) {
             const media = content.audioMessage;
-            const mimeType = (media.mimetype || "audio/ogg").split(";")[0].trim().toLowerCase();
+            const mimeType = (media.mimetype || "audio/ogg")
+              .split(";")[0]
+              .trim()
+              .toLowerCase();
             const maxBytes = 2 * 1024 * 1024;
-            if (!/^audio\/(ogg|mpeg|mp3|mp4|wav|webm|flac|aac)$/.test(mimeType)) {
-              eventBody.userText = "[Formato de audio no compatible. Pide reenviar una nota de voz de WhatsApp o escribir la consulta.]";
+            if (
+              !/^audio\/(ogg|mpeg|mp3|mp4|wav|webm|flac|aac)$/.test(mimeType)
+            ) {
+              eventBody.userText =
+                "[Formato de audio no compatible. Pide reenviar una nota de voz de WhatsApp o escribir la consulta.]";
             } else if (
               Number(media.fileLength || 0) > maxBytes ||
               Number(media.seconds || 0) > 180
@@ -407,10 +410,7 @@ async function shutdown(code = 0) {
 }
 function fatal(e) {
   const msg = e?.message || String(e);
-  if (
-    /bad mac|decrypt|session|timed out|boom|websocket|prekey/i.test(msg) ||
-    e?.name === "SessionError"
-  ) {
+  if (recoverableSignalError(e)) {
     console.warn("[Advertencia no fatal Baileys]:", msg);
     return;
   }

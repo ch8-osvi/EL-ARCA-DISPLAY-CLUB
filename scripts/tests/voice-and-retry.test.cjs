@@ -180,6 +180,21 @@ function serviceFixture({
   return { service, calls, logs, proposals };
 }
 const voice = { data: "T0dH", mimeType: "audio/ogg", seconds: 1 };
+test("puente: solo errores Signal conocidos son recuperables, no errores generales de sesión o disco", () => {
+  const { recoverableSignalError } = require("../../whatsapp-bridge/errors");
+  const signal = new Error("Bad MAC");
+  signal.stack =
+    "Error: Bad MAC\n at verify (C:\\app\\node_modules\\libsignal\\src\\crypto.js:87:1)";
+  assert.equal(recoverableSignalError(signal), true);
+  for (const message of [
+    "session is undefined",
+    "websocket timed out",
+    "Corrupt sessions object",
+    "prekey storage EACCES",
+    "Bad MAC",
+  ])
+    assert.equal(recoverableSignalError(new Error(message)), false);
+});
 test("audio → Gemini → catálogo: consulta usa transcripción, registra tokens y no guarda audio en historial", async () => {
   const f = serviceFixture();
   const reply = await f.service.processWhatsAppAiMessage(
@@ -200,7 +215,11 @@ test("audio → Gemini → catálogo: consulta usa transcripción, registra toke
   assert.doesNotMatch(JSON.stringify(f.logs), /T0dH/);
 });
 test("audio de cliente bloqueado o pausado no llama Gemini", async () => {
-  for (const options of [{ blocked: true }, { paused: true }, { paused: true, admin: true }]) {
+  for (const options of [
+    { blocked: true },
+    { paused: true },
+    { paused: true, admin: true },
+  ]) {
     const f = serviceFixture(options);
     assert.equal(
       await f.service.processWhatsAppAiMessage("[Nota de voz]", "5350000001", {

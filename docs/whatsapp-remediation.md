@@ -74,6 +74,12 @@ La prueba de integración crea y elimina una base aislada y comprueba:
 6. Lote repetido consolidado en un producto y cinco unidades.
 7. Respuesta HTTP de error que revierte escrituras.
 
+## Restauración visual del panel WhatsApp
+
+Se recuperó el diseño de `fbf5344`: cabecera, tarjetas oscuras, detalles dorados, pestañas de historial/administradores/bloqueados, buscador, filtros, tabla y diálogo de conversación. La sesión del servidor, los roles verificados, la cola con identificadores estables, el archivado recuperable y las alertas conservan las correcciones de la auditoría. La paginación y recuperación aparecen debajo de la tabla; los estados de envío y atención humana se agrupan en una sección desplegable con el mismo estilo. Los registros del panel web no ofrecen enlaces a números de WhatsApp inexistentes.
+
+Se comprobó visualmente el panel y la pestaña de administradores, y el filtro de clientes devolvió únicamente sus conversaciones. No se enviaron mensajes ni se modificaron permisos o registros durante esta comprobación.
+
 ## Límites operativos explícitos
 
 - La PC y WhatsApp deben permanecer disponibles. El panel marca desconexión tras 60 segundos sin señal; la cola conserva pendientes hasta siete días.

@@ -29,7 +29,13 @@ function extractText(msg) {
     m.imageMessage?.caption ||
     m.videoMessage?.caption ||
     m.documentMessage?.caption ||
-    "[Mensaje no textual: solicita al cliente una descripción por escrito]"
+    (m.audioMessage ||
+    m.imageMessage ||
+    m.videoMessage ||
+    m.documentMessage ||
+    m.stickerMessage
+      ? "[Mensaje no textual: solicita al cliente una descripción por escrito]"
+      : "")
   );
 }
 module.exports = { signedHeaders, equalSecret, extractText };

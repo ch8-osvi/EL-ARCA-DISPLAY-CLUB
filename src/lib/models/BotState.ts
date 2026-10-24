@@ -6,6 +6,7 @@ const inbox = new Schema(
     _id: String,
     phone: String,
     text: String,
+    audio: Schema.Types.Mixed,
     provider: String,
     reply: String,
     status: String,

@@ -4,6 +4,7 @@ import { BotInbox } from "@/lib/models/BotState";
 import { processWhatsAppAiMessage } from "./service";
 import { enqueueMessage } from "./outbox";
 import { normalizePhoneNumber, validPhone } from "./identity";
+import { validateAudio, type VoiceAudio } from "./audio";
 const lockSchema = new Schema({ _id: String, until: Date, owner: String });
 const Lock =
   mongoose.models.BotConversationLock ||
@@ -13,7 +14,9 @@ export async function receiveMessage(
   phone: string,
   text: string,
   provider = "bridge",
+  audioInput?: VoiceAudio,
 ) {
+  const audio = validateAudio(audioInput);
   await connect();
   const canonical = normalizePhoneNumber(phone);
   if (
@@ -31,6 +34,7 @@ export async function receiveMessage(
       $setOnInsert: {
         phone: canonical,
         text: text.trim(),
+        ...(audio ? { audio } : {}),
         provider,
         status: "queued",
         expiresAt: new Date(Date.now() + 7 * 86400000),
@@ -86,7 +90,7 @@ export async function processNextMessage() {
       msg.text ||
         "El cliente envió un mensaje no textual. Solicita que describa por texto su consulta.",
       msg.phone,
-      { requestId: msg._id },
+      { requestId: msg._id, audio: msg.audio },
     );
     if (reply)
       await enqueueMessage(msg.phone, reply, "reply:" + msg._id, msg.provider);
@@ -94,7 +98,7 @@ export async function processNextMessage() {
       { _id: msg._id },
       {
         $set: { status: "completed", reply },
-        $unset: { leaseUntil: 1, error: 1 },
+        $unset: { leaseUntil: 1, error: 1, audio: 1 },
       },
     );
     return true;

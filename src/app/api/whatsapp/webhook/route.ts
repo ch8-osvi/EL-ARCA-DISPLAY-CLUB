@@ -24,7 +24,7 @@ export async function GET(req: Request) {
 }
 export async function POST(req: Request) {
   const raw = await req.text();
-  if (raw.length > 256000)
+  if (raw.length > 2900000)
     return Response.json({ error: "Evento demasiado grande" }, { status: 413 });
   try {
     const body = JSON.parse(raw);
@@ -44,6 +44,8 @@ export async function POST(req: Request) {
         body.messageId,
         body.senderPhone,
         body.userText || "",
+        "bridge",
+        body.audio,
       );
       return Response.json({ status: "queued", id }, { status: 202 });
     }

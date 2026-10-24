@@ -80,6 +80,21 @@ Se recuperó el diseño de `fbf5344`: cabecera, tarjetas oscuras, detalles dorad
 
 Se comprobó visualmente el panel y la pestaña de administradores, y el filtro de clientes devolvió únicamente sus conversaciones. No se enviaron mensajes ni se modificaron permisos o registros durante esta comprobación.
 
+## Revisión de voz, recuperación de envíos y filtros
+
+- Se incorporó un almacén local persistente para `getMessage` de Baileys. Permite recuperar el contenido de un envío ante una solicitud de reintento de cifrado; antes esa función no estaba configurada. No se borró ni reinició la vinculación del teléfono. Los eventos internos y las reacciones ya no disparan consultas a Gemini.
+- Las notas de voz del puente local se descargan con límite de 2 MB/tres minutos, se validan, se transcriben con Gemini y pasan por la misma búsqueda, permisos, presupuesto y propuestas de operaciones. La respuesta sigue siendo texto. Confirmar o cancelar una operación exige el código escrito. No se guarda base64 en el historial de conversaciones.
+- El QR local recupera el estilo oscuro/dorado, centra el acceso, muestra los errores en el formulario y no interrumpe la escritura con recargas. La clave elegida por el propietario se configura solo en el archivo privado.
+- El filtro conserva la altura del historial, permite desplazarse dentro de la tabla y hace una transición de opacidad. Las peticiones anteriores se cancelan para que no sustituyan los resultados del filtro nuevo.
+- Administradores y bloqueados se guardan con transacción y registro de auditoría. Los formularios conservan el número si falla el guardado y evitan solicitudes duplicadas simultáneas. Las pruebas de integración usan las rutas reales con sesión firmada y una base temporal aislada.
+- Los contadores de pendientes y atención humana consultan el total, aunque la lista detalle muestre solo 30 envíos recientes y hasta 100 conversaciones pausadas.
+
+### Qué significan los controles al final del historial
+
+**Pendientes** son mensajes en cola o en envío aún no confirmados por el puente. **En atención** son conversaciones con respuestas automáticas pausadas para permitir atención humana; no significa que un empleado ya haya respondido. **Última señal** indica cuándo se comunicó la PC; **Datos** indica cuándo se generó la consulta del panel. **Tokens** contabiliza consumo de IA registrado, no cantidad de mensajes ni importe cobrado. **Errores** cuenta fallos registrados; cero no prueba que nunca haya ocurrido una incidencia externa. **Enviado** indica aceptación por WhatsApp, sin garantizar lectura.
+
+**Recuperar registros archivados** devuelve al historial los registros ocultados con la papelera durante los últimos 30 días. Solo recupera el registro del panel: no restaura chats borrados de WhatsApp, no reenvía mensajes y no revierte ventas o cambios de stock.
+
 ## Límites operativos explícitos
 
 - La PC y WhatsApp deben permanecer disponibles. El panel marca desconexión tras 60 segundos sin señal; la cola conserva pendientes hasta siete días.

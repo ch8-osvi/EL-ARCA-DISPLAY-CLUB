@@ -172,7 +172,86 @@ async function main() {
     assert.equal(response.status, 409);
     assert.equal((await Product.findOne({ id: "test-a" })).stock, 1);
     console.log("PASS: respuestas de error también revierten escrituras");
-    console.log("Integración: 7 escenarios correctos, base aislada.");
+    // Exercise the actual protected routes against ONLY this temporary database.
+    process.env.ADMIN_PHONE_NUMBER = "5350000099";
+    process.env.ADMIN_SESSION_SECRET ||= crypto.randomBytes(32).toString("hex");
+    const { createSession } = load("src/lib/security/session.ts");
+    const { registerSession } = load("src/lib/security/admin.ts");
+    const token = await createSession();
+    await registerSession(token);
+    const configRoute = load("src/app/api/whatsapp/admin/config/route.ts");
+    const identity = load("src/lib/whatsapp/service.ts");
+    const { WhatsAppConfig, getWhatsAppConfig } = load(
+      "src/lib/models/WhatsAppConfig.ts",
+    );
+    await WhatsAppConfig.init();
+    const configRequest = (action, phone) =>
+      configRoute.POST(
+        new Request("https://elarca.test/api/whatsapp/admin/config", {
+          method: "POST",
+          headers: {
+            cookie: "el_arca_admin_session=" + token,
+            origin: "https://elarca.test",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ action, phone }),
+        }),
+      );
+    await getWhatsAppConfig();
+    const additions = await Promise.all([
+      configRequest("add_admin", "+53 5000 0001"),
+      configRequest("add_admin", "5350000002"),
+    ]);
+    additions.forEach((r) => assert.equal(r.status, 200));
+    assert.equal(await identity.isPhoneAuthorizedAdmin("5350000001"), true);
+    assert.equal(await identity.isPhoneAuthorizedAdmin("5350000002"), true);
+    await configRequest("add_admin", "5350000001");
+    assert.equal(
+      (await getWhatsAppConfig()).adminPhones.filter((p) => p === "5350000001")
+        .length,
+      1,
+    );
+    assert.equal(
+      (await configRequest("add_blacklist", "5350000001")).status,
+      400,
+    );
+    assert.equal(
+      (await configRequest("remove_admin", "5350000099")).status,
+      400,
+    );
+    assert.equal(
+      (await configRequest("remove_admin", "5350000001")).status,
+      200,
+    );
+    assert.equal(await identity.isPhoneAuthorizedAdmin("5350000001"), false);
+    assert.equal(
+      (await configRequest("add_blacklist", "5350000001")).status,
+      200,
+    );
+    assert.equal(await identity.isPhoneBlacklisted("5350000001"), true);
+    assert.equal((await configRequest("add_admin", "5350000001")).status, 400);
+    assert.equal(
+      (await configRequest("remove_blacklist", "5350000001")).status,
+      200,
+    );
+    assert.equal(await identity.isPhoneBlacklisted("5350000001"), false);
+    assert.equal((await configRequest("add_admin", "123")).status, 400);
+    assert.equal((await configRequest("pause", "5350000001")).status, 200);
+    assert.equal(
+      (await states.BotConversation.findById("5350000001")).paused,
+      true,
+    );
+    assert.equal((await configRequest("resume", "5350000001")).status, 200);
+    assert.equal(
+      (await states.BotConversation.findById("5350000001")).paused,
+      false,
+    );
+    console.log(
+      "PASS: rutas reales de administradores y bloqueados, concurrencia, duplicados, propietario, roles y pausa/reactivación",
+    );
+    console.log(
+      "Integración completa en base aislada; no se cambiaron permisos del negocio.",
+    );
   } finally {
     // Only this explicitly named, freshly generated database may be removed.
     if (

@@ -59,7 +59,7 @@ Una cotización o lista pegada sin esa intención no se ejecuta directamente. De
 - La búsqueda y la paginación consultan todo el historial retenido. El CSV exporta la página actual, con neutralización de fórmulas.
 - Archivar registros permite recuperarlos durante 30 días desde el panel. Los registros normales se retienen 90 días por defecto; `BOT_LOG_RETENTION_DAYS` permite ajustar entre 30 y 365.
 - La cola caduca a los siete días; nunca se deben ejecutar mensajes viejos tras esa fecha.
-- No hay reconocimiento de audio ni OCR de imágenes. Se solicita una descripción escrita.
+- El puente local comprende notas de voz con Gemini (máximo 2 MB y tres minutos) y responde por texto. Las confirmaciones de operaciones siguen exigiendo el código escrito. Las imágenes todavía requieren una descripción escrita.
 
 ## Configuración
 
@@ -71,7 +71,7 @@ Una cotización o lista pegada sin esa intención no se ejecuta directamente. De
 | `ADMIN_PHONE_NUMBER`     | Teléfono completo del propietario; comparación exacta                  |
 | `WHATSAPP_BRIDGE_SECRET` | Firma de las peticiones de la PC a Vercel                              |
 | `BRIDGE_SECRET`          | Mismo secreto, en `whatsapp-bridge/.env`                               |
-| `SCAN_ACCESS_KEY`        | Clave del QR local, al menos 16 caracteres                             |
+| `SCAN_ACCESS_KEY`        | Clave privada del QR local, al menos 8 caracteres; nunca se publica en Git |
 | `WHATSAPP_PROVIDER`      | `bridge` para esta instalación                                         |
 | `GEMINI_API_KEY`         | Credencial de Google, solo en servidor                                 |
 | `GEMINI_MODELS`          | Lista de hasta dos modelos para fallback controlado                    |

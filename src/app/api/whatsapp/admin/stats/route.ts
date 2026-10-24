@@ -41,68 +41,83 @@ export async function GET(req: Request) {
         getHavanaDateKey(),
       ],
     };
-    const [data, logs, count, cfg, rate, paused, outbound, confirmed] =
-      await Promise.all([
-        WhatsAppLog.aggregate([
-          { $match: { deletedAt: { $exists: false } } },
-          {
-            $facet: {
-              total: [{ $count: "n" }],
-              today: [{ $match: { $expr: day } }, { $count: "n" }],
-              clients: [
-                { $match: { role: "client" } },
-                { $group: { _id: "$senderPhone" } },
-                { $count: "n" },
-              ],
-              clientsToday: [
-                { $match: { role: "client", $expr: day } },
-                { $group: { _id: "$senderPhone" } },
-                { $count: "n" },
-              ],
-              queries: [
-                { $match: { role: "client", $expr: day } },
-                { $count: "n" },
-              ],
-              commands: [
-                {
-                  $match: {
-                    role: "admin",
-                    actionExecuted: "OPERACION_CONFIRMADA",
-                    $expr: day,
-                  },
+    const [
+      data,
+      logs,
+      count,
+      cfg,
+      rate,
+      paused,
+      outbound,
+      confirmed,
+      pendingOutbound,
+      pausedCount,
+    ] = await Promise.all([
+      WhatsAppLog.aggregate([
+        { $match: { deletedAt: { $exists: false } } },
+        {
+          $facet: {
+            total: [{ $count: "n" }],
+            today: [{ $match: { $expr: day } }, { $count: "n" }],
+            clients: [
+              { $match: { role: "client" } },
+              { $group: { _id: "$senderPhone" } },
+              { $count: "n" },
+            ],
+            clientsToday: [
+              { $match: { role: "client", $expr: day } },
+              { $group: { _id: "$senderPhone" } },
+              { $count: "n" },
+            ],
+            queries: [
+              { $match: { role: "client", $expr: day } },
+              { $count: "n" },
+            ],
+            commands: [
+              {
+                $match: {
+                  role: "admin",
+                  actionExecuted: "OPERACION_CONFIRMADA",
+                  $expr: day,
                 },
-                { $count: "n" },
-              ],
-              failures: [
-                { $match: { status: "failed", $expr: day } },
-                { $count: "n" },
-              ],
-              tokens: [
-                { $match: { $expr: day } },
-                { $group: { _id: null, n: { $sum: "$tokens" } } },
-              ],
-            },
+              },
+              { $count: "n" },
+            ],
+            failures: [
+              { $match: { status: "failed", $expr: day } },
+              { $count: "n" },
+            ],
+            tokens: [
+              { $match: { $expr: day } },
+              { $group: { _id: null, n: { $sum: "$tokens" } } },
+            ],
           },
-        ]),
-        WhatsAppLog.find(filter)
-          .sort({ createdAt: -1 })
-          .skip((page - 1) * 100)
-          .limit(100)
-          .lean(),
-        WhatsAppLog.countDocuments(filter),
-        getWhatsAppConfig(),
-        getActiveExchangeRate(),
-        BotConversation.find({ paused: true }).select("_id").limit(100).lean(),
-        BotOutbound.find({})
-          .sort({ createdAt: -1 })
-          .limit(30)
-          .select("_id to status createdAt error")
-          .lean(),
-        BotOperation.countDocuments({
-          $expr: day,
-          results: { $exists: true, $ne: [] },
-        }),
-      ]);
+        },
+      ]),
+      WhatsAppLog.find(filter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * 100)
+        .limit(100)
+        .lean(),
+      WhatsAppLog.countDocuments(filter),
+      getWhatsAppConfig(),
+      getActiveExchangeRate(),
+      BotConversation.find({ paused: true }).select("_id").limit(100).lean(),
+      BotOutbound.find({})
+        .sort({ createdAt: -1 })
+        .limit(30)
+        .select("_id to status createdAt error")
+        .lean(),
+      BotOperation.countDocuments({
+        $expr: day,
+        results: { $exists: true, $ne: [] },
+      }),
+      BotOutbound.countDocuments({
+        status: { $in: ["queued", "sending"] },
+        expiresAt: { $gt: new Date() },
+      }),
+      BotConversation.countDocuments({ paused: true }),
+    ]);
     const v = (name: string) => data[0]?.[name]?.[0]?.n || 0;
     return Response.json(
       {
@@ -112,6 +127,8 @@ export async function GET(req: Request) {
         matchingLogs: count,
         generatedAt: new Date().toISOString(),
         pausedPhones: paused.map((p) => p._id),
+        pendingOutbound,
+        pausedCount,
         outbound,
         metrics: {
           totalLogs: v("total"),

@@ -12,4 +12,7 @@ node_modules
 .security-sync.local.cjs
 .bot-verification.local.cjs
 whatsapp-bridge/spool/
+whatsapp-bridge/message-cache/
 whatsapp-bridge/*.local.log
+*.local.cjs
+*.local.wav

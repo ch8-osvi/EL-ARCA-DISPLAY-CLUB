@@ -14,8 +14,12 @@ const {
   default: makeWASocket,
   DisconnectReason,
   fetchLatestBaileysVersion,
+  downloadMediaMessage,
+  normalizeMessageContent,
 } = require("@whiskeysockets/baileys");
 const { authStore } = require("./auth-store");
+const { messageStore } = require("./message-store");
+const { scanPage } = require("./scan-page");
 const { signedHeaders, equalSecret, extractText } = require("./security");
 const PORT = Number(process.env.PORT || 7860),
   HOST = "127.0.0.1";
@@ -24,9 +28,9 @@ const SCAN_KEY = process.env.SCAN_ACCESS_KEY;
 const WEBHOOK =
   process.env.VERCEL_WEBHOOK_URL ||
   "https://elarca-displayclub.vercel.app/api/whatsapp/webhook";
-if (!SECRET || SECRET.length < 32 || !SCAN_KEY || SCAN_KEY.length < 16)
+if (!SECRET || SECRET.length < 32 || !SCAN_KEY || SCAN_KEY.length < 8)
   throw new Error(
-    "Configura BRIDGE_SECRET (32+ caracteres) y SCAN_ACCESS_KEY (16+). Consulta README.",
+    "Configura BRIDGE_SECRET (32+ caracteres) y SCAN_ACCESS_KEY (8+). Consulta README.",
   );
 if (
   new URL(WEBHOOK).protocol !== "https:" &&
@@ -36,6 +40,7 @@ if (
 const cloudUrl = WEBHOOK.replace(/\/webhook$/, "/bridge");
 const AUTH = path.join(__dirname, "auth_session"),
   SPOOL = path.join(__dirname, "spool");
+const retryMessages = messageStore(path.join(__dirname, "message-cache"));
 const uiSession = randomBytes(32).toString("hex");
 let nextPoll = 2500,
   workTimer = null;
@@ -81,10 +86,25 @@ app.get(["/", "/health", "/ping"], (req, res) =>
 let attempts = [];
 app.post("/scan/login", (req, res) => {
   attempts = attempts.filter((t) => Date.now() - t < 900000);
-  if (attempts.length >= 8) return res.status(429).send("Espera 15 minutos.");
+  if (attempts.length >= 8)
+    return res
+      .status(429)
+      .send(
+        scanPage({
+          error:
+            "Demasiados intentos. Espera 15 minutos antes de volver a entrar.",
+        }),
+      );
   attempts.push(Date.now());
   if (!equalSecret(req.body.key, SCAN_KEY))
-    return res.status(401).send("Clave incorrecta.");
+    return res
+      .status(401)
+      .send(
+        scanPage({
+          error:
+            "Contraseña incorrecta. Comprueba la clave e inténtalo de nuevo.",
+        }),
+      );
   attempts = [];
   res.cookie("bridge_ui", uiSession, {
     httpOnly: true,
@@ -97,21 +117,13 @@ app.get("/scan", async (req, res) => {
   const authorized = (req.headers.cookie || "")
     .split(";")
     .some((c) => equalSecret(c.trim(), "bridge_ui=" + uiSession));
-  const content = authorized
-    ? connected
-      ? "<h2>WhatsApp conectado</h2><p>+ " +
-        phone +
-        "</p><p>La PC debe permanecer encendida y con conexión a Internet.</p>"
-      : qr
-        ? '<h2>Vincular WhatsApp</h2><img width="260" alt="QR de vinculación" src="' +
-          (await QRCode.toDataURL(qr)) +
-          '"><p>WhatsApp → Dispositivos vinculados → Vincular.</p>'
-        : "<h2>Reconectando…</h2><p>Revisa la consola si este estado persiste.</p>"
-    : '<h2>Acceso al puente local</h2><form method="post" action="/scan/login"><label>Clave local <input name="key" type="password" required autocomplete="current-password"></label><button>Entrar</button></form>';
   res.send(
-    '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="refresh" content="15"><title>El Arca — WhatsApp local</title><style>body{font:16px system-ui;background:#090d16;color:#eef;padding:2rem;text-align:center}main{max-width:420px;margin:3rem auto}input,button{padding:12px;margin:12px;border-radius:8px}img{background:white;padding:12px}</style></head><body><main>' +
-      content +
-      "</main></body></html>",
+    scanPage({
+      authorized,
+      connected,
+      phone,
+      qrImage: authorized && qr ? await QRCode.toDataURL(qr) : "",
+    }),
   );
 });
 // All outbound requests go through the authenticated cloud queue. No public /send or logout endpoint.
@@ -188,11 +200,13 @@ async function worker() {
           .digest("hex")
           .slice(0, 32)
           .toUpperCase();
+        await retryMessages.put(id, { conversation: chunks[i] });
         const result = await sock.sendMessage(
           message.to + "@s.whatsapp.net",
           { text: chunks[i] },
           { messageId: id },
         );
+        if (result?.message) await retryMessages.put(id, result.message);
         state = {
           sent: i + 1,
           providerId: result?.key?.id,
@@ -227,6 +241,7 @@ async function start() {
     const current = makeWASocket({
       version,
       auth: state,
+      getMessage: (key) => retryMessages.get(key),
       logger: pino({ level: "error" }),
       syncFullHistory: false,
       browser: ["El Arca", "Chrome", "1.0"],
@@ -305,12 +320,61 @@ async function start() {
           }
           const id = msg.key.id;
           if (!id) continue;
+          const content = normalizeMessageContent(msg.message);
+          if (!content) continue;
+          const userText = extractText({ message: content }).slice(0, 20000);
+          if (!userText) continue; // Protocol, receipts and reactions are not customer queries.
           const eventBody = {
             source: "baileys_bridge",
             senderPhone,
-            userText: extractText(msg).slice(0, 20000),
+            userText,
             messageId: id,
           };
+          if (content.audioMessage) {
+            const media = content.audioMessage;
+            const mimeType = (media.mimetype || "audio/ogg").split(";")[0].trim().toLowerCase();
+            const maxBytes = 2 * 1024 * 1024;
+            if (!/^audio\/(ogg|mpeg|mp3|mp4|wav|webm|flac|aac)$/.test(mimeType)) {
+              eventBody.userText = "[Formato de audio no compatible. Pide reenviar una nota de voz de WhatsApp o escribir la consulta.]";
+            } else if (
+              Number(media.fileLength || 0) > maxBytes ||
+              Number(media.seconds || 0) > 180
+            ) {
+              eventBody.userText =
+                "[Nota de voz demasiado larga. Pide al usuario que envíe una nota de máximo tres minutos y 2 MB, o que escriba la consulta.]";
+            } else {
+              try {
+                const stream = await downloadMediaMessage(
+                  msg,
+                  "stream",
+                  { options: { timeout: 20000 } },
+                  {
+                    logger: pino({ level: "error" }),
+                    reuploadRequest: current.updateMediaMessage,
+                  },
+                );
+                const chunks = [];
+                let length = 0;
+                for await (const chunk of stream) {
+                  length += chunk.length;
+                  if (length > maxBytes) {
+                    stream.destroy();
+                    throw new Error("Audio supera 2 MB");
+                  }
+                  chunks.push(chunk);
+                }
+                eventBody.audio = {
+                  data: Buffer.concat(chunks).toString("base64"),
+                  mimeType,
+                  seconds: Number(media.seconds || 0),
+                };
+                eventBody.userText = "[Nota de voz]";
+              } catch {
+                eventBody.userText =
+                  "[No se pudo descargar la nota de voz. Pide reenviarla o escribir la consulta. No adivines su contenido.]";
+              }
+            }
+          }
           const target = path.join(
             SPOOL,
             "in-" +
@@ -352,6 +416,14 @@ process.on("SIGTERM", () => shutdown());
 const server = app.listen(PORT, HOST, async () => {
   try {
     await fs.mkdir(SPOOL, { recursive: true });
+    await retryMessages.prune();
+    setInterval(
+      () =>
+        retryMessages
+          .prune()
+          .catch((e) => console.warn("[Retención local]", e.message)),
+      3600000,
+    ).unref();
     await start();
     void worker();
     console.log(

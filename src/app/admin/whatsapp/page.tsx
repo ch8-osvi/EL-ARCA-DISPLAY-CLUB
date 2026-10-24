@@ -63,6 +63,8 @@ type Data = {
   pausedPhones: string[];
   totalPages: number;
   matchingLogs: number;
+  pendingOutbound: number;
+  pausedCount: number;
   generatedAt: string;
 };
 type Config = {
@@ -175,6 +177,8 @@ export default function AdminWhatsAppPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [changing, setChanging] = useState(false);
+  const changingRef = useRef(false);
   const [passwordInput, setPasswordInput] = useState("");
   const [authError, setAuthError] = useState(false);
   const [newAdminPhone, setNewAdminPhone] = useState("");
@@ -188,7 +192,7 @@ export default function AdminWhatsAppPage() {
   const newestSeenAt = useRef(0);
   const audio = useRef<AudioContext | null>(null);
   const requestId = useRef("");
-  const activeRequest = useRef(false);
+  const activeRequest = useRef<AbortController | null>(null);
 
   useEffect(() => {
     void checkAdminSession().then(setAuthorized);
@@ -206,8 +210,12 @@ export default function AdminWhatsAppPage() {
   );
   const refresh = useCallback(
     async (signal?: AbortSignal) => {
-      if (activeRequest.current) return;
-      activeRequest.current = true;
+      if (signal?.aborted) return;
+      activeRequest.current?.abort();
+      const controller = new AbortController();
+      activeRequest.current = controller;
+      const abort = () => controller.abort();
+      signal?.addEventListener("abort", abort, { once: true });
       setLoading(true);
       try {
         const params = new URLSearchParams({
@@ -218,9 +226,12 @@ export default function AdminWhatsAppPage() {
         const [stats, cfg] = await Promise.all([
           fetch("/api/whatsapp/admin/stats?" + params, {
             cache: "no-store",
-            signal,
+            signal: controller.signal,
           }),
-          fetch("/api/whatsapp/admin/config", { cache: "no-store", signal }),
+          fetch("/api/whatsapp/admin/config", {
+            cache: "no-store",
+            signal: controller.signal,
+          }),
         ]);
         if (stats.status === 401 || cfg.status === 401) {
           setAuthorized(false);
@@ -231,6 +242,9 @@ export default function AdminWhatsAppPage() {
             "No se pudieron actualizar los datos. Los valores mostrados pueden estar desactualizados.",
           );
         const next: Data = await stats.json();
+        const nextConfig: Config = await cfg.json();
+        if (controller.signal.aborted || activeRequest.current !== controller)
+          return;
         const incoming = next.recentLogs[0]?.id;
         const incomingAt = new Date(
           next.recentLogs[0]?.timestamp || 0,
@@ -271,14 +285,17 @@ export default function AdminWhatsAppPage() {
         if (incoming) lastId.current = incoming;
         newestSeenAt.current = Math.max(newestSeenAt.current, incomingAt || 0);
         setData(next);
-        setConfig(await cfg.json());
+        setConfig(nextConfig);
         setError("");
       } catch (err) {
-        if (!signal?.aborted)
+        if (!controller.signal.aborted)
           setError(err instanceof Error ? err.message : "Error de conexión");
       } finally {
-        activeRequest.current = false;
-        setLoading(false);
+        signal?.removeEventListener("abort", abort);
+        if (activeRequest.current === controller) {
+          activeRequest.current = null;
+          setLoading(false);
+        }
       }
     },
     [page, role, search],
@@ -298,6 +315,9 @@ export default function AdminWhatsAppPage() {
   }, [authorized, refresh]);
 
   async function change(action: string, target: string) {
+    if (changingRef.current) return false;
+    changingRef.current = true;
+    setChanging(true);
     try {
       const r = await fetch("/api/whatsapp/admin/config", {
         method: "POST",
@@ -306,10 +326,24 @@ export default function AdminWhatsAppPage() {
       });
       const result = await r.json();
       if (!r.ok) throw new Error(result.error || "No se pudo actualizar");
+      setConfig((current) =>
+        current
+          ? {
+              ...current,
+              adminPhones: result.adminPhones,
+              blacklistedPhones: result.blacklistedPhones,
+            }
+          : current,
+      );
       setNotice("Configuración actualizada");
       await refresh();
+      return true;
     } catch (err) {
       setNotice(err instanceof Error ? err.message : "Error de conexión");
+      return false;
+    } finally {
+      changingRef.current = false;
+      setChanging(false);
     }
   }
   async function archive(id?: string) {
@@ -817,133 +851,138 @@ export default function AdminWhatsAppPage() {
             </div>
 
             {/* Logs Table / Cards */}
-            {filteredLogs.length === 0 ? (
-              <div className="glass-panel p-12 rounded-3xl border border-white/10 text-center space-y-3">
-                <MessageSquare className="w-10 h-10 text-gray-500 mx-auto" />
-                <p className="text-gray-300 font-bold text-sm">
-                  No hay registros que coincidan con la búsqueda
-                </p>
-                <p className="text-gray-500 text-xs">
-                  Los mensajes recibidos en WhatsApp aparecerán aquí en vivo.
-                </p>
-              </div>
-            ) : (
-              <div className="glass-panel rounded-2xl border border-white/10 overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs text-gray-300">
-                    <thead className="bg-[#0B0F19] text-gray-400 uppercase font-bold border-b border-white/10 text-[10px] tracking-wider">
-                      <tr>
-                        <th className="py-3 px-4">Fecha / Hora</th>
-                        <th className="py-3 px-4">Teléfono</th>
-                        <th className="py-3 px-4">Rol</th>
-                        <th className="py-3 px-4">Mensaje del Usuario</th>
-                        <th className="py-3 px-4">Respuesta del Bot</th>
-                        <th className="py-3 px-4 text-right">Acción</th>
-                        <th className="py-3 px-2 text-center w-8"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5">
-                      {filteredLogs.map((log) => {
-                        const dateObj = new Date(log.timestamp);
-                        const timeStr = dateObj.toLocaleTimeString("es-CU", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          timeZone: "America/Havana",
-                        });
-                        const dateStr = dateObj.toLocaleDateString("es-CU", {
-                          day: "2-digit",
-                          month: "short",
-                          timeZone: "America/Havana",
-                        });
-
-                        const displayPhone = log.senderPhone;
-                        const displayRole = log.role;
-
-                        return (
-                          <tr
-                            key={log.id}
-                            onClick={() =>
-                              setSelectedLog({
-                                ...log,
-                                senderPhone: displayPhone,
-                                role: displayRole,
-                              })
-                            }
-                            className="hover:bg-white/5 transition-colors cursor-pointer group"
-                          >
-                            <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px] text-gray-400">
-                              {dateStr} {timeStr}
-                            </td>
-                            <td className="py-3 px-4 whitespace-nowrap">
-                              {displayPhone === "web-admin" ? (
-                                <span className="font-mono font-bold text-white">
-                                  Panel web
-                                </span>
-                              ) : (
-                                <a
-                                  href={`https://wa.me/${displayPhone}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="font-mono font-bold text-white hover:text-emerald-400 transition-colors inline-flex items-center gap-1"
-                                >
-                                  +{displayPhone}
-                                  <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                </a>
-                              )}
-                            </td>
-                            <td className="py-3 px-4 whitespace-nowrap">
-                              {displayRole === "admin" ? (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                                  <Crown className="w-3 h-3 text-amber-400" />
-                                  <span>Admin</span>
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                                  <User className="w-3 h-3 text-cyan-400" />
-                                  <span>Cliente</span>
-                                </span>
-                              )}
-                            </td>
-                            <td className="py-3 px-4 max-w-xs truncate font-medium text-white">
-                              {log.userMessage}
-                            </td>
-                            <td className="py-3 px-4 max-w-md truncate text-gray-400">
-                              {log.botReply.replace(/[*_#]/g, "")}
-                            </td>
-                            <td className="py-3 px-4 text-right whitespace-nowrap">
-                              {log.actionExecuted ? (
-                                <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
-                                  {log.actionExecuted}
-                                </span>
-                              ) : (
-                                <span className="text-[10px] text-gray-500">
-                                  {log.responseTimeMs
-                                    ? `${log.responseTimeMs}ms`
-                                    : "Consulta"}
-                                </span>
-                              )}
-                            </td>
-                            <td
-                              className="py-3 px-2 text-center"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <button
-                                onClick={(e) => handleDeleteLog(log.id, e)}
-                                className="p-1.5 rounded-lg hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
-                                title="Archivar registro (recuperable durante 30 días)"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+            <div
+              aria-busy={loading}
+              className={`h-[min(65vh,640px)] min-h-[320px] transition-opacity duration-200 motion-reduce:transition-none ${loading ? "opacity-60" : "opacity-100"}`}
+            >
+              {filteredLogs.length === 0 ? (
+                <div className="glass-panel h-full p-12 rounded-3xl border border-white/10 text-center space-y-3">
+                  <MessageSquare className="w-10 h-10 text-gray-500 mx-auto" />
+                  <p className="text-gray-300 font-bold text-sm">
+                    No hay registros que coincidan con la búsqueda
+                  </p>
+                  <p className="text-gray-500 text-xs">
+                    Los mensajes recibidos en WhatsApp aparecerán aquí en vivo.
+                  </p>
                 </div>
-              </div>
-            )}
+              ) : (
+                <div className="glass-panel h-full rounded-2xl border border-white/10 overflow-hidden">
+                  <div className="overflow-auto h-full">
+                    <table className="w-full text-left text-xs text-gray-300">
+                      <thead className="bg-[#0B0F19] text-gray-400 uppercase font-bold border-b border-white/10 text-[10px] tracking-wider">
+                        <tr>
+                          <th className="py-3 px-4">Fecha / Hora</th>
+                          <th className="py-3 px-4">Teléfono</th>
+                          <th className="py-3 px-4">Rol</th>
+                          <th className="py-3 px-4">Mensaje del Usuario</th>
+                          <th className="py-3 px-4">Respuesta del Bot</th>
+                          <th className="py-3 px-4 text-right">Acción</th>
+                          <th className="py-3 px-2 text-center w-8"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {filteredLogs.map((log) => {
+                          const dateObj = new Date(log.timestamp);
+                          const timeStr = dateObj.toLocaleTimeString("es-CU", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            timeZone: "America/Havana",
+                          });
+                          const dateStr = dateObj.toLocaleDateString("es-CU", {
+                            day: "2-digit",
+                            month: "short",
+                            timeZone: "America/Havana",
+                          });
+
+                          const displayPhone = log.senderPhone;
+                          const displayRole = log.role;
+
+                          return (
+                            <tr
+                              key={log.id}
+                              onClick={() =>
+                                setSelectedLog({
+                                  ...log,
+                                  senderPhone: displayPhone,
+                                  role: displayRole,
+                                })
+                              }
+                              className="hover:bg-white/5 transition-colors cursor-pointer group"
+                            >
+                              <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px] text-gray-400">
+                                {dateStr} {timeStr}
+                              </td>
+                              <td className="py-3 px-4 whitespace-nowrap">
+                                {displayPhone === "web-admin" ? (
+                                  <span className="font-mono font-bold text-white">
+                                    Panel web
+                                  </span>
+                                ) : (
+                                  <a
+                                    href={`https://wa.me/${displayPhone}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="font-mono font-bold text-white hover:text-emerald-400 transition-colors inline-flex items-center gap-1"
+                                  >
+                                    +{displayPhone}
+                                    <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                  </a>
+                                )}
+                              </td>
+                              <td className="py-3 px-4 whitespace-nowrap">
+                                {displayRole === "admin" ? (
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                    <Crown className="w-3 h-3 text-amber-400" />
+                                    <span>Admin</span>
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                                    <User className="w-3 h-3 text-cyan-400" />
+                                    <span>Cliente</span>
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4 max-w-xs truncate font-medium text-white">
+                                {log.userMessage}
+                              </td>
+                              <td className="py-3 px-4 max-w-md truncate text-gray-400">
+                                {log.botReply.replace(/[*_#]/g, "")}
+                              </td>
+                              <td className="py-3 px-4 text-right whitespace-nowrap">
+                                {log.actionExecuted ? (
+                                  <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
+                                    {log.actionExecuted}
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] text-gray-500">
+                                    {log.responseTimeMs
+                                      ? `${log.responseTimeMs}ms`
+                                      : "Consulta"}
+                                  </span>
+                                )}
+                              </td>
+                              <td
+                                className="py-3 px-2 text-center"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <button
+                                  onClick={(e) => handleDeleteLog(log.id, e)}
+                                  className="p-1.5 rounded-lg hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                                  title="Archivar registro (recuperable durante 30 días)"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -964,11 +1003,13 @@ export default function AdminWhatsAppPage() {
 
             {/* Add Admin Form */}
             <form
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
                 if (newAdminPhone.trim()) {
-                  handleConfigAction("add_admin", newAdminPhone.trim());
-                  setNewAdminPhone("");
+                  if (
+                    await handleConfigAction("add_admin", newAdminPhone.trim())
+                  )
+                    setNewAdminPhone("");
                 }
               }}
               className="flex gap-2"
@@ -982,6 +1023,7 @@ export default function AdminWhatsAppPage() {
               />
               <button
                 type="submit"
+                disabled={changing}
                 className="px-5 py-2.5 rounded-xl gold-gradient-bg text-black font-extrabold text-xs shadow-gold-glow flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all"
               >
                 <Plus className="w-4 h-4" />
@@ -1013,6 +1055,7 @@ export default function AdminWhatsAppPage() {
                   {
                     <button
                       onClick={() => handleConfigAction("remove_admin", phone)}
+                      disabled={changing}
                       className="p-2 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors"
                       title="Quitar permisos"
                     >
@@ -1042,11 +1085,16 @@ export default function AdminWhatsAppPage() {
 
             {/* Add Blacklist Form */}
             <form
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
                 if (newBlacklistPhone.trim()) {
-                  handleConfigAction("add_blacklist", newBlacklistPhone.trim());
-                  setNewBlacklistPhone("");
+                  if (
+                    await handleConfigAction(
+                      "add_blacklist",
+                      newBlacklistPhone.trim(),
+                    )
+                  )
+                    setNewBlacklistPhone("");
                 }
               }}
               className="flex gap-2"
@@ -1061,9 +1109,10 @@ export default function AdminWhatsAppPage() {
               <button
                 type="submit"
                 className="px-5 py-2.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 font-extrabold text-xs flex items-center gap-1.5 transition-all"
+                disabled={changing}
               >
                 <Plus className="w-4 h-4" />
-                <span>Bloquear Número</span>
+                <span>{changing ? "Guardando…" : "Bloquear Número"}</span>
               </button>
             </form>
 
@@ -1142,13 +1191,8 @@ export default function AdminWhatsAppPage() {
               <summary className="cursor-pointer px-4 py-3 text-xs font-bold text-gray-300 hover:text-amber-300">
                 Estado de envíos y atención humana{" "}
                 <span className="text-gray-500 font-normal">
-                  ·{" "}
-                  {
-                    (data?.outbound || []).filter(
-                      (d) => d.status === "queued" || d.status === "sending",
-                    ).length
-                  }{" "}
-                  pendientes · {data?.pausedPhones.length || 0} en atención
+                  · {data?.pendingOutbound ?? 0} pendientes ·{" "}
+                  {data?.pausedCount ?? 0} en atención
                 </span>
               </summary>
               <div className="p-4 border-t border-white/10 space-y-4 text-xs">

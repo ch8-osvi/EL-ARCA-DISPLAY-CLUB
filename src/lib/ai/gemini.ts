@@ -11,6 +11,7 @@ export async function queryGemini(
   system: string,
   contents: object[],
   admin: boolean,
+  budgetMs = 38000,
 ) {
   const key =
     process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
@@ -31,7 +32,7 @@ export async function queryGemini(
   const started = Date.now();
   for (const model of models) {
     try {
-      const remaining = 38000 - (Date.now() - started);
+      const remaining = budgetMs - (Date.now() - started);
       if (remaining < 3000) break;
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,

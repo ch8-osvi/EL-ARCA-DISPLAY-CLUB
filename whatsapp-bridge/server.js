@@ -1,9 +1,10 @@
-/**
- * Microservicio WhatsApp Bridge para El Arca Display Club
- * =======================================================
- * Conecta el número de WhatsApp (+53 63657247) con la IA de Vercel (+53 52031972 Admin)
- * 100% Gratuito - Compatible con números de Cuba (+53) - Persistencia en MongoDB Atlas
- */
+// Protección global contra excepciones no capturadas de WebSocket/Baileys
+process.on('unhandledRejection', (reason) => {
+  console.warn('[Bridge Safe Handler] Unhandled Rejection amortiguado:', reason?.message || reason);
+});
+process.on('uncaughtException', (err) => {
+  console.warn('[Bridge Safe Handler] Uncaught Exception amortiguado:', err.message);
+});
 
 const path = require('path');
 const fs = require('fs');

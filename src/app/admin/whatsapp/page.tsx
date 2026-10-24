@@ -22,6 +22,8 @@ import {
   TrendingUp,
   Cpu,
   Lock,
+  Crown,
+  User,
 } from 'lucide-react';
 
 interface WhatsAppLogItem {
@@ -474,23 +476,25 @@ export default function AdminWhatsAppPage() {
                 </button>
                 <button
                   onClick={() => setRoleFilter('client')}
-                  className={`px-3 py-2 rounded-xl text-xs font-bold ${
+                  className={`px-3 py-2 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 ${
                     roleFilter === 'client'
                       ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
                       : 'text-gray-400 hover:bg-white/5'
                   }`}
                 >
-                  Clientes
+                  <User className="w-3.5 h-3.5" />
+                  <span>Clientes</span>
                 </button>
                 <button
                   onClick={() => setRoleFilter('admin')}
-                  className={`px-3 py-2 rounded-xl text-xs font-bold ${
+                  className={`px-3 py-2 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 ${
                     roleFilter === 'admin'
                       ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                       : 'text-gray-400 hover:bg-white/5'
                   }`}
                 >
-                  Administrador
+                  <Crown className="w-3.5 h-3.5" />
+                  <span>Administrador</span>
                 </button>
               </div>
             </div>
@@ -559,12 +563,14 @@ export default function AdminWhatsAppPage() {
                             </td>
                             <td className="py-3 px-4 whitespace-nowrap">
                               {displayRole === 'admin' ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                                  👑 Admin
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                  <Crown className="w-3 h-3 text-amber-400" />
+                                  <span>Admin</span>
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                                  👤 Cliente
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                                  <User className="w-3 h-3 text-cyan-400" />
+                                  <span>Cliente</span>
                                 </span>
                               )}
                             </td>
@@ -645,7 +651,7 @@ export default function AdminWhatsAppPage() {
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-xs">
-                      👑
+                      <Crown className="w-4 h-4 text-amber-400" />
                     </div>
                     <div>
                       <div className="font-mono font-bold text-white text-xs">+{phone}</div>
@@ -758,12 +764,14 @@ export default function AdminWhatsAppPage() {
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
                   <span>Detalle de Conversación</span>
                   {selectedLog.role === 'admin' ? (
-                    <span className="text-[10px] font-extrabold bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full">
-                      Admin
+                    <span className="inline-flex items-center gap-1 text-[10px] font-extrabold bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full border border-amber-500/30">
+                      <Crown className="w-3 h-3 text-amber-400" />
+                      <span>Admin</span>
                     </span>
                   ) : (
-                    <span className="text-[10px] font-extrabold bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded-full">
-                      Cliente
+                    <span className="inline-flex items-center gap-1 text-[10px] font-extrabold bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded-full border border-cyan-500/30">
+                      <User className="w-3 h-3 text-cyan-400" />
+                      <span>Cliente</span>
                     </span>
                   )}
                 </h3>

@@ -12,12 +12,23 @@ import {
   executeRegistrarVentaRapida,
   executeAgregarOActualizarProductoWhatsApp,
 } from './tools';
-import { executeAgregarLoteBulk } from '@/lib/ai/adminTools';
+import { executeAgregarLoteBulk, executeFusionarProductos } from '@/lib/ai/adminTools';
 import { parseBatchProductsFromText } from '@/lib/ai/batchParser';
 import { getActiveExchangeRate } from '@/lib/exchangeRate';
 import { roundCupPrice } from '@/lib/searchUtils';
 import { WhatsAppLog } from '@/lib/models/WhatsAppLog';
 import { getWhatsAppConfig } from '@/lib/models/WhatsAppConfig';
+import {
+  extractActionTags,
+  executeActions,
+  isDuplicateQuery,
+  parseMergeCommand,
+  isCupConversionQuery,
+  detectBrandInPrompt,
+  isInventoryAggregateQuery,
+} from '@/lib/ai/actionExecutor';
+import { detectDuplicates } from '@/lib/duplicateDetector';
+import { getCanonicalBrand } from '@/lib/brandUtils';
 
 /** Standardizes phone numbers to digits only */
 export function normalizePhoneNumber(phone: string): string {
@@ -440,7 +451,123 @@ export async function processWhatsAppAiMessage(userMessage: string, senderPhone:
         `• Repuestos vendidos: *${todayTot.itemsCount} unidades*\n` +
         (todayTot.usd > 0 || todayTot.cup > 0 ? '🔥 ¡Excelente ritmo!' : '📦 Aún no hay ventas registradas el día de hoy.');
       appendChatHistory(senderPhone, 'Asistente', reply);
+      await logInteraction(cleanPhone, 'admin', cleanPrompt, reply, Date.now() - startTime, 'VENTAS_HOY');
       return reply;
+    }
+
+    // -----------------------------------------------------------------------
+    // FAST-PATH 5: DUPLICATE DETECTION ("mostrar duplicados", "hay duplicados?")
+    // -----------------------------------------------------------------------
+    if (isDuplicateQuery(cleanPrompt)) {
+      const detected = detectDuplicates(products as any, 75);
+      let reply: string;
+      if (detected.length === 0) {
+        reply = `✅ *Inventario Verificado y Libre de Duplicados*\n\nRevisé todo el catálogo activo (${products.length} productos) y no se detectan repuestos multi-compatibles ni pantallas duplicadas sin unificar.\n\nTodo el stock está completamente limpio y al día.`;
+      } else {
+        const lines = [
+          `🔍 *Detecté ${detected.length} posible${detected.length === 1 ? '' : 's'} par${detected.length === 1 ? '' : 'es'} de repuestos duplicados:*\n`,
+        ];
+        detected.forEach((dp, idx) => {
+          const pA = dp.productA;
+          const pB = dp.productB;
+          const combinedStock = (pA.stock || 0) + (pB.stock || 0);
+          lines.push(
+            `*${idx + 1}. [${pA.marca}] Coincidencia: ${dp.score}%*\n` +
+            `   • *Opción A:* \`${pA.modelo}\` (${pA.calidad}) — *${pA.stock} uds* ($${pA.precio} USD)\n` +
+            `   • *Opción B:* \`${pB.modelo}\` (${pB.calidad}) — *${pB.stock} uds* ($${pB.precio} USD)\n` +
+            `   • *Stock unificado total:* *${combinedStock} unidades* | *Motivo:* ${dp.reasons.join(', ')}`
+          );
+        });
+        lines.push(`\n💡 *Para unir:* Respóndeme *"une el par 1"* o *"fusiona el par 2 dejando la opción B"*.`);
+        reply = lines.join('\n');
+      }
+      appendChatHistory(cleanPhone, 'Osvaldo', cleanPrompt);
+      appendChatHistory(cleanPhone, 'Asistente', reply);
+      await logInteraction(cleanPhone, 'admin', cleanPrompt, reply, Date.now() - startTime, 'DETECTAR_DUPLICADOS');
+      return reply;
+    }
+
+    // -----------------------------------------------------------------------
+    // FAST-PATH 6: DIRECT MERGE COMMAND ("une el par 1")
+    // -----------------------------------------------------------------------
+    const looksLikeMerge = /(?:une|unir|fusiona|fusionar)\s+(?:el\s+)?par\s+\d+/i.test(cleanPrompt);
+    if (looksLikeMerge) {
+      const mergeCmd = parseMergeCommand(cleanPrompt, detectDuplicates(products as any, 75));
+      if (mergeCmd) {
+        const res = await executeFusionarProductos({
+          queryPrincipal: mergeCmd.queryPrincipal,
+          querySecundario: mergeCmd.querySecundario,
+          nuevoModelo: mergeCmd.nuevoModelo,
+          nuevoPrecio: mergeCmd.nuevoPrecio,
+        });
+        appendChatHistory(cleanPhone, 'Osvaldo', cleanPrompt);
+        appendChatHistory(cleanPhone, 'Asistente', res.message);
+        await logInteraction(cleanPhone, 'admin', cleanPrompt, res.message, Date.now() - startTime, 'FUSIONAR_PRODUCTOS');
+        return res.message;
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // FAST-PATH 7: CONVERSATIONAL CUP CONVERSION
+    // -----------------------------------------------------------------------
+    if (isCupConversionQuery(cleanPrompt)) {
+      const recentAssistantTexts = (getChatHistory(cleanPhone) || [])
+        .slice(-4)
+        .reverse()
+        .map((h) => h.text || '')
+        .join(' ');
+      const usdMatch = recentAssistantTexts.match(/\$(\d+(?:\.\d+)?)/);
+      if (usdMatch) {
+        const usdVal = parseFloat(usdMatch[1]);
+        const cupVal = roundCupPrice(usdVal, currentExchangeRate);
+        const reply = `💵 *Conversión a CUP (Pesos Cubanos)*\n\nTomando el precio de *$${usdVal.toFixed(2)} USD* y la tasa oficial actual de *1 USD = ${currentExchangeRate} CUP*:\n\n• *Precio en CUP:* *${cupVal.toLocaleString()} CUP*`;
+        appendChatHistory(cleanPhone, 'Osvaldo', cleanPrompt);
+        appendChatHistory(cleanPhone, 'Asistente', reply);
+        await logInteraction(cleanPhone, 'admin', cleanPrompt, reply, Date.now() - startTime, 'CONVERSION_CUP');
+        return reply;
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // FAST-PATH 8: INVENTORY AND BRAND EXACT AUDIT
+    // -----------------------------------------------------------------------
+    const invCheck = isInventoryAggregateQuery(cleanPrompt);
+    if (invCheck.isAggregate) {
+      const availableProds = products.filter((p) => p.stock > 0);
+      const outOfStockProds = products.filter((p) => p.stock === 0);
+      const totalUnits = products.reduce((acc, p) => acc + (p.stock || 0), 0);
+
+      if (invCheck.brand) {
+        const brandKey = invCheck.brand.toUpperCase();
+        const brandProds = products.filter((p) => getCanonicalBrand(p.marca) === brandKey || p.marca.toUpperCase().includes(brandKey));
+        const brandAvail = brandProds.filter((p) => p.stock > 0);
+        const brandUnits = brandProds.reduce((acc, p) => acc + (p.stock || 0), 0);
+        const brandAgot = brandProds.filter((p) => p.stock === 0);
+
+        let reply =
+          `📊 *Auditoría Exacta de Inventario — ${invCheck.brand}*\n\n` +
+          `• Modelos disponibles con stock: *${brandAvail.length} modelos*\n` +
+          `• Total unidades físicas: *${brandUnits} unidades*\n` +
+          `• Modelos agotados: *${brandAgot.length} modelos* (de ${brandProds.length} registrados)\n\n` +
+          `📋 *Modelos en stock:*\n` +
+          brandAvail.map((p) => `• *${p.modelo}* (${p.calidad}) — *${p.stock} uds* ($${p.precio} USD)`).join('\n');
+
+        appendChatHistory(cleanPhone, 'Osvaldo', cleanPrompt);
+        appendChatHistory(cleanPhone, 'Asistente', reply);
+        await logInteraction(cleanPhone, 'admin', cleanPrompt, reply, Date.now() - startTime, 'AUDITORIA_INVENTARIO');
+        return reply;
+      } else {
+        const reply =
+          `📊 *Auditoría General de Inventario — Toda la Tienda*\n\n` +
+          `• Modelos disponibles con stock: *${availableProds.length} modelos*\n` +
+          `• Total de unidades físicas en stock: *${totalUnits} unidades*\n` +
+          `• Modelos agotados (stock 0): *${outOfStockProds.length} modelos* (de ${products.length} totales en catálogo)`;
+
+        appendChatHistory(cleanPhone, 'Osvaldo', cleanPrompt);
+        appendChatHistory(cleanPhone, 'Asistente', reply);
+        await logInteraction(cleanPhone, 'admin', cleanPrompt, reply, Date.now() - startTime, 'AUDITORIA_INVENTARIO');
+        return reply;
+      }
     }
 
     // Mermas summary
@@ -515,29 +642,56 @@ export async function processWhatsAppAiMessage(userMessage: string, senderPhone:
       })),
     };
 
-    const adminInstruction = `Eres el asistente ejecutivo y mano derecha de Osvaldo en su negocio "EL ARCA DISPLAY CLUB".
-Estás chateando con él directamente en su WhatsApp personal (+53 52031972).
+    const adminInstruction = `Eres el Asistente Ejecutivo IA y socio de máxima confianza de Osvaldo en su negocio "EL ARCA DISPLAY CLUB" (taller especializado y distribuidora de pantallas de celulares en Cienfuegos, Cuba).
+Estás chateando con él directamente en su WhatsApp.
 
-DIRECTRICES DE ESTILO:
-1. Habla de forma completamente natural, directa y cercana (de tú a tú, como su socio de taller).
-2. Formatea tus respuestas exclusivamente para WhatsApp: usa negritas con un solo asterisco (*texto*), viñetas con guiones (-) y emojis útiles.
-3. NO uses tablas de markdown con barras (|) ni almohadillas (###).
-4. Tienes el catálogo completo de productos en "catalogoProductos". Si Osvaldo te pregunta por el precio o stock de cualquier modelo (ej: Redmi 9A, Samsung A04, iPhone 11 Pro, etc.), dale el precio exacto en USD y cuántas unidades quedan en almacén.
-5. Recuerda el contexto del "HISTORIAL DE CONVERSACIÓN RECIENTE". Si Osvaldo dice "cambiar el precio a 13" o "cuántas quedan de esa", identifica qué producto estaban hablando en los mensajes anteriores.
+═══════════════════════════════════════════════════════════════
+🧠 DICCIONARIO SEMÁNTICO, ABREVIATURAS Y COMPATIBILIDADES
+═══════════════════════════════════════════════════════════════
+1. ABREVIATURAS DE MARCAS Y MODELOS:
+   • "rm" o "redmi" = Xiaomi Redmi (ej: "rm 9a" = "Redmi 9A", "rm note 11" = "Redmi Note 11").
+   • "sm" o "sam" = Samsung Galaxy (ej: "sm a32" = "Samsung A32", "sam a12" = "Samsung A12").
+   • "ip" o "iph" = Apple iPhone (ej: "ip 11" = "iPhone 11").
+   • "moto" = Motorola.
+   • "inf" = Infinix.
+   • "tec" = Tecno.
+   • "pco" = Poco.
+   • "hw" = Huawei / Honor.
 
-INSTRUCCIÓN PARA EJECUTAR ACCIONES REALES EN LA BASE DE DATOS:
-Si Osvaldo te pide cambiar un precio, registrar venta, ajustar stock o marcar cobro, INCLUYE la etiqueta de acción correspondiente:
-- Para cambiar precio: [ACCION:ACTUALIZAR_PRECIO:MODELO:NUEVO_PRECIO_USD] (ej: [ACCION:ACTUALIZAR_PRECIO:Redmi 9A:13])
-- Para marcar orden pagada: [ACCION:MARCAR_PAGADO:CODIGO_ORDEN] (ej: [ACCION:MARCAR_PAGADO:0828QQL01])
-- Para marcar orden pendiente: [ACCION:MARCAR_PENDIENTE:CODIGO_ORDEN]
-- Para sumar o restar stock: [ACCION:AJUSTAR_STOCK:MODELO:CANTIDAD] (ej: [ACCION:AJUSTAR_STOCK:Redmi 9A:10])
-- Para registrar venta rápida: [ACCION:VENTA_RAPIDA:CLIENTE:MODELO:CANTIDAD:MONEDA:PAGADO] (ej: [ACCION:VENTA_RAPIDA:Ivan:Redmi 9A:1:USD:true])
-- Para agregar o reingresar pantallas: [ACCION:AGREGAR_PRODUCTO:MARCA:MODELO:CALIDAD:PRECIO:CANTIDAD] (ej: [ACCION:AGREGAR_PRODUCTO:SAMSUNG:A04:ORIGINAL C/M:14:5]). Si la pantalla ya existe en el catálogo, el sistema sumará automáticamente el stock al existente y la reactivará si estaba en 0 o agotada.
+2. MARCOS Y CALIDADES:
+   • "c/m", "cm" o "con marco" = Pantalla con marco preinstalado (chasis).
+   • "s/m", "sin marco" = Pantalla sin marco (solo display y táctil).
+   • "incell" = Calidad LCD compatible económica.
+   • "oled" / "amoled" = Calidad OLED de alta gama.
+   • "orig" / "original" = Calidad Original / Servicio Oficial.
 
-REGLA ESTRICTA DE FORMATO:
-Tanto la MARCA como el MODELO y la CALIDAD deben estar SIEMPRE 100% EN MAYÚSCULAS en cualquier acción.
+3. DETECCIÓN DE COMPATIBILIDADES MULTIMODELO (MUY IMPORTANTE):
+   En el catálogo de repuestos, muchas pantallas son compatibles con varios modelos a la vez, listados con barras separadoras "/" (ej: "Samsung A12 / A125 / A127 / A02 / A32 5G / M12").
+   Si Osvaldo pregunta por cualquiera de esos modelos, identifícalo de inmediato y ofrece los datos con total exactitud.
 
-Si es una consulta normal de información (precios, stock, ventas, etc.), responde directamente sin etiquetas de acción.`;
+═══════════════════════════════════════════════════════════════
+⚡ INSTRUCCIÓN PARA EJECUTAR ACCIONES REALES EN LA BASE DE DATOS
+═══════════════════════════════════════════════════════════════
+Cuando Osvaldo solicite una acción operativa o de gestión, emite de inmediato la etiqueta de acción correspondiente en formato JSON estricto:
+- Crear orden completa: [ACCION:CREAR_ORDEN:{"clientName":"...","items":[{"modelo":"...","calidad":"...","precio":X,"qty":N}],"currency":"USD"|"CUP","paid":true|false}]
+- Venta rápida: [ACCION:VENTA_RAPIDA:{"cliente":"...","modeloProducto":"...","cantidad":N,"moneda":"USD"|"CUP","pagado":true|false}]
+- Cambiar precio: [ACCION:ACTUALIZAR_PRECIO:{"queryProducto":"...","nuevoPrecioUSD":X}]
+- Cambiar calidad: [ACCION:ACTUALIZAR_CALIDAD:{"queryProducto":"...","nuevaCalidad":"..."}]
+- Ajustar stock: [ACCION:AJUSTAR_STOCK:{"queryProducto":"...","cantidadAgregada":N,"motivo":"..."}]
+- Marcar pagada: [ACCION:MARCAR_PAGADA:{"orderNumber":"..."}]
+- Marcar pendiente: [ACCION:MARCAR_PENDIENTE:{"orderNumber":"..."}]
+- Anular orden: [ACCION:ANULAR_ORDEN:{"orderNumber":"...","motivo":"..."}]
+- Cambiar tasa de cambio: [ACCION:ACTUALIZAR_TASA_CAMBIO:{"nuevaTasa":X}]
+- Agregar 1 producto: [ACCION:AGREGAR_PRODUCTO:{"marca":"...","modelo":"...","calidad":"...","precio":X,"stock":N}]
+- Agregar lote: [ACCION:AGREGAR_LOTE:{"productos":[{"marca":"...","modelo":"...","calidad":"...","precio":X,"stock":N}]}]
+- Ocultar producto: [ACCION:OCULTAR_PRODUCTO:{"queryProducto":"..."}]
+- Modificar producto: [ACCION:MODIFICAR_PRODUCTO:{"queryProducto":"...","nuevoModelo":"...","nuevaCalidad":"...","nuevoPrecio":X}]
+- Fusionar duplicados: [ACCION:FUSIONAR_PRODUCTOS:{"queryPrincipal":"...","querySecundario":"...","nuevoModelo":"...","nuevoPrecio":X}]
+
+DIRECTRICES DE ESTILO PARA WHATSAPP:
+1. Responde de forma natural, humana y ejecutiva de socio de taller.
+2. Usa negritas (*texto*), viñetas con guiones (-) y emojis sobrios. NUNCA tablas markdown (|) ni encabezados con ###.
+3. Si solo es una consulta de información, responde amablemente sin etiquetas de acción.`;
 
     if (!geminiApiKey) {
       return '⚠️ GEMINI_API_KEY no está configurada en las variables de entorno del servidor.';
@@ -578,77 +732,39 @@ Si es una consulta normal de información (precios, stock, ventas, etc.), respon
           const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
           if (candidateText) {
-            // Check for Action Tags execution with tolerant regexes
-            const matchPagado = candidateText.match(/\[ACCION:MARCAR_PAGADO\s*:\s*#?([a-zA-Z0-9]+)\s*\]/i);
-            if (matchPagado) {
-              const result = await executeMarcarOrdenPagada(matchPagado[1].trim());
-              appendChatHistory(cleanPhone, 'Osvaldo', cleanPrompt);
-              appendChatHistory(cleanPhone, 'Asistente', result.message);
-              await logInteraction(cleanPhone, 'admin', cleanPrompt, result.message, Date.now() - startTime, 'MARCAR_PAGADO');
-              return result.message;
-            }
+            const { cleanedResponse, actionResults, executedActionTypes } = await executeActions(candidateText);
 
-            const matchPendiente = candidateText.match(/\[ACCION:MARCAR_PENDIENTE\s*:\s*#?([a-zA-Z0-9]+)\s*\]/i);
-            if (matchPendiente) {
-              const result = await executeMarcarOrdenPendiente(matchPendiente[1].trim());
-              appendChatHistory(cleanPhone, 'Osvaldo', cleanPrompt);
-              appendChatHistory(cleanPhone, 'Asistente', result.message);
-              await logInteraction(cleanPhone, 'admin', cleanPrompt, result.message, Date.now() - startTime, 'MARCAR_PENDIENTE');
-              return result.message;
-            }
+            let replyText = candidateText;
+            let actionName = executedActionTypes.join(', ');
 
-            const matchPrecio = candidateText.match(/\[ACCION:ACTUALIZAR_PRECIO\s*:\s*([^:]+?)\s*:\s*[\$]?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:USD|usd)?\s*\]/i);
-            if (matchPrecio) {
-              const result = await executeActualizarPrecioProducto(matchPrecio[1].trim(), parseFloat(matchPrecio[2]));
-              appendChatHistory(cleanPhone, 'Osvaldo', cleanPrompt);
-              appendChatHistory(cleanPhone, 'Asistente', result.message);
-              await logInteraction(cleanPhone, 'admin', cleanPrompt, result.message, Date.now() - startTime, 'ACTUALIZAR_PRECIO');
-              return result.message;
-            }
-
-            const matchStock = candidateText.match(/\[ACCION:AJUSTAR_STOCK\s*:\s*([^:]+?)\s*:\s*([+-]?[0-9]+)\s*\]/i);
-            if (matchStock) {
-              const result = await executeAjustarStockProducto(matchStock[1].trim(), parseInt(matchStock[2], 10));
-              appendChatHistory(cleanPhone, 'Osvaldo', cleanPrompt);
-              appendChatHistory(cleanPhone, 'Asistente', result.message);
-              await logInteraction(cleanPhone, 'admin', cleanPrompt, result.message, Date.now() - startTime, 'AJUSTAR_STOCK');
-              return result.message;
-            }
-
-            const matchVenta = candidateText.match(/\[ACCION:VENTA_RAPIDA\s*:\s*([^:]+?)\s*:\s*([^:]+?)\s*:\s*([0-9]+)\s*:\s*(USD|CUP)\s*:\s*(true|false)\s*\]/i);
-            if (matchVenta) {
-              const result = await executeRegistrarVentaRapida({
-                cliente: matchVenta[1].trim(),
-                modeloProducto: matchVenta[2].trim(),
-                cantidad: parseInt(matchVenta[3], 10),
-                moneda: matchVenta[4].trim().toUpperCase() as 'USD' | 'CUP',
-                pagado: matchVenta[5].toLowerCase() === 'true',
-              });
-              appendChatHistory(cleanPhone, 'Osvaldo', cleanPrompt);
-              appendChatHistory(cleanPhone, 'Asistente', result.message);
-              await logInteraction(cleanPhone, 'admin', cleanPrompt, result.message, Date.now() - startTime, 'VENTA_RAPIDA');
-              return result.message;
-            }
-
-            const matchAgregar = candidateText.match(/\[ACCION:AGREGAR_PRODUCTO\s*:\s*([^:]+?)\s*:\s*([^:]+?)\s*:\s*([^:]+?)\s*:\s*([0-9]+(?:\.[0-9]+)?)\s*:\s*([0-9]+)\s*\]/i);
-            if (matchAgregar) {
-              const result = await executeAgregarOActualizarProductoWhatsApp({
-                marca: matchAgregar[1].trim().toUpperCase(),
-                modelo: matchAgregar[2].trim().toUpperCase(),
-                calidad: matchAgregar[3].trim().toUpperCase(),
-                precio: parseFloat(matchAgregar[4]),
-                cantidad: parseInt(matchAgregar[5], 10),
-              });
-              appendChatHistory(cleanPhone, 'Osvaldo', cleanPrompt);
-              appendChatHistory(cleanPhone, 'Asistente', result.message);
-              await logInteraction(cleanPhone, 'admin', cleanPrompt, result.message, Date.now() - startTime, 'AGREGAR_PRODUCTO');
-              return result.message;
+            if (actionResults.length > 0) {
+              replyText = actionResults.join('\n\n') + (cleanedResponse ? `\n\n${cleanedResponse}` : '');
+            } else {
+              // Backward-compatible fallback for legacy colon action regexes
+              const matchPagado = candidateText.match(/\[ACCION:MARCAR_PAGADO\s*:\s*#?([a-zA-Z0-9]+)\s*\]/i);
+              if (matchPagado) {
+                const res = await executeMarcarOrdenPagada(matchPagado[1].trim());
+                replyText = res.message;
+                actionName = 'MARCAR_PAGADA';
+              }
+              const matchPrecio = candidateText.match(/\[ACCION:ACTUALIZAR_PRECIO\s*:\s*([^:]+?)\s*:\s*[\$]?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:USD|usd)?\s*\]/i);
+              if (matchPrecio) {
+                const res = await executeActualizarPrecioProducto(matchPrecio[1].trim(), parseFloat(matchPrecio[2]));
+                replyText = res.message;
+                actionName = 'ACTUALIZAR_PRECIO';
+              }
+              const matchStock = candidateText.match(/\[ACCION:AJUSTAR_STOCK\s*:\s*([^:]+?)\s*:\s*([+-]?[0-9]+)\s*\]/i);
+              if (matchStock) {
+                const res = await executeAjustarStockProducto(matchStock[1].trim(), parseInt(matchStock[2], 10));
+                replyText = res.message;
+                actionName = 'AJUSTAR_STOCK';
+              }
             }
 
             appendChatHistory(cleanPhone, 'Osvaldo', cleanPrompt);
-            appendChatHistory(cleanPhone, 'Asistente', candidateText);
-            await logInteraction(cleanPhone, 'admin', cleanPrompt, candidateText, Date.now() - startTime, 'CONSULTA_GENERAL');
-            return candidateText;
+            appendChatHistory(cleanPhone, 'Asistente', replyText);
+            await logInteraction(cleanPhone, 'admin', cleanPrompt, replyText, Date.now() - startTime, actionName || 'CONSULTA');
+            return replyText;
           }
         } else {
           const errText = await res.text();
@@ -665,14 +781,36 @@ Si es una consulta normal de información (precios, stock, ventas, etc.), respon
   // =========================================================================
   // PIPELINE B: CLIENTES Y TÉCNICOS EXTERNOS (AISLAMIENTO TOTAL DE SEGURIDAD)
   // =========================================================================
-  const activeProducts = await Product.find({ isHidden: false, stock: { $gt: 0 } })
+
+  // Fast-Path: Conversión rápida de precios a CUP para clientes
+  if (isCupConversionQuery(cleanPrompt)) {
+    const recentHistory = getChatHistory(cleanPhone);
+    const recentTexts = recentHistory.slice(-4).reverse().map((h) => h.text).join(' ');
+    const usdMatch = recentTexts.match(/\$(\d+(?:\.\d+)?)/);
+    let reply = '';
+    if (usdMatch) {
+      const usdVal = parseFloat(usdMatch[1]);
+      const cupVal = roundCupPrice(usdVal, currentExchangeRate);
+      reply = `💵 El precio en pesos cubanos (CUP) es de *$${cupVal.toLocaleString()} CUP* (calculado con nuestra tasa oficial del día de *1 USD = ${currentExchangeRate} CUP*).\n\n¿Te gustaría apartar esta pantalla o pasar a recogerla por el taller?`;
+    } else {
+      reply = `💵 Nuestra tasa de cambio oficial hoy en El Arca Display Club es de *1 USD = ${currentExchangeRate} CUP*. Aceptamos pagos en efectivo y transferencias bancarias en CUP.\n\n¿Qué modelo de pantalla estás buscando para darte el precio exacto?`;
+    }
+    const finalReply = `${reply}\n\n_Mensaje generado automáticamente por el asistente IA de El Arca Display Club_`;
+    appendChatHistory(cleanPhone, 'Cliente', cleanPrompt);
+    appendChatHistory(cleanPhone, 'Asistente', finalReply);
+    await logInteraction(cleanPhone, 'client', cleanPrompt, finalReply, Date.now() - startTime, 'CONVERSION_CUP');
+    return finalReply;
+  }
+
+  // Carga del catálogo completo (incluyendo modelos en 0 para saber si están temporalmente agotados)
+  const activeProducts = await Product.find({ isHidden: false })
     .select('marca modelo calidad precio stock')
     .lean();
 
   const publicCatalog = activeProducts.map((p) => {
     let disponibilidad = 'Stock disponible';
     if (p.stock <= 0) {
-      disponibilidad = 'Agotado';
+      disponibilidad = 'Agotado temporalmente';
     } else if (p.stock === 1) {
       disponibilidad = 'Bajo stock (última unidad disponible)';
     } else if (p.stock === 2) {
@@ -694,26 +832,55 @@ Si es una consulta normal de información (precios, stock, ventas, etc.), respon
   const clientHistory = getChatHistory(cleanPhone);
   const isOngoing = clientHistory.length > 0;
 
-  const clientInstruction = `Eres el asesor de ventas y atención al cliente de "EL ARCA DISPLAY CLUB" (taller especializado y distribuidora de pantallas de celulares en Cienfuegos, Cuba).
+  const clientInstruction = `Eres el asesor técnico de ventas y atención al cliente de "EL ARCA DISPLAY CLUB" (taller especializado y distribuidora de pantallas de teléfonos celulares en Cienfuegos, Cuba).
 Estás chateando en tiempo real con un cliente o técnico por WhatsApp.
 
 TASA OFICIAL DE CAMBIO HOY EN EL ARCA: 1 USD = ${currentExchangeRate} CUP.
-ESTADO DE LA CHARLA: ${
+ESTADO DE LA CONVERSACIÓN: ${
     isOngoing
-      ? 'CONVERSACIÓN EN CURSO (ESTÁ TERMINANTEMENTE PROHIBIDO volver a saludar con "¡Hola! Bienvenido a EL ARCA...". Responde de forma directa, ágil y conversacional como un humano real).'
-      : 'PRIMER CONTACTO (Saluda amablemente de forma concisa: "¡Hola! 👋 Bienvenido a EL ARCA DISPLAY CLUB 📱").'
+      ? 'CONVERSACIÓN EN CURSO (PROHIBIDO volver a saludar con "¡Hola! Bienvenido...". Habla directo, cordial y fluido como una persona real).'
+      : 'PRIMER CONTACTO (Saluda amablemente y breve: "¡Hola! 👋 Bienvenido a EL ARCA DISPLAY CLUB 📱").'
   }
 
-REGLAS ESTRICTAS DE INFORMACIÓN Y PRIVACIDAD (OBLIGATORIAS):
-1. PRIVACIDAD DE STOCK: NUNCA menciones la cantidad numérica exacta de pantallas que quedan en existencia (PROHIBIDO decir números como "nos quedan 14", "hay 5 unidades", etc.).
-   - Si la disponibilidad es 'Stock disponible', di simplemente "Stock disponible 🟢".
-   - Si es 'Bajo stock', di amablemente "⚠️ Bajo stock (últimas unidades)".
-   - Si no está o dice 'Agotado', di "❌ Agotado temporalmente".
-2. UBICACIÓN REAL DEL NEGOCIO: Estamos ubicados en Cienfuegos, Cuba. Si el cliente pregunta dónde estamos o si hacemos envíos, aclara que el taller y almacén central está en Cienfuegos y que se realizan envíos a otras provincias previa coordinación. NO digas que estamos en La Habana.
-3. PRECIO EN USD Y CUP: Muestra SIEMPRE el precio en USD y acompáñalo con el equivalente en CUP calculado y redondeado usando la tasa oficial de ${currentExchangeRate} CUP. Ejemplo: "*$12 USD* (o *$${(12 * currentExchangeRate).toLocaleString()} CUP* a tasa de 1x${currentExchangeRate})".
-4. CALIDADES: Explica brevemente la calidad disponible (Original con marco, Original sin marco, Incell, OLED) y que todas las pantallas cuentan con garantía de prueba en taller antes de pegar/instalar.
-5. SEGURIDAD: NUNCA menciones ganancias, costos de compra, deudores ni finanzas del negocio. Esos datos son confidenciales.
-6. TONO: Amable, directo, cubano profesional y servicial con negritas (*texto*) y emojis sobrios.`;
+═══════════════════════════════════════════════════════════════
+🧠 DICCIONARIO SEMÁNTICO Y ABREVIATURAS POPULARES EN CUBA
+═══════════════════════════════════════════════════════════════
+Reconoce y comprende con total soltura los modismos y abreviaturas técnicas de los clientes en Cuba:
+• "rm" o "redmi" = Xiaomi Redmi (ej: "rm 9a", "rm note 11").
+• "sam" o "sm" = Samsung Galaxy (ej: "sam a12", "sm a32").
+• "ip" o "iph" = Apple iPhone (ej: "ip 11", "ip xr").
+• "moto" = Motorola.
+• "inf" = Infinix.
+• "tec" = Tecno.
+• "pco" = Poco.
+• "hw" = Huawei / Honor.
+• "c/m", "cm", "con marco" = Pantalla con marco preinstalado (chasis).
+• "s/m", "sin marco" = Pantalla sin marco (solo display y táctil).
+• "incell" = Calidad LCD compatible económica y funcional.
+• "oled" / "amoled" = Calidad OLED de gama alta con colores vivos y negros puros.
+• "original" = Calidad Original / Servicio Oficial de máxima fidelidad.
+• "display", "pantalla", "tactil", "lcd", "modulo", "vidrio" = Repuesto de pantalla completa.
+
+═══════════════════════════════════════════════════════════════
+🔄 COMPATIBILIDADES MULTIMODELO (MUY IMPORTANTE)
+═══════════════════════════════════════════════════════════════
+En el catálogo, muchas pantallas son compatibles con varios modelos a la vez, listados con barras separadoras "/" (por ejemplo: "Samsung A12 / A125 / A127 / A02 / A32 5G / M12").
+• Si un cliente te pregunta por "Samsung A02" o "A32 5G", DEBES reconocer de inmediato que este display multi-compatible le sirve a su equipo al 100%. Explícaselo con confianza: *"¡Sí, tenemos pantalla para Samsung A02! Es el módulo original compatible con Samsung A12 / A02 / A32 5G / M12..."*.
+
+═══════════════════════════════════════════════════════════════
+🔒 REGLAS ESTRICTAS DE INFORMACIÓN Y PRIVACIDAD
+═══════════════════════════════════════════════════════════════
+1. PRIVACIDAD DE STOCK: NUNCA digas números exactos de unidades ("quedan 14", "hay 3 unidades"). Di únicamente:
+   - "Stock disponible 🟢" (si hay existencia normal).
+   - "⚠️ Bajo stock (últimas unidades disponibles)" (si quedan 1 o 2).
+   - "❌ Agotado temporalmente" (si el producto está en catálogo pero en stock 0).
+2. PRECIOS: Muestra SIEMPRE el precio en USD acompañado de su equivalente calculado en CUP al cambio oficial del día de 1x${currentExchangeRate}. Ejemplo: "*$12 USD* (~*$${(12 * currentExchangeRate).toLocaleString()} CUP*)".
+3. UBICACIÓN REAL: Nuestro taller central y almacén está ubicado en Cienfuegos, Cuba. Si preguntan por envíos, explica que coordinamos envíos interprovinciales a otras provincias de Cuba. NUNCA digas que estamos en La Habana.
+4. TALLER E INSTALACIÓN: Contamos con taller especializado en Cienfuegos para montaje y cambio de pantalla con garantía, o vendemos la pieza suelta para que la instale su técnico de confianza.
+5. GARANTÍA: Todas nuestras pantallas cuentan con garantía de prueba en taller con flex sin retirar sellos ni plásticos protectores antes de pegar.
+6. MÉTODOS DE PAGO: Aceptamos USD en efectivo, CUP en efectivo y transferencias en CUP según la tasa del día.
+7. SEGURIDAD: NUNCA menciones finanzas, deudas, ganancias ni costos de compra del negocio.
+8. TONO: Humano, cálido, ágil, educado y profesional. Evita responder con listas robóticas estáticas. Conversa con naturalidad.`;
 
   if (!geminiApiKey) {
     return '¡Hola! En este momento nuestro sistema de atención automatizada está en mantenimiento. Por favor escríbenos en unos minutos.';
@@ -725,9 +892,9 @@ REGLAS ESTRICTAS DE INFORMACIÓN Y PRIVACIDAD (OBLIGATORIAS):
       : '';
 
   const clientPayload =
-    `CATÁLOGO PÚBLICO ACTUAL (Precios USD y CUP a tasa ${currentExchangeRate}):\n${JSON.stringify(publicCatalog, null, 2)}\n\n` +
+    `CATÁLOGO DE PRODUCTOS (Precios USD y equivalencia en CUP a tasa ${currentExchangeRate}):\n${JSON.stringify(publicCatalog, null, 2)}\n\n` +
     `${clientHistoryBlock}` +
-    `PREGUNTA DEL CLIENTE:\n"${cleanPrompt}"`;
+    `MENSAJE DEL CLIENTE:\n"${cleanPrompt}"`;
 
   const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-flash-lite-latest'];
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

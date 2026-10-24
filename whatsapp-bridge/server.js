@@ -507,11 +507,16 @@ async function startBaileysSocket() {
         // Si Vercel devuelve una respuesta generada por la IA
         if (data && data.reply && typeof data.reply === 'string') {
           console.log(`[Outbound Reply] Enviando respuesta a +${senderPhone}...`);
-          await sock.sendMessage(
-            remoteJid,
-            { text: data.reply },
-            { quoted: msg }
-          );
+          try {
+            await sock.sendMessage(
+              remoteJid,
+              { text: data.reply },
+              { quoted: msg }
+            );
+          } catch (quotedErr) {
+            console.warn('[Outbound Reply] Falló envío con cita, reenviando mensaje directo...', quotedErr.message);
+            await sock.sendMessage(remoteJid, { text: data.reply });
+          }
           console.log(`[Outbound Reply] Enviado con éxito.`);
         }
       } catch (err) {

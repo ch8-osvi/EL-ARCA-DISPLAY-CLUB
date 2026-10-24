@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -24,6 +24,10 @@ import {
   Lock,
   Crown,
   User,
+  Download,
+  Volume2,
+  VolumeX,
+  Send,
 } from 'lucide-react';
 
 interface WhatsAppLogItem {
@@ -144,6 +148,129 @@ export default function AdminWhatsAppPage() {
   const [newBlacklistPhone, setNewBlacklistPhone] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // New Live Features: Sound & AutoRefresh
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const lastLogIdRef = useRef<string | null>(null);
+
+  const playNotificationSound = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15);
+      gain.gain.setValueAtTime(0.08, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.25);
+    } catch {
+      // Audio not permitted without interaction
+    }
+  };
+
+  const exportToCSV = () => {
+    if (filteredLogs.length === 0) {
+      triggerToast('No hay registros para exportar');
+      return;
+    }
+    const headers = ['Fecha', 'Hora', 'Telefono', 'Rol', 'Mensaje_Usuario', 'Respuesta_Bot', 'Accion', 'Tiempo_Respuesta_ms'];
+    const rows = filteredLogs.map((l) => {
+      const d = new Date(l.timestamp);
+      return [
+        d.toLocaleDateString('es-CU'),
+        d.toLocaleTimeString('es-CU'),
+        `+${l.senderPhone}`,
+        l.role,
+        `"${(l.userMessage || '').replace(/"/g, '""')}"`,
+        `"${(l.botReply || '').replace(/"/g, '""')}"`,
+        l.actionExecuted || '',
+        l.responseTimeMs || 0,
+      ].join(',');
+    });
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `el_arca_whatsapp_logs_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    triggerToast('Reporte CSV descargado con éxito');
+  };
+
+  const handleDeleteLog = async (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    try {
+      const res = await fetch(`/api/whatsapp/admin/stats?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setLogs((prev) => prev.filter((l) => l.id !== id));
+        if (selectedLog?.id === id) setSelectedLog(null);
+        triggerToast('Registro eliminado');
+      } else {
+        triggerToast('Error al eliminar');
+      }
+    } catch {
+      triggerToast('Error de conexión');
+    }
+  };
+
+  const handleClearAllLogs = async () => {
+    if (!window.confirm('¿Seguro que deseas vaciar TODOS los registros de conversación de WhatsApp? Esta acción no se puede deshacer.')) return;
+    try {
+      const res = await fetch('/api/whatsapp/admin/stats?clearAll=true', {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setLogs([]);
+        setSelectedLog(null);
+        triggerToast('Historial vaciado completamente');
+      } else {
+        triggerToast('Error al vaciar');
+      }
+    } catch {
+      triggerToast('Error de conexión');
+    }
+  };
+
+  // Direct reply from modal
+  const [directReplyText, setDirectReplyText] = useState('');
+  const [isSendingReply, setIsSendingReply] = useState(false);
+
+  const handleSendDirectReply = async () => {
+    if (!selectedLog || !directReplyText.trim()) return;
+    setIsSendingReply(true);
+    try {
+      const res = await fetch('/api/whatsapp/admin/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: selectedLog.senderPhone,
+          text: directReplyText.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`Mensaje enviado a +${selectedLog.senderPhone}`);
+        setDirectReplyText('');
+        fetchData();
+      } else {
+        triggerToast(data.error || 'Error al enviar');
+      }
+    } catch {
+      triggerToast('Error de conexión');
+    } finally {
+      setIsSendingReply(false);
+    }
+  };
+
   const triggerToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 4000);
@@ -181,7 +308,14 @@ export default function AdminWhatsAppPage() {
       if (statsRes.ok) {
         const statsData = await statsRes.json();
         setMetrics(statsData.metrics);
-        setLogs(statsData.recentLogs || []);
+        const incomingLogs: WhatsAppLogItem[] = statsData.recentLogs || [];
+        if (soundEnabled && lastLogIdRef.current && incomingLogs.length > 0 && incomingLogs[0].id !== lastLogIdRef.current) {
+          playNotificationSound();
+        }
+        if (incomingLogs.length > 0) {
+          lastLogIdRef.current = incomingLogs[0].id;
+        }
+        setLogs(incomingLogs);
       }
 
       if (configRes.ok) {
@@ -200,10 +334,11 @@ export default function AdminWhatsAppPage() {
   useEffect(() => {
     if (isAuthenticated) {
       fetchData();
+      if (!autoRefresh) return;
       const interval = setInterval(fetchData, 30000); // Polling cada 30s
       return () => clearInterval(interval);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, autoRefresh]);
 
   // Handlers para admins y blacklist
   const handleConfigAction = async (action: string, phone: string) => {
@@ -305,17 +440,33 @@ export default function AdminWhatsAppPage() {
             <span className="text-sm font-bold">Volver al Panel Admin</span>
           </Link>
 
-          <div className="flex items-center gap-3">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-xs font-bold text-emerald-300">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Bot Activo: +53 {metrics?.botPhone || '63657247'}</span>
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => {
+                const next = !autoRefresh;
+                setAutoRefresh(next);
+                triggerToast(next ? 'Auto-actualización cada 30s reanudada' : 'Auto-actualización en pausa');
+              }}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
+                autoRefresh
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                  : 'bg-yellow-500/10 border-yellow-500/30 text-yellow-300'
+              }`}
+              title={autoRefresh ? 'Click para pausar auto-actualización automática' : 'Click para reanudar auto-actualización'}
+            >
+              <span className={`w-2 h-2 rounded-full ${autoRefresh ? 'bg-emerald-400 animate-pulse' : 'bg-yellow-400'}`} />
+              <span>{autoRefresh ? 'En vivo' : 'Pausado'}</span>
+            </button>
+
+            <div className="hidden sm:inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-bold text-gray-300">
+              <span>Bot: +53 {metrics?.botPhone || '63657247'}</span>
             </div>
 
             <button
               onClick={fetchData}
               disabled={loading}
-              title="Refrescar datos"
-              className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 transition-all hover:scale-105"
+              title="Refrescar datos ahora"
+              className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 transition-all hover:scale-105 active:scale-95"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
@@ -496,6 +647,47 @@ export default function AdminWhatsAppPage() {
                   <Crown className="w-3.5 h-3.5" />
                   <span>Administrador</span>
                 </button>
+
+                <div className="h-5 w-[1px] bg-white/10 mx-1 hidden sm:block" />
+
+                {/* Exportar CSV */}
+                <button
+                  onClick={exportToCSV}
+                  className="px-3 py-2 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 transition-colors"
+                  title="Exportar interacciones a archivo CSV (Excel)"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>CSV</span>
+                </button>
+
+                {/* Toggle Sonido */}
+                <button
+                  onClick={() => {
+                    const next = !soundEnabled;
+                    setSoundEnabled(next);
+                    if (next) playNotificationSound();
+                    triggerToast(next ? 'Sonido de nuevos mensajes activado' : 'Sonido silenciado');
+                  }}
+                  className={`px-2.5 py-2 rounded-xl text-xs font-bold inline-flex items-center gap-1 border transition-colors ${
+                    soundEnabled
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                      : 'text-gray-400 border-white/10 hover:bg-white/5'
+                  }`}
+                  title={soundEnabled ? 'Silenciar alertas' : 'Activar timbre con nuevos mensajes'}
+                >
+                  {soundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+                </button>
+
+                {/* Vaciar Registros */}
+                {logs.length > 0 && (
+                  <button
+                    onClick={handleClearAllLogs}
+                    className="p-2 rounded-xl text-xs font-bold text-gray-400 hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-colors"
+                    title="Vaciar todos los registros"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </div>
 
@@ -518,6 +710,7 @@ export default function AdminWhatsAppPage() {
                         <th className="py-3 px-4">Mensaje del Usuario</th>
                         <th className="py-3 px-4">Respuesta del Bot</th>
                         <th className="py-3 px-4 text-right">Acción</th>
+                        <th className="py-3 px-2 text-center w-8"></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
@@ -590,6 +783,15 @@ export default function AdminWhatsAppPage() {
                                   {log.responseTimeMs ? `${log.responseTimeMs}ms` : 'Consulta'}
                                 </span>
                               )}
+                            </td>
+                            <td className="py-3 px-2 text-center" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                onClick={(e) => handleDeleteLog(log.id, e)}
+                                className="p-1.5 rounded-lg hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                                title="Eliminar registro"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </td>
                           </tr>
                         );
@@ -804,8 +1006,45 @@ export default function AdminWhatsAppPage() {
               </div>
             </div>
 
+            {/* Direct Quick Reply from Panel */}
+            <div className="pt-3 border-t border-white/10 space-y-2">
+              <span className="text-gray-400 font-bold text-xs flex items-center gap-1.5">
+                <Send className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Enviar Respuesta Directa vía Bot:</span>
+              </span>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder={`Escribir a +${selectedLog.senderPhone}...`}
+                  value={directReplyText}
+                  onChange={(e) => setDirectReplyText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !isSendingReply) handleSendDirectReply();
+                  }}
+                  className="flex-1 px-3 py-2 bg-[#0B0F19] border border-white/10 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-emerald-400"
+                />
+                <button
+                  onClick={handleSendDirectReply}
+                  disabled={isSendingReply || !directReplyText.trim()}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-emerald-950/40 shrink-0"
+                >
+                  <Send className="w-3 h-3" />
+                  <span>{isSendingReply ? 'Enviando...' : 'Enviar'}</span>
+                </button>
+              </div>
+            </div>
+
             <div className="pt-2 flex items-center justify-between border-t border-white/10 text-[11px] text-gray-500">
-              <span>Tiempo de procesamiento: {selectedLog.responseTimeMs}ms</span>
+              <div className="flex items-center gap-3">
+                <span>Tiempo de procesamiento: {selectedLog.responseTimeMs}ms</span>
+                <button
+                  onClick={() => handleDeleteLog(selectedLog.id)}
+                  className="text-red-400 hover:text-red-300 flex items-center gap-1 font-bold transition-colors"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  <span>Eliminar</span>
+                </button>
+              </div>
               <a
                 href={`https://wa.me/${selectedLog.senderPhone}`}
                 target="_blank"

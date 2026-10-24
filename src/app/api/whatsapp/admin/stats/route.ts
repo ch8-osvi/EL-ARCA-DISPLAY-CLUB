@@ -108,3 +108,27 @@ export async function GET() {
     return NextResponse.json({ error: err.message || 'Error fetching stats' }, { status: 500 });
   }
 }
+
+export async function DELETE(req: Request) {
+  try {
+    await connectToDatabase();
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+    const clearAll = searchParams.get('clearAll') === 'true';
+
+    if (clearAll) {
+      await WhatsAppLog.deleteMany({});
+      return NextResponse.json({ success: true, message: 'Todos los registros de WhatsApp han sido vaciados' });
+    }
+
+    if (id) {
+      await WhatsAppLog.findByIdAndDelete(id);
+      return NextResponse.json({ success: true, message: 'Registro eliminado' });
+    }
+
+    return NextResponse.json({ error: 'Parámetro id o clearAll requerido' }, { status: 400 });
+  } catch (err: any) {
+    console.error('[WhatsApp Admin Delete Error]', err);
+    return NextResponse.json({ error: err.message || 'Error al eliminar' }, { status: 500 });
+  }
+}

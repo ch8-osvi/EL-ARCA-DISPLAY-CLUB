@@ -184,13 +184,37 @@ function parseDirectStockQuery(text: string): string | null {
   return null;
 }
 
-/** Sends a message to a WhatsApp user via Whapi.cloud Gateway or Meta Cloud API */
+/** Sends a message to a WhatsApp user via Baileys Bridge, Whapi.cloud Gateway or Meta Cloud API */
 export async function sendWhatsAppMessage(to: string, messageText: string): Promise<boolean> {
+  const bridgeUrl = process.env.WHATSAPP_BRIDGE_URL || 'http://localhost:7860';
+  const bridgeSecret = process.env.WHATSAPP_BRIDGE_SECRET || 'el_arca_bridge_secret_2026';
   const whapiToken = process.env.WHAPI_TOKEN;
   const metaToken = process.env.WHATSAPP_TOKEN;
   const metaPhoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
 
-  // 1. Preferred: Whapi.cloud Gateway
+  // 0. Preferred: Local/Cloud Baileys Bridge
+  if (bridgeUrl) {
+    try {
+      const cleanTo = normalizePhoneNumber(to);
+      const res = await fetch(`${bridgeUrl.replace(/\/$/, '')}/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          secret: bridgeSecret,
+          to: cleanTo,
+          text: messageText,
+        }),
+        signal: AbortSignal.timeout(6000),
+      });
+      if (res.ok) {
+        return true;
+      }
+    } catch {
+      // Si el puente local no responde o falla, continúa con los otros proveedores
+    }
+  }
+
+  // 1. Fallback: Whapi.cloud Gateway
   if (whapiToken) {
     const rawTo = (to || '').trim();
     const destination = rawTo.includes('@') ? rawTo : `${normalizePhoneNumber(rawTo)}@s.whatsapp.net`;

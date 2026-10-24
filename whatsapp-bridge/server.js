@@ -1,591 +1,364 @@
-// Protección global contra excepciones no capturadas de WebSocket/Baileys
-process.on('unhandledRejection', (reason) => {
-  console.warn('[Bridge Safe Handler] Unhandled Rejection amortiguado:', reason?.message || reason);
+"use strict";
+const path = require("node:path"),
+  fs = require("node:fs/promises");
+const { randomBytes, createHash } = require("node:crypto");
+require("dotenv").config({ path: path.join(__dirname, ".env"), quiet: true });
+require("dotenv").config({
+  path: path.join(__dirname, "../.env.local"),
+  quiet: true,
 });
-process.on('uncaughtException', (err) => {
-  console.warn('[Bridge Safe Handler] Uncaught Exception amortiguado:', err.message);
-});
-
-const path = require('path');
-const fs = require('fs');
-
-// Cargar variables de entorno (desde whatsapp-bridge/.env o desde raíz .env.local)
-require('dotenv').config({ path: path.join(__dirname, '.env') });
-if (!process.env.MONGODB_URI) {
-  require('dotenv').config({ path: path.join(__dirname, '../.env.local') });
-}
-
-const express = require('express');
-const QRCode = require('qrcode');
-const pino = require('pino');
-const { MongoClient } = require('mongodb');
+const express = require("express"),
+  QRCode = require("qrcode"),
+  pino = require("pino");
 const {
   default: makeWASocket,
   DisconnectReason,
-  useMultiFileAuthState,
   fetchLatestBaileysVersion,
-} = require('@whiskeysockets/baileys');
-
-// Configuración de Entorno
-const PORT = process.env.PORT || 7860;
-const MONGODB_URI = process.env.MONGODB_URI || '';
-const VERCEL_WEBHOOK_URL =
+} = require("@whiskeysockets/baileys");
+const { authStore } = require("./auth-store");
+const { signedHeaders, equalSecret, extractText } = require("./security");
+const PORT = Number(process.env.PORT || 7860),
+  HOST = "127.0.0.1";
+const SECRET = process.env.BRIDGE_SECRET || process.env.WHATSAPP_BRIDGE_SECRET;
+const SCAN_KEY = process.env.SCAN_ACCESS_KEY;
+const WEBHOOK =
   process.env.VERCEL_WEBHOOK_URL ||
-  'https://elarca-displayclub.vercel.app/api/whatsapp/webhook';
-const BRIDGE_SECRET = process.env.BRIDGE_SECRET || 'el_arca_bridge_secret_2026';
-const ADMIN_PHONE = (process.env.ADMIN_PHONE || '5352031972').replace(/\D/g, '');
-const BOT_PHONE = (process.env.BOT_PHONE || '5363657247').replace(/\D/g, '');
-const SCAN_ACCESS_KEY = process.env.SCAN_ACCESS_KEY || 'elarca2026';
-
-// Directorio temporal para almacenar credenciales sincronizadas con MongoDB
-const AUTH_DIR = path.join(__dirname, 'auth_session');
-if (!fs.existsSync(AUTH_DIR)) {
-  fs.mkdirSync(AUTH_DIR, { recursive: true });
-}
-
-// Variables de estado en memoria
-let currentQR = null;
-let currentQRDataUrl = null;
-let isConnected = false;
-let connectedPhone = null;
-let socketInstance = null;
-let mongoClient = null;
-let mongoDb = null;
-
-// =============================================================================
-// PERSISTENCIA MONGODB ATLAS (Restauración y Sincronización de Sesión)
-// =============================================================================
-async function initMongo() {
-  if (!MONGODB_URI) {
-    console.warn('[MongoDB] MONGODB_URI no está configurada. La sesión se guardará solo en disco local.');
-    return;
-  }
-  try {
-    mongoClient = new MongoClient(MONGODB_URI);
-    await mongoClient.connect();
-    mongoDb = mongoClient.db();
-    console.log('[MongoDB] Conexión establecida con MongoDB Atlas para persistencia de sesión.');
-
-    // Restaurar archivos de sesión desde MongoDB si existen
-    const col = mongoDb.collection('whatsapp_auth_keys');
-    const files = await col.find({}).toArray();
-    if (files && files.length > 0) {
-      console.log(`[MongoDB] Restaurando ${files.length} archivos de sesión guardados...`);
-      for (const item of files) {
-        const filePath = path.join(AUTH_DIR, item.filename);
-        fs.writeFileSync(filePath, item.content, 'utf8');
-      }
-      console.log('[MongoDB] Sesión restaurada con éxito.');
-    }
-  } catch (err) {
-    console.error('[MongoDB Error al conectar]', err.message);
-  }
-}
-
-// Guarda un archivo de sesión en MongoDB Atlas
-async function syncFileToMongo(filename) {
-  if (!mongoDb) return;
-  try {
-    const filePath = path.join(AUTH_DIR, filename);
-    if (!fs.existsSync(filePath)) return;
-    const content = fs.readFileSync(filePath, 'utf8');
-    const col = mongoDb.collection('whatsapp_auth_keys');
-    await col.updateOne(
-      { filename },
-      { $set: { filename, content, updatedAt: new Date() } },
-      { upsert: true }
-    );
-  } catch (err) {
-    console.warn(`[MongoDB Sync Warning] No se pudo guardar ${filename}:`, err.message);
-  }
-}
-
-// Limpia las credenciales en MongoDB al desvincular
-async function clearMongoSession() {
-  if (!mongoDb) return;
-  try {
-    const col = mongoDb.collection('whatsapp_auth_keys');
-    await col.deleteMany({});
-    console.log('[MongoDB] Sesión borrada de MongoDB Atlas.');
-  } catch (err) {
-    console.error('[MongoDB Error]', err.message);
-  }
-}
-
-// =============================================================================
-// SERVIDOR WEB EXPRESS (Endpoints de Monitoreo, Ping y Escaneo de QR)
-// =============================================================================
+  "https://elarca-displayclub.vercel.app/api/whatsapp/webhook";
+if (!SECRET || SECRET.length < 32 || !SCAN_KEY || SCAN_KEY.length < 16)
+  throw new Error(
+    "Configura BRIDGE_SECRET (32+ caracteres) y SCAN_ACCESS_KEY (16+). Consulta README.",
+  );
+if (
+  new URL(WEBHOOK).protocol !== "https:" &&
+  !["localhost", "127.0.0.1"].includes(new URL(WEBHOOK).hostname)
+)
+  throw new Error("El webhook remoto debe usar HTTPS");
+const cloudUrl = WEBHOOK.replace(/\/webhook$/, "/bridge");
+const AUTH = path.join(__dirname, "auth_session"),
+  SPOOL = path.join(__dirname, "spool");
+const uiSession = randomBytes(32).toString("hex");
+let nextPoll = 2500,
+  workTimer = null;
+const lidToPhone = new Map();
+let sock = null,
+  connected = false,
+  phone = "",
+  qr = "",
+  stopping = false,
+  reconnecting = false,
+  backoff = 2000,
+  working = false,
+  submitting = false,
+  lastError = "",
+  lastHeartbeat = 0;
 const app = express();
-app.use(express.json());
-
-// Middleware CORS universal para permitir peticiones directas desde el panel admin en Vercel
+app.disable("x-powered-by");
+app.use(express.urlencoded({ extended: false, limit: "2kb" }));
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Origin, X-Requested-With');
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
-  }
+  res.set("Cache-Control", "no-store");
+  res.set("Referrer-Policy", "no-referrer");
+  res.set("X-Content-Type-Options", "nosniff");
+  res.set(
+    "Content-Security-Policy",
+    "default-src 'self'; img-src 'self' data:; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",
+  );
+  if (
+    req.headers.origin &&
+    req.headers.origin !== "http://127.0.0.1:" + PORT &&
+    req.headers.origin !== "http://localhost:" + PORT
+  )
+    return res.sendStatus(403);
   next();
 });
-
-// Endpoint de liveness y ping para que Render nunca se duerma
-app.get(['/', '/ping', '/health'], (req, res) => {
+app.get(["/", "/health", "/ping"], (req, res) =>
   res.json({
-    status: 'online',
-    service: 'El Arca Display Club - WhatsApp Bridge',
-    connected: isConnected,
-    botPhone: connectedPhone || BOT_PHONE,
-    adminPhone: ADMIN_PHONE,
-    timestamp: new Date().toISOString(),
+    service: "El Arca local bridge",
+    connected,
+    lastError: lastError ? "Se requiere revisión del registro local" : "",
+    time: new Date().toISOString(),
+  }),
+);
+let attempts = [];
+app.post("/scan/login", (req, res) => {
+  attempts = attempts.filter((t) => Date.now() - t < 900000);
+  if (attempts.length >= 8) return res.status(429).send("Espera 15 minutos.");
+  attempts.push(Date.now());
+  if (!equalSecret(req.body.key, SCAN_KEY))
+    return res.status(401).send("Clave incorrecta.");
+  attempts = [];
+  res.cookie("bridge_ui", uiSession, {
+    httpOnly: true,
+    sameSite: "strict",
+    maxAge: 3600000,
   });
+  res.redirect("/scan");
 });
-
-// Endpoint visual para escanear el QR desde el teléfono o navegador
-app.get('/scan', async (req, res) => {
-  const userKey = req.query.key || req.query.pin;
-  if (SCAN_ACCESS_KEY && userKey !== SCAN_ACCESS_KEY) {
-    return res.status(401).send(`
-      <!DOCTYPE html>
-      <html lang="es">
-      <head>
-        <meta charset="utf-8">
-        <title>Acceso Restringido</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>
-          body { font-family: sans-serif; background: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-          .card { background: #1e293b; padding: 2rem; border-radius: 12px; border: 1px solid #334155; text-align: center; max-width: 400px; }
-          input { width: 80%; padding: 10px; margin: 15px 0; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: #fff; text-align: center; font-size: 1.1rem; }
-          button { background: #eab308; color: #000; border: none; padding: 10px 20px; font-weight: bold; border-radius: 6px; cursor: pointer; }
-        </style>
-      </head>
-      <body>
-        <div class="card">
-          <h2>🔒 El Arca Display Club</h2>
-          <p>Introduce la clave de acceso para vincular WhatsApp:</p>
-          <form method="GET" action="/scan">
-            <input type="password" name="key" placeholder="Clave de acceso" autofocus required>
-            <br>
-            <button type="submit">Entrar</button>
-          </form>
-        </div>
-      </body>
-      </html>
-    `);
-  }
-
-  // Si ya está conectado
-  if (isConnected) {
-    return res.send(`
-      <!DOCTYPE html>
-      <html lang="es">
-      <head>
-        <meta charset="utf-8">
-        <title>WhatsApp Conectado - El Arca</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>
-          body { font-family: system-ui, -apple-system, sans-serif; background: #090d16; color: #f8fafc; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 1rem; }
-          .card { background: #131c2e; border: 1px solid #233554; border-radius: 16px; padding: 2.5rem 2rem; max-width: 460px; width: 100%; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
-          .badge { display: inline-flex; align-items: center; gap: 8px; background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.3); padding: 6px 16px; border-radius: 9999px; font-weight: 700; font-size: 0.95rem; margin-bottom: 1.5rem; }
-          h1 { margin: 0 0 0.5rem 0; font-size: 1.6rem; color: #f8fafc; }
-          p { color: #94a3b8; font-size: 0.95rem; line-height: 1.5; margin: 0.5rem 0 1.5rem 0; }
-          .info-box { background: #0b1120; border: 1px solid #1e293b; border-radius: 10px; padding: 1rem; text-align: left; margin-bottom: 1.5rem; font-size: 0.9rem; }
-          .info-row { display: flex; justify-content: space-between; margin-bottom: 0.5rem; }
-          .info-row:last-child { margin-bottom: 0; }
-          .info-label { color: #64748b; }
-          .info-val { color: #e2e8f0; font-weight: 600; font-family: monospace; }
-          .btn-logout { background: transparent; border: 1px solid #ef4444; color: #f87171; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; transition: all 0.2s; }
-          .btn-logout:hover { background: #ef4444; color: #fff; }
-        </style>
-      </head>
-      <body>
-        <div class="card">
-          <div class="badge">
-            <span style="font-size: 1.2rem;">●</span> CONEXIÓN ACTIVA 24/7
-          </div>
-          <h1>El Arca Display Club</h1>
-          <p>La IA de WhatsApp está operativa y respondiendo consultas de clientes y órdenes de administrador.</p>
-          <div class="info-box">
-            <div class="info-row">
-              <span class="info-label">📱 Bot Vinculado:</span>
-              <span class="info-val">+${connectedPhone || BOT_PHONE}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">👑 Teléfono Admin:</span>
-              <span class="info-val">+${ADMIN_PHONE}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">🧠 Motor IA:</span>
-              <span class="info-val">Google Gemini + Vercel</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">💾 Sesión:</span>
-              <span class="info-val">Guardada en MongoDB Atlas</span>
-            </div>
-          </div>
-          <form method="POST" action="/logout?key=${encodeURIComponent(userKey || '')}" onsubmit="return confirm('¿Seguro que deseas desvincular la sesión de WhatsApp?');">
-            <button type="submit" class="btn-logout">Desvincular WhatsApp</button>
-          </form>
-        </div>
-      </body>
-      </html>
-    `);
-  }
-
-  // Si está esperando escanear el QR
-  res.send(`
-    <!DOCTYPE html>
-    <html lang="es">
-    <head>
-      <meta charset="utf-8">
-      <title>Vincular WhatsApp - El Arca</title>
-      <meta name="viewport" content="width=device-width, initial-scale=1">
-      <meta http-equiv="refresh" content="12">
-      <style>
-        body { font-family: system-ui, -apple-system, sans-serif; background: #090d16; color: #f8fafc; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 1rem; }
-        .card { background: #131c2e; border: 1px solid #233554; border-radius: 16px; padding: 2.5rem 2rem; max-width: 440px; width: 100%; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
-        .badge { display: inline-flex; align-items: center; gap: 8px; background: rgba(234,179,8,0.15); color: #facc15; border: 1px solid rgba(234,179,8,0.3); padding: 6px 16px; border-radius: 9999px; font-weight: 700; font-size: 0.9rem; margin-bottom: 1.5rem; }
-        h1 { margin: 0 0 0.5rem 0; font-size: 1.5rem; color: #f8fafc; }
-        p { color: #94a3b8; font-size: 0.9rem; line-height: 1.5; margin: 0.5rem 0 1.5rem 0; }
-        .qr-wrapper { background: #ffffff; padding: 16px; border-radius: 12px; display: inline-block; box-shadow: 0 8px 24px rgba(0,0,0,0.4); margin-bottom: 1.5rem; }
-        .qr-wrapper img { display: block; max-width: 250px; width: 100%; height: auto; }
-        .steps { background: #0b1120; border: 1px solid #1e293b; border-radius: 10px; padding: 1rem; text-align: left; font-size: 0.85rem; color: #cbd5e1; }
-        .steps ol { margin: 0; padding-left: 1.2rem; }
-        .steps li { margin-bottom: 0.4rem; }
-        .steps li:last-child { margin-bottom: 0; }
-        .footer-note { font-size: 0.75rem; color: #64748b; margin-top: 1rem; }
-      </style>
-    </head>
-    <body>
-      <div class="card">
-        <div class="badge">
-          ⏳ ESPERANDO VINCULACIÓN
-        </div>
-        <h1>Vincular WhatsApp</h1>
-        <p>Abre WhatsApp en el teléfono o línea comercial de la tienda y escanea este código QR:</p>
-        
-        <div class="qr-wrapper">
-          ${
-            currentQRDataUrl
-              ? `<img src="${currentQRDataUrl}" alt="Código QR de WhatsApp" />`
-              : `<div style="padding: 40px; color: #64748b; font-weight: bold;">Generando código QR...<br><small>Recarga en unos segundos</small></div>`
-          }
-        </div>
-
-        <div class="steps">
-          <ol>
-            <li>Abre <strong>WhatsApp</strong> en el teléfono que atenderá la tienda</li>
-            <li>Toca los tres puntos (⋮) o Ajustes / Configuración</li>
-            <li>Selecciona <strong>Dispositivos vinculados</strong></li>
-            <li>Toca en <strong>Vincular un dispositivo</strong> y apunta la cámara a esta pantalla</li>
-          </ol>
-        </div>
-
-        <div class="footer-note">
-          Esta página se actualiza automáticamente cada 12 segundos.
-        </div>
-      </div>
-    </body>
-    </html>
-  `);
-});
-
-// Endpoint para desvincular sesión manualmente
-app.post('/logout', async (req, res) => {
-  const userKey = req.query.key || req.query.pin;
-  if (SCAN_ACCESS_KEY && userKey !== SCAN_ACCESS_KEY) {
-    return res.status(401).send('No autorizado');
-  }
-  try {
-    if (socketInstance) {
-      await socketInstance.logout();
-    }
-    // Limpiar archivos locales y en MongoDB
-    fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-    fs.mkdirSync(AUTH_DIR, { recursive: true });
-    await clearMongoSession();
-
-    isConnected = false;
-    connectedPhone = null;
-    currentQR = null;
-    currentQRDataUrl = null;
-
-    setTimeout(() => {
-      startBaileysSocket();
-    }, 2000);
-
-    res.redirect(`/scan?key=${encodeURIComponent(userKey || '')}`);
-  } catch (err) {
-    res.status(500).send('Error al desvincular: ' + err.message);
-  }
-});
-
-// Helper para extraer texto de cualquier formato de mensaje de WhatsApp (incluyendo efímeros, vistos una vez, editados, citas y multimedia)
-function extractTextFromWhatsAppMessage(msg) {
-  if (!msg || !msg.message) return '';
-  const m = msg.message;
-  return (
-    m.conversation ||
-    m.extendedTextMessage?.text ||
-    m.imageMessage?.caption ||
-    m.videoMessage?.caption ||
-    m.documentWithCaptionMessage?.message?.documentMessage?.caption ||
-    m.ephemeralMessage?.message?.conversation ||
-    m.ephemeralMessage?.message?.extendedTextMessage?.text ||
-    m.viewOnceMessage?.message?.conversation ||
-    m.viewOnceMessage?.message?.extendedTextMessage?.text ||
-    m.viewOnceMessageV2?.message?.conversation ||
-    m.viewOnceMessageV2?.message?.extendedTextMessage?.text ||
-    m.buttonsResponseMessage?.selectedButtonId ||
-    m.listResponseMessage?.singleSelectReply?.selectedRowId ||
-    m.templateButtonReplyMessage?.selectedId ||
-    ''
+app.get("/scan", async (req, res) => {
+  const authorized = (req.headers.cookie || "")
+    .split(";")
+    .some((c) => equalSecret(c.trim(), "bridge_ui=" + uiSession));
+  const content = authorized
+    ? connected
+      ? "<h2>WhatsApp conectado</h2><p>+ " +
+        phone +
+        "</p><p>La PC debe permanecer encendida y con conexión a Internet.</p>"
+      : qr
+        ? '<h2>Vincular WhatsApp</h2><img width="260" alt="QR de vinculación" src="' +
+          (await QRCode.toDataURL(qr)) +
+          '"><p>WhatsApp → Dispositivos vinculados → Vincular.</p>'
+        : "<h2>Reconectando…</h2><p>Revisa la consola si este estado persiste.</p>"
+    : '<h2>Acceso al puente local</h2><form method="post" action="/scan/login"><label>Clave local <input name="key" type="password" required autocomplete="current-password"></label><button>Entrar</button></form>';
+  res.send(
+    '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="refresh" content="15"><title>El Arca — WhatsApp local</title><style>body{font:16px system-ui;background:#090d16;color:#eef;padding:2rem;text-align:center}main{max-width:420px;margin:3rem auto}input,button{padding:12px;margin:12px;border-radius:8px}img{background:white;padding:12px}</style></head><body><main>' +
+      content +
+      "</main></body></html>",
   );
+});
+// All outbound requests go through the authenticated cloud queue. No public /send or logout endpoint.
+async function cloud(action) {
+  const raw = JSON.stringify(action);
+  const r = await fetch(cloudUrl, {
+    method: "POST",
+    headers: signedHeaders(raw, SECRET),
+    body: raw,
+    signal: AbortSignal.timeout(55000),
+  });
+  if (!r.ok) throw new Error("Cloud HTTP " + r.status);
+  return r.json();
 }
-
-// Endpoint para enviar mensaje proactivo vía HTTP POST
-app.post('/send', async (req, res) => {
-  const { secret, to, text } = req.body || {};
-  // Permitir si el secreto coincide, o si la petición proviene de localhost local
-  const isLocalOrigin = req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1';
-  if (secret && secret !== BRIDGE_SECRET && !isLocalOrigin) {
-    return res.status(401).json({ success: false, error: 'Unauthorized bridge request' });
-  }
-  if (!isConnected || !socketInstance) {
-    return res.status(503).json({ success: false, error: 'WhatsApp is not connected', isConnected });
-  }
-  if (!to || !text) {
-    return res.status(400).json({ success: false, error: 'Missing to or text' });
-  }
-
+async function save(file, data) {
+  const tmp = file + ".tmp";
+  await fs.writeFile(tmp, JSON.stringify(data), { mode: 0o600 });
+  await fs.rename(tmp, file);
+}
+async function flushIncoming() {
+  if (submitting) return;
+  submitting = true;
   try {
-    const cleanTo = to.replace(/\D/g, '');
-    const jid = cleanTo.includes('@') ? cleanTo : `${cleanTo}@s.whatsapp.net`;
-    await socketInstance.sendMessage(jid, { text });
-    console.log(`[Outbound Direct Send] Mensaje enviado a +${cleanTo}: "${text.slice(0, 50)}..."`);
-    res.json({ success: true, status: 'sent', to: cleanTo });
-  } catch (err) {
-    console.error(`[Outbound Direct Send Error]`, err.message);
-    res.status(500).json({ success: false, error: err.message });
+    for (const file of (await fs.readdir(SPOOL)).filter(
+      (n) => n.startsWith("in-") && n.endsWith(".json"),
+    )) {
+      const target = path.join(SPOOL, file);
+      const event = JSON.parse(await fs.readFile(target, "utf8"));
+      const raw = JSON.stringify(event);
+      const r = await fetch(WEBHOOK, {
+        method: "POST",
+        headers: signedHeaders(raw, SECRET),
+        body: raw,
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!r.ok) throw new Error("Webhook HTTP " + r.status);
+      await fs.unlink(target);
+    }
+  } finally {
+    submitting = false;
+  }
+}
+async function worker() {
+  if (working || stopping) return;
+  clearTimeout(workTimer);
+  working = true;
+  try {
+    await flushIncoming();
+    const { messages = [], processed = false } = await cloud({
+      action: "work",
+      connected,
+      phone,
+    });
+    lastHeartbeat = Date.now();
+    if (!connected) return;
+    for (const message of messages) {
+      const journal = path.join(
+        SPOOL,
+        "out-" +
+          createHash("sha256").update(message.id).digest("hex") +
+          ".json",
+      );
+      let state;
+      try {
+        state = JSON.parse(await fs.readFile(journal, "utf8"));
+      } catch (e) {
+        if (e.code !== "ENOENT") throw e;
+        state = { sent: 0 };
+      }
+      const chunks = message.text.match(/[\s\S]{1,3500}/g) || [];
+      for (let i = state.sent; i < chunks.length; i++) {
+        const id = createHash("sha256")
+          .update(message.id + ":" + i)
+          .digest("hex")
+          .slice(0, 32)
+          .toUpperCase();
+        const result = await sock.sendMessage(
+          message.to + "@s.whatsapp.net",
+          { text: chunks[i] },
+          { messageId: id },
+        );
+        state = {
+          sent: i + 1,
+          providerId: result?.key?.id,
+          updatedAt: Date.now(),
+        };
+        await save(journal, state);
+      }
+      await cloud({
+        action: "ack",
+        id: message.id,
+        success: true,
+        providerId: state.providerId,
+      });
+    }
+    nextPoll =
+      messages.length || processed ? 2500 : Math.min(15000, nextPoll + 2500);
+    lastError = "";
+  } catch (e) {
+    lastError = e.message;
+    console.warn("[Bridge]", e.message);
+  } finally {
+    working = false;
+    if (!stopping) workTimer = setTimeout(worker, nextPoll).unref();
+  }
+}
+async function start() {
+  if (stopping || reconnecting) return;
+  reconnecting = true;
+  try {
+    const { state, saveCreds } = await authStore(AUTH);
+    const { version } = await fetchLatestBaileysVersion();
+    const current = makeWASocket({
+      version,
+      auth: state,
+      logger: pino({ level: "error" }),
+      syncFullHistory: false,
+      browser: ["El Arca", "Chrome", "1.0"],
+      shouldIgnoreJid: (jid) =>
+        /@(g\.us|newsletter|broadcast)$/.test(jid || ""),
+    });
+    sock = current;
+    current.ev.on("creds.update", () => saveCreds().catch(fatal));
+    current.ev.on("connection.update", (update) => {
+      if (current !== sock) return;
+      if (update.qr) qr = update.qr;
+      if (update.connection === "open") {
+        connected = true;
+        qr = "";
+        phone =
+          current.user?.id?.split(":")[0]?.split("@")[0]?.replace(/\D/g, "") ||
+          "";
+        backoff = 2000;
+        console.log(
+          "[WhatsApp] Conectado. Panel QR: http://127.0.0.1:" + PORT + "/scan",
+        );
+        void worker();
+      }
+      if (update.connection === "close") {
+        connected = false;
+        lastHeartbeat = 0;
+        const code = update.lastDisconnect?.error?.output?.statusCode;
+        if (code === DisconnectReason.loggedOut) {
+          console.error(
+            "[WhatsApp] Sesión cerrada desde el teléfono. Conserva una copia y retira auth_session para vincular de nuevo.",
+          );
+          return;
+        }
+        if (!stopping) {
+          const delay = backoff;
+          backoff = Math.min(60000, backoff * 2);
+          setTimeout(() => start().catch(fatal), delay);
+        }
+      }
+    });
+    current.ev.on("contacts.upsert", (contacts) => {
+      for (const contact of contacts) {
+        if (contact.lid && contact.id?.endsWith("@s.whatsapp.net"))
+          lidToPhone.set(contact.lid, contact.id);
+      }
+    });
+    current.ev.on("chats.phoneNumberShare", (event) => {
+      if (event.lid && event.jid?.endsWith("@s.whatsapp.net"))
+        lidToPhone.set(event.lid, event.jid);
+    });
+    current.ev.on("messages.upsert", async (event) => {
+      try {
+        if (event.type !== "notify") return;
+        for (const msg of event.messages) {
+          const jid = msg.key.remoteJid || "";
+          if (msg.key.fromMe || /@(g\.us|newsletter|broadcast)$/.test(jid))
+            continue;
+          const alternative =
+            msg.key.remoteJidAlt ||
+            msg.key.participantPn ||
+            msg.key.senderPn ||
+            "";
+          let sender = jid.endsWith("@s.whatsapp.net") ? jid : alternative;
+          if (!sender.endsWith("@s.whatsapp.net")) {
+            const resolved =
+              await current.signalRepository?.lidMapping?.getPNForLID?.(jid);
+            sender = resolved || "";
+          }
+          if (!sender && lidToPhone.has(jid)) sender = lidToPhone.get(jid);
+          const senderPhone = sender.split("@")[0].replace(/\D/g, "");
+          if (!/^\d{8,15}$/.test(senderPhone)) {
+            console.warn(
+              "[WhatsApp] Identidad pendiente de resolver; no se otorgan permisos a LIDs.",
+            );
+            continue;
+          }
+          const id = msg.key.id;
+          if (!id) continue;
+          const eventBody = {
+            source: "baileys_bridge",
+            senderPhone,
+            userText: extractText(msg).slice(0, 20000),
+            messageId: id,
+          };
+          const target = path.join(
+            SPOOL,
+            "in-" +
+              createHash("sha256")
+                .update(senderPhone + ":" + id)
+                .digest("hex") +
+              ".json",
+          );
+          await save(target, eventBody);
+        }
+        void flushIncoming().catch((e) =>
+          console.warn("[Entrada pendiente]", e.message),
+        );
+      } catch (e) {
+        console.warn("[Entrada]", e.message);
+      }
+    });
+  } finally {
+    reconnecting = false;
+  }
+}
+async function shutdown(code = 0) {
+  if (stopping) return;
+  stopping = true;
+  connected = false;
+  await cloud({ action: "heartbeat", connected: false, phone }).catch(() => {});
+  sock?.end(new Error("Cierre del puente"));
+  server.close(() => process.exit(code));
+  setTimeout(() => process.exit(code), 3000).unref();
+}
+function fatal(e) {
+  console.error("[Error fatal]", e?.message || "Error");
+  void shutdown(1);
+}
+process.on("uncaughtException", fatal);
+process.on("unhandledRejection", fatal);
+process.on("SIGINT", () => shutdown());
+process.on("SIGTERM", () => shutdown());
+const server = app.listen(PORT, HOST, async () => {
+  try {
+    await fs.mkdir(SPOOL, { recursive: true });
+    await start();
+    void worker();
+    console.log(
+      "[Bridge] Solo acceso local: http://127.0.0.1:" + PORT + "/scan",
+    );
+  } catch (e) {
+    fatal(e);
   }
 });
-
-// Iniciar servidor HTTP
-app.listen(PORT, async () => {
-  console.log(`[Bridge Web Server] Escuchando en puerto ${PORT}`);
-  await initMongo();
-  startBaileysSocket();
-});
-
-// =============================================================================
-// MOTOR BAILEYS (Conexión WebSocket con WhatsApp Web)
-// =============================================================================
-async function startBaileysSocket() {
-  console.log('[Baileys] Inicializando socket de WhatsApp...');
-
-  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-  const { version, isLatest } = await fetchLatestBaileysVersion();
-  console.log(`[Baileys] Usando versión de WhatsApp Web v${version.join('.')} (Última: ${isLatest})`);
-
-  const sock = makeWASocket({
-    version,
-    auth: state,
-    logger: pino({ level: 'warn' }),
-    browser: ['El Arca Display Club', 'Chrome', '1.0.0'],
-    syncFullHistory: false,
-    generateHighQualityLinkPreview: false,
-    // FILTRADO ESTRICTO DE SOCKET: Ignora por completo grupos, canales y difusiones
-    // Esto previene saturación de descifrado Signal de grupos y asegura atención inmediata a clientes y admins
-    shouldIgnoreJid: (jid) => {
-      if (!jid) return false;
-      return (
-        jid.endsWith('@g.us') ||
-        jid.endsWith('@newsletter') ||
-        jid.includes('@broadcast')
-      );
-    },
-  });
-
-  socketInstance = sock;
-
-  // Actualización de credenciales y sincronización con MongoDB
-  sock.ev.on('creds.update', async () => {
-    await saveCreds();
-    // Guardar creds.json y archivos modificados en MongoDB
-    try {
-      const files = fs.readdirSync(AUTH_DIR);
-      for (const f of files) {
-        await syncFileToMongo(f);
-      }
-    } catch (err) {
-      console.warn('[Sync Error]', err.message);
-    }
-  });
-
-  // Manejo de eventos de conexión y QR
-  sock.ev.on('connection.update', async (update) => {
-    const { connection, lastDisconnect, qr } = update;
-
-    if (qr) {
-      currentQR = qr;
-      try {
-        currentQRDataUrl = await QRCode.toDataURL(qr, { margin: 2, scale: 7 });
-      } catch (err) {
-        console.error('[QR Error]', err);
-      }
-      console.log('[Baileys] 📲 Nuevo código QR generado. Escanéalo en la terminal o abre /scan');
-    }
-
-    if (connection === 'open') {
-      isConnected = true;
-      currentQR = null;
-      currentQRDataUrl = null;
-      connectedPhone = sock.user?.id ? sock.user.id.split(':')[0].replace(/\D/g, '') : null;
-      console.log(`[Baileys] ✅ Conectado exitosamente a WhatsApp con el número: +${connectedPhone}`);
-
-      // Sincronizar número real conectado con MongoDB Atlas y la API de Vercel
-      if (connectedPhone) {
-        if (mongoDb) {
-          mongoDb.collection('whatsappconfigs').updateOne(
-            {},
-            { $set: { botPhone: connectedPhone, botStatus: 'online', updatedAt: new Date() } },
-            { upsert: true }
-          ).catch((err) => console.warn('[Config Mongo Sync Error]', err.message));
-        }
-
-        // Notificar al endpoint de Vercel para actualizar la interfaz web en la nube
-        fetch(VERCEL_WEBHOOK_URL.replace('/webhook', '/admin/config'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'set_bot_phone', phone: connectedPhone }),
-        }).catch(() => {});
-      }
-    }
-
-    if (connection === 'close') {
-      isConnected = false;
-      const statusCode = lastDisconnect?.error?.output?.statusCode;
-      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-      console.log(
-        `[Baileys] Conexión cerrada. Código: ${statusCode} | ¿Reconectar?: ${shouldReconnect}`
-      );
-
-      if (shouldReconnect) {
-        console.log('[Baileys] Reconectando en 5 segundos...');
-        setTimeout(() => startBaileysSocket(), 5000);
-      } else {
-        console.warn('[Baileys] Sesión cerrada en el teléfono. Por favor escanea el QR nuevamente.');
-        fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-        fs.mkdirSync(AUTH_DIR, { recursive: true });
-        await clearMongoSession();
-        setTimeout(() => startBaileysSocket(), 2000);
-      }
-    }
-  });
-
-  // Mapeo dinámico y universal de WhatsApp LID -> Teléfono Real
-  const dynamicLidToPhone = new Map([['113198191661280', ADMIN_PHONE || '5352031972']]);
-
-  // Captura eventos de intercambio de número de teléfono y contactos para resolver cualquier LID a teléfono
-  sock.ev.on('chats.phoneNumberShare', ({ lid, jid }) => {
-    if (lid && jid) {
-      const cleanLid = lid.split('@')[0].replace(/\D/g, '');
-      const cleanPhone = jid.split('@')[0].replace(/\D/g, '');
-      if (cleanLid && cleanPhone) {
-        dynamicLidToPhone.set(cleanLid, cleanPhone);
-        console.log(`[Baileys LID Resuelto] ${cleanLid} -> +${cleanPhone}`);
-      }
-    }
-  });
-
-  sock.ev.on('contacts.upsert', (contacts) => {
-    for (const c of contacts) {
-      if (c.lid && c.id) {
-        const cleanLid = c.lid.split('@')[0].replace(/\D/g, '');
-        const cleanPhone = c.id.split('@')[0].replace(/\D/g, '');
-        if (cleanLid && cleanPhone) {
-          dynamicLidToPhone.set(cleanLid, cleanPhone);
-        }
-      }
-    }
-  });
-
-  // ===========================================================================
-  // MENSAJES ENTRANTES (Reenvío a Vercel Webhook + Gemini)
-  // ===========================================================================
-  sock.ev.on('messages.upsert', async (m) => {
-    if (m.type !== 'notify') return;
-
-    for (const msg of m.messages) {
-      // Ignorar mensajes enviados por el propio bot para evitar bucles infinitos
-      if (msg.key.fromMe) continue;
-
-      const remoteJid = msg.key.remoteJid || '';
-
-      // Ignorar mensajes de grupos, canales/newsletters o estados/stories
-      if (remoteJid.endsWith('@g.us') || remoteJid.endsWith('@newsletter') || remoteJid.includes('@broadcast')) continue;
-
-      let senderPhone = remoteJid.split('@')[0].replace(/\D/g, '');
-      const rawLid = remoteJid.endsWith('@lid') ? senderPhone : null;
-
-      // Si Baileys incluye número alternativo en el mensaje o fue resuelto dinámicamente
-      const altJid = msg.key.remoteJidAlt || msg.key.participantPn || msg.key.senderPn || '';
-      if (altJid && (altJid.includes('@s.whatsapp.net') || /^\d+$/.test(altJid))) {
-        senderPhone = altJid.split('@')[0].replace(/\D/g, '');
-      } else if (rawLid && dynamicLidToPhone.has(rawLid)) {
-        senderPhone = dynamicLidToPhone.get(rawLid);
-      }
-
-      // Extraer texto del mensaje de forma completa y tolerante a formatos
-      const userText = extractTextFromWhatsAppMessage(msg);
-
-      if (!userText || !userText.trim()) continue;
-
-      console.log(`[Inbound WhatsApp] De: +${senderPhone}${rawLid ? ` (LID: ${rawLid})` : ''} | Mensaje: "${userText}"`);
-
-      // Enviar a Vercel Webhook para procesamiento con Gemini y MongoDB
-      try {
-        const response = await fetch(VERCEL_WEBHOOK_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            source: 'baileys_bridge',
-            secret: BRIDGE_SECRET,
-            botPhone: connectedPhone || BOT_PHONE,
-            senderPhone,
-            senderLid: rawLid,
-            chatId: remoteJid,
-            userText: userText.trim(),
-            messageId: msg.key.id,
-          }),
-          signal: AbortSignal.timeout(25000),
-        });
-
-        if (!response.ok) {
-          console.error(`[Vercel Webhook Error] Status ${response.status}`);
-          continue;
-        }
-
-        const data = await response.json();
-
-        // Si Vercel devuelve una respuesta generada por la IA
-        if (data && data.reply && typeof data.reply === 'string') {
-          console.log(`[Outbound Reply] Enviando respuesta a +${senderPhone}...`);
-          try {
-            await sock.sendMessage(
-              remoteJid,
-              { text: data.reply },
-              { quoted: msg }
-            );
-          } catch (quotedErr) {
-            console.warn('[Outbound Reply] Falló envío con cita, reenviando mensaje directo...', quotedErr.message);
-            await sock.sendMessage(remoteJid, { text: data.reply });
-          }
-          console.log(`[Outbound Reply] Enviado con éxito.`);
-        }
-      } catch (err) {
-        console.error('[Error al comunicarse con Vercel Webhook]', err.message);
-      }
-    }
-  });
-}
+server.on("error", fatal);

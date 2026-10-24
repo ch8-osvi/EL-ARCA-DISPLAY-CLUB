@@ -1,7 +1,8 @@
-'use client';
+"use client";
+import { checkAdminSession, loginAdmin } from "@/lib/auth-client";
 
-import React, { useState, useEffect, useRef } from 'react';
-import Link from 'next/link';
+import React, { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import {
   ArrowLeft,
   Sparkles,
@@ -26,11 +27,11 @@ import {
   CheckCircle2,
   Edit3,
   Copy,
-} from 'lucide-react';
+} from "lucide-react";
 
 interface ChatMessage {
   id: string;
-  sender: 'user' | 'assistant';
+  sender: "user" | "assistant";
   text: string;
   time: string;
   isTyping?: boolean;
@@ -50,149 +51,157 @@ interface PresetPrompt {
   description: string;
   prompt: string;
   tag: string;
-  type: 'query' | 'template';
+  type: "query" | "template";
 }
 
 const PRESET_PROMPTS: PresetPrompt[] = [
   // ── ANALYTICS ────────────────────────────────────────────────────────────────
   {
     icon: DollarSign,
-    label: '¿Cuánto vendí hoy?',
-    description: 'Total recaudado hoy en USD/CUP y órdenes despachadas.',
-    prompt: '¿Cuánto vendí hoy en total y cuántas órdenes se registraron?',
-    tag: 'Ventas',
-    type: 'query',
+    label: "¿Cuánto vendí hoy?",
+    description: "Total recaudado hoy en USD/CUP y órdenes despachadas.",
+    prompt: "¿Cuánto vendí hoy en total y cuántas órdenes se registraron?",
+    tag: "Ventas",
+    type: "query",
   },
   {
     icon: Calendar,
-    label: '¿Cuánto vendí ayer?',
-    description: 'Comparativa de facturación de la jornada anterior.',
-    prompt: '¿Cuánto vendí ayer y qué displays se despacharon?',
-    tag: 'Histórico',
-    type: 'query',
+    label: "¿Cuánto vendí ayer?",
+    description: "Comparativa de facturación de la jornada anterior.",
+    prompt: "¿Cuánto vendí ayer y qué displays se despacharon?",
+    tag: "Histórico",
+    type: "query",
   },
   {
     icon: AlertTriangle,
-    label: '¿Quién me debe?',
-    description: 'Listado de órdenes pendientes de cobro y deudores.',
-    prompt: '¿Quién me debe dinero y cuántas personas tienen pagos pendientes?',
-    tag: 'Cobranzas',
-    type: 'query',
+    label: "¿Quién me debe?",
+    description: "Listado de órdenes pendientes de cobro y deudores.",
+    prompt: "¿Quién me debe dinero y cuántas personas tienen pagos pendientes?",
+    tag: "Cobranzas",
+    type: "query",
   },
   {
     icon: ShieldAlert,
-    label: 'Mermas y Garantías',
-    description: 'Ranking de modelos con más bajas, roturas y motivos.',
-    prompt: '¿Cuáles son los modelos con más problemas de garantía o mermas?',
-    tag: 'Taller',
-    type: 'query',
+    label: "Mermas y Garantías",
+    description: "Ranking de modelos con más bajas, roturas y motivos.",
+    prompt: "¿Cuáles son los modelos con más problemas de garantía o mermas?",
+    tag: "Taller",
+    type: "query",
   },
   {
     icon: Smartphone,
-    label: 'Displays más vendidos',
-    description: 'Top de rotación de pantallas por volumen y demanda.',
-    prompt: '¿Cuáles son los 5 displays más vendidos?',
-    tag: 'Rotación',
-    type: 'query',
+    label: "Displays más vendidos",
+    description: "Top de rotación de pantallas por volumen y demanda.",
+    prompt: "¿Cuáles son los 5 displays más vendidos?",
+    tag: "Rotación",
+    type: "query",
   },
   {
     icon: Boxes,
-    label: 'Stock y Agotados',
-    description: 'Modelos en cero o con existencias bajas.',
-    prompt: '¿Qué modelos están agotados o con bajo stock?',
-    tag: 'Inventario',
-    type: 'query',
+    label: "Stock y Agotados",
+    description: "Modelos en cero o con existencias bajas.",
+    prompt: "¿Qué modelos están agotados o con bajo stock?",
+    tag: "Inventario",
+    type: "query",
   },
   {
     icon: Copy,
-    label: 'Detectar duplicados',
-    description: 'Encuentra pantallas multi-compatibles registradas con nombres diferentes.',
-    prompt: '¿Qué pantallas están duplicadas en el inventario?',
-    tag: 'Catálogo',
-    type: 'query',
+    label: "Detectar duplicados",
+    description:
+      "Encuentra pantallas multi-compatibles registradas con nombres diferentes.",
+    prompt: "¿Qué pantallas están duplicadas en el inventario?",
+    tag: "Catálogo",
+    type: "query",
   },
   {
     icon: TrendingUp,
-    label: 'Día récord de ventas',
-    description: 'El día histórico de mayor facturación.',
-    prompt: '¿Cuál ha sido el día récord de mayores ventas?',
-    tag: 'Récord',
-    type: 'query',
+    label: "Día récord de ventas",
+    description: "El día histórico de mayor facturación.",
+    prompt: "¿Cuál ha sido el día récord de mayores ventas?",
+    tag: "Récord",
+    type: "query",
   },
   // ── GESTIÓN / ACCIONES ───────────────────────────────────────────────────────
   {
     icon: Plus,
-    label: 'Registrar venta rápida',
-    description: 'Carga plantilla para registrar venta y descontar stock.',
-    prompt: 'Registrar venta rápida: 1 [Modelo de Pantalla] al cliente [Consumidor Final], pagado en [USD o CUP].',
-    tag: 'Gestión',
-    type: 'template',
+    label: "Registrar venta rápida",
+    description: "Carga plantilla para registrar venta y descontar stock.",
+    prompt:
+      "Registrar venta rápida: 1 [Modelo de Pantalla] al cliente [Consumidor Final], pagado en [USD o CUP].",
+    tag: "Gestión",
+    type: "template",
   },
   {
     icon: DollarSign,
-    label: 'Cambiar precio de producto',
-    description: 'Carga plantilla para actualizar precio en catálogo.',
-    prompt: 'Cambia el precio de [Modelo exacto] a $[Nuevo Precio] USD.',
-    tag: 'Precios',
-    type: 'template',
+    label: "Cambiar precio de producto",
+    description: "Carga plantilla para actualizar precio en catálogo.",
+    prompt: "Cambia el precio de [Modelo exacto] a $[Nuevo Precio] USD.",
+    tag: "Precios",
+    type: "template",
   },
   {
     icon: Boxes,
-    label: 'Ajustar stock de producto',
-    description: 'Carga plantilla para sumar o restar unidades en almacén.',
-    prompt: 'Ajustar stock de [Modelo exacto]: sumar [Cantidad] unidades por motivo: [Motivo]',
-    tag: 'Stock',
-    type: 'template',
+    label: "Ajustar stock de producto",
+    description: "Carga plantilla para sumar o restar unidades en almacén.",
+    prompt:
+      "Ajustar stock de [Modelo exacto]: sumar [Cantidad] unidades por motivo: [Motivo]",
+    tag: "Stock",
+    type: "template",
   },
   {
     icon: CheckCircle2,
-    label: 'Marcar orden como pagada',
-    description: 'Carga plantilla para saldar deuda de una orden.',
-    prompt: 'Marca la orden #[Código de Orden] como pagada.',
-    tag: 'Cobros',
-    type: 'template',
+    label: "Marcar orden como pagada",
+    description: "Carga plantilla para saldar deuda de una orden.",
+    prompt: "Marca la orden #[Código de Orden] como pagada.",
+    tag: "Cobros",
+    type: "template",
   },
   {
     icon: Trash2,
-    label: 'Anular orden de venta',
-    description: 'Cancela orden y reintegra las pantallas al almacén.',
-    prompt: 'Anula la orden #[Código de Orden] por motivo: [Motivo de la anulación]',
-    tag: 'Órdenes',
-    type: 'template',
+    label: "Anular orden de venta",
+    description: "Cancela orden y reintegra las pantallas al almacén.",
+    prompt:
+      "Anula la orden #[Código de Orden] por motivo: [Motivo de la anulación]",
+    tag: "Órdenes",
+    type: "template",
   },
   {
     icon: RefreshCw,
-    label: 'Actualizar tasa de cambio',
-    description: 'Modifica la tasa oficial de conversión USD a CUP.',
-    prompt: 'Actualiza la tasa de cambio oficial a: 1 USD = [Tasa en CUP] CUP.',
-    tag: 'Finanzas',
-    type: 'template',
+    label: "Actualizar tasa de cambio",
+    description: "Modifica la tasa oficial de conversión USD a CUP.",
+    prompt: "Actualiza la tasa de cambio oficial a: 1 USD = [Tasa en CUP] CUP.",
+    tag: "Finanzas",
+    type: "template",
   },
   {
     icon: Plus,
-    label: 'Agregar nuevo producto',
-    description: 'Carga plantilla para dar de alta un nuevo repuesto.',
-    prompt: 'Agrega al catálogo: Marca [Marca], Modelo [Modelo], Calidad [ORIGINAL C/M / S/M / INCELL], Precio $[Precio] USD, Stock [Cantidad] unidades.',
-    tag: 'Catálogo',
-    type: 'template',
+    label: "Agregar nuevo producto",
+    description: "Carga plantilla para dar de alta un nuevo repuesto.",
+    prompt:
+      "Agrega al catálogo: Marca [Marca], Modelo [Modelo], Calidad [ORIGINAL C/M / S/M / INCELL], Precio $[Precio] USD, Stock [Cantidad] unidades.",
+    tag: "Catálogo",
+    type: "template",
   },
 ];
 
-const SESSIONS_STORAGE_KEY = 'el_arca_ai_chat_sessions_v2';
-const ACTIVE_SESSION_KEY = 'el_arca_ai_active_session_id';
+const SESSIONS_STORAGE_KEY = "el_arca_ai_chat_sessions_v2";
+const ACTIVE_SESSION_KEY = "el_arca_ai_active_session_id";
 
 const createDefaultSession = (): ChatSession => {
   const now = Date.now();
-  const timeStr = new Date(now).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+  const timeStr = new Date(now).toLocaleTimeString("es-ES", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
   return {
     id: `session-${now}`,
-    title: 'Nueva Conversación',
+    title: "Nueva Conversación",
     createdAt: now,
     updatedAt: now,
     messages: [
       {
         id: `welcome-${now}`,
-        sender: 'assistant',
+        sender: "assistant",
         text: `👋 **¡Hola! Soy tu Asistente de Gestión IA de El Arca Display Club.**\n\nEstoy conectado en tiempo real a tu base de datos MongoDB. Puedo **consultar Y modificar** tu negocio:\n\n📊 **Analíticas:** ventas de hoy/ayer, deudores, mermas, top productos\n🛍️ **Gestión:** crear órdenes, cambiar precios, ajustar stock, agregar productos\n💳 **Cobros:** marcar órdenes como pagadas o pendientes\n\nUsa las **Acciones Rápidas** del panel lateral o escribe directamente lo que necesitas.`,
         time: timeStr,
       },
@@ -203,8 +212,8 @@ const createDefaultSession = (): ChatSession => {
 export default function AIAssistantPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string>('');
-  const [inputQuery, setInputQuery] = useState('');
+  const [activeSessionId, setActiveSessionId] = useState<string>("");
+  const [inputQuery, setInputQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [quotaAlert, setQuotaAlert] = useState<string | null>(null);
   const [templateNotice, setTemplateNotice] = useState<string | null>(null);
@@ -217,10 +226,7 @@ export default function AIAssistantPage() {
 
   // Check auth
   useEffect(() => {
-    const auth = sessionStorage.getItem('el_arca_admin_auth');
-    if (auth === 'true') {
-      setIsAuthenticated(true);
-    }
+    void checkAdminSession().then(setIsAuthenticated);
   }, []);
 
   // Load chat sessions from localStorage
@@ -238,7 +244,7 @@ export default function AIAssistantPage() {
         }
       }
     } catch (e) {
-      console.error('Error loading AI chat sessions:', e);
+      console.error("Error loading AI chat sessions:", e);
     }
 
     // Default session if nothing found
@@ -253,17 +259,18 @@ export default function AIAssistantPage() {
     try {
       localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(updated));
     } catch (e) {
-      console.error('Error saving AI sessions:', e);
+      console.error("Error saving AI sessions:", e);
     }
   };
 
   // Find active session
-  const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0];
+  const activeSession =
+    sessions.find((s) => s.id === activeSessionId) || sessions[0];
   const messages = activeSession?.messages || [];
 
   // Auto-scroll to bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
   // Cleanup typing interval on unmount
@@ -313,7 +320,11 @@ export default function AIAssistantPage() {
   };
 
   // Typewriter streaming effect
-  const startTypewriter = (fullText: string, messageId: string, targetSessionId: string) => {
+  const startTypewriter = (
+    fullText: string,
+    messageId: string,
+    targetSessionId: string,
+  ) => {
     if (typingTimerRef.current) {
       clearInterval(typingTimerRef.current);
     }
@@ -325,7 +336,9 @@ export default function AIAssistantPage() {
     typingTimerRef.current = setInterval(() => {
       currentIndex += chunkSize;
       const isFinished = currentIndex >= fullText.length;
-      const currentText = isFinished ? fullText : fullText.slice(0, currentIndex);
+      const currentText = isFinished
+        ? fullText
+        : fullText.slice(0, currentIndex);
 
       if (isFinished && typingTimerRef.current) {
         clearInterval(typingTimerRef.current);
@@ -338,7 +351,9 @@ export default function AIAssistantPage() {
             ...sess,
             updatedAt: Date.now(),
             messages: sess.messages.map((m) =>
-              m.id === messageId ? { ...m, text: currentText, isTyping: !isFinished } : m
+              m.id === messageId
+                ? { ...m, text: currentText, isTyping: !isFinished }
+                : m,
             ),
           };
         });
@@ -361,28 +376,33 @@ export default function AIAssistantPage() {
 
     // Frontend validation: Prevent sending templates with unresolved placeholders
     if (/\[.*?\]/.test(queryToSend)) {
-      setTemplateNotice('⚠️ Por favor, reemplaza los datos marcados entre [corchetes] antes de enviar.');
+      setTemplateNotice(
+        "⚠️ Por favor, reemplaza los datos marcados entre [corchetes] antes de enviar.",
+      );
       setTimeout(() => {
         inputRef.current?.focus();
       }, 50);
       return;
     }
 
-    const timeStr = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    const timeStr = new Date().toLocaleTimeString("es-ES", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
     const currentSessionId = activeSession.id;
 
     // Append user message
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
-      sender: 'user',
+      sender: "user",
       text: queryToSend,
       time: timeStr,
     };
 
     // If first query in session, update title
-    const isFirstQuery = activeSession.title === 'Nueva Conversación';
+    const isFirstQuery = activeSession.title === "Nueva Conversación";
     const newTitle = isFirstQuery
-      ? queryToSend.slice(0, 32) + (queryToSend.length > 32 ? '...' : '')
+      ? queryToSend.slice(0, 32) + (queryToSend.length > 32 ? "..." : "")
       : activeSession.title;
 
     const updatedSessionsWithUser = sessions.map((sess) => {
@@ -396,7 +416,7 @@ export default function AIAssistantPage() {
     });
 
     saveSessions(updatedSessionsWithUser);
-    setInputQuery('');
+    setInputQuery("");
     setTemplateNotice(null);
     setLoading(true);
     if (showPromptsMobile) setShowPromptsMobile(false);
@@ -404,19 +424,21 @@ export default function AIAssistantPage() {
     try {
       // Build conversation history for context
       const historyMessages = activeSession.messages
-        .filter((m) => !m.id.startsWith('welcome-')) // Exclude the initial welcome message
-        .filter((m) => m.sender !== 'assistant' || !m.isTyping) // exclude typing placeholders
+        .filter((m) => !m.id.startsWith("welcome-")) // Exclude the initial welcome message
+        .filter((m) => m.sender !== "assistant" || !m.isTyping) // exclude typing placeholders
         .slice(-20) // last 20 messages
         .map((m) => ({
-          role: m.sender === 'user' ? 'user' : 'model' as 'user' | 'model',
+          role: m.sender === "user" ? "user" : ("model" as "user" | "model"),
           parts: [{ text: m.text }],
         }));
 
-      const res = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt: queryToSend,
+          conversationId: currentSessionId,
+          requestId: crypto.randomUUID(),
           history: historyMessages, // send full extracted history without deleting the last message
         }),
       });
@@ -427,9 +449,10 @@ export default function AIAssistantPage() {
       } catch {
         data = {
           success: false,
-          error: res.status === 504
-            ? 'El servidor tardó demasiado en responder (Timeout 504). Por favor repite la pregunta en unos segundos.'
-            : `El servidor respondió con código ${res.status}. Vuelve a intentar en unos segundos.`
+          error:
+            res.status === 504
+              ? "El servidor tardó demasiado en responder (Timeout 504). Por favor repite la pregunta en unos segundos."
+              : `El servidor respondió con código ${res.status}. Vuelve a intentar en unos segundos.`,
         };
       }
       setLoading(false);
@@ -439,51 +462,74 @@ export default function AIAssistantPage() {
         const assistantMsgId = `assistant-${Date.now()}`;
         const assistantMsg: ChatMessage = {
           id: assistantMsgId,
-          sender: 'assistant',
-          text: '',
-          time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+          sender: "assistant",
+          text: "",
+          time: new Date().toLocaleTimeString("es-ES", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
           isTyping: true,
         };
 
         setSessions((prev) =>
           prev.map((sess) =>
             sess.id === currentSessionId
-              ? { ...sess, updatedAt: Date.now(), messages: [...sess.messages, assistantMsg] }
-              : sess
-          )
+              ? {
+                  ...sess,
+                  updatedAt: Date.now(),
+                  messages: [...sess.messages, assistantMsg],
+                }
+              : sess,
+          ),
         );
 
         startTypewriter(data.answer, assistantMsgId, currentSessionId);
       } else {
         const isQuota = data?.isQuotaExceeded || res.status === 429;
         if (isQuota) {
-          setQuotaAlert('⏳ Límite de cuota de la API excedido (Error 429). Espera 1 minuto y vuelve a intentar.');
+          setQuotaAlert(
+            "⏳ Límite de cuota de la API excedido (Error 429). Espera 1 minuto y vuelve a intentar.",
+          );
           const quotaMsg: ChatMessage = {
             id: `quota-${Date.now()}`,
-            sender: 'assistant',
-            text: `⏳ **Límite de Cuota API (429)**\n\n${data?.error || 'Has superado el límite de peticiones de tu clave API gratuita. Espera unos 60 segundos antes de realizar otra consulta.'}`,
-            time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+            sender: "assistant",
+            text: `⏳ **Límite de Cuota API (429)**\n\n${data?.error || "Has superado el límite de peticiones de tu clave API gratuita. Espera unos 60 segundos antes de realizar otra consulta."}`,
+            time: new Date().toLocaleTimeString("es-ES", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
           };
           setSessions((prev) =>
             prev.map((sess) =>
               sess.id === currentSessionId
-                ? { ...sess, updatedAt: Date.now(), messages: [...sess.messages, quotaMsg] }
-                : sess
-            )
+                ? {
+                    ...sess,
+                    updatedAt: Date.now(),
+                    messages: [...sess.messages, quotaMsg],
+                  }
+                : sess,
+            ),
           );
         } else {
           const errorMsg: ChatMessage = {
             id: `err-${Date.now()}`,
-            sender: 'assistant',
-            text: `⚠️ **Aviso de la IA:** ${data?.error || 'No se pudo obtener respuesta de Google Gemini en este momento.'}`,
-            time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+            sender: "assistant",
+            text: `⚠️ **Aviso de la IA:** ${data?.error || "No se pudo obtener respuesta de Google Gemini en este momento."}`,
+            time: new Date().toLocaleTimeString("es-ES", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
           };
           setSessions((prev) =>
             prev.map((sess) =>
               sess.id === currentSessionId
-                ? { ...sess, updatedAt: Date.now(), messages: [...sess.messages, errorMsg] }
-                : sess
-            )
+                ? {
+                    ...sess,
+                    updatedAt: Date.now(),
+                    messages: [...sess.messages, errorMsg],
+                  }
+                : sess,
+            ),
           );
         }
       }
@@ -491,34 +537,43 @@ export default function AIAssistantPage() {
       setLoading(false);
       const connErrorMsg: ChatMessage = {
         id: `err-conn-${Date.now()}`,
-        sender: 'assistant',
-        text: `⚠️ **Error de conexión:** ${err?.message || 'No se pudo comunicar con el servidor analítico de la tienda.'}`,
-        time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+        sender: "assistant",
+        text: `⚠️ **Error de conexión:** ${err?.message || "No se pudo comunicar con el servidor analítico de la tienda."}`,
+        time: new Date().toLocaleTimeString("es-ES", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
       };
       setSessions((prev) =>
         prev.map((sess) =>
           sess.id === currentSessionId
-            ? { ...sess, updatedAt: Date.now(), messages: [...sess.messages, connErrorMsg] }
-            : sess
-        )
+            ? {
+                ...sess,
+                updatedAt: Date.now(),
+                messages: [...sess.messages, connErrorMsg],
+              }
+            : sess,
+        ),
       );
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
     }
   };
 
   const handlePresetClick = (p: PresetPrompt) => {
-    if (p.type === 'query') {
+    if (p.type === "query") {
       setTemplateNotice(null);
       handleSendMessage(p.prompt);
     } else {
       setInputQuery(p.prompt);
-      setTemplateNotice('✏️ Plantilla interactiva cargada en el campo de texto. Rellena los datos entre [corchetes] y pulsa Preguntar.');
+      setTemplateNotice(
+        "✏️ Plantilla interactiva cargada en el campo de texto. Rellena los datos entre [corchetes] y pulsa Preguntar.",
+      );
       if (showPromptsMobile) setShowPromptsMobile(false);
       setTimeout(() => {
         inputRef.current?.focus();
@@ -531,33 +586,38 @@ export default function AIAssistantPage() {
     setQuotaAlert(null);
     setTemplateNotice(null);
     if (!activeSession) return;
-    const timeStr = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    const timeStr = new Date().toLocaleTimeString("es-ES", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
     const resetSession: ChatSession = {
       ...activeSession,
       updatedAt: Date.now(),
       messages: [
         {
           id: `welcome-${Date.now()}`,
-          sender: 'assistant',
+          sender: "assistant",
           text: `🧹 **Chat reiniciado.**\n\n¿Qué deseas consultar ahora sobre tus ventas, deudores o inventario de repuestos?`,
           time: timeStr,
         },
       ],
     };
-    const updated = sessions.map((s) => (s.id === activeSession.id ? resetSession : s));
+    const updated = sessions.map((s) =>
+      s.id === activeSession.id ? resetSession : s,
+    );
     saveSessions(updated);
   };
 
   // Format inline markdown
   const renderMessageContent = (content: string) => {
-    const lines = content.split('\n');
+    const lines = content.split("\n");
     const elements: React.ReactNode[] = [];
     let i = 0;
 
     const formatInline = (text: string) => {
       const codeParts = text.split(/(`.*?`)/g);
       return codeParts.map((cPart, cIdx) => {
-        if (cPart.startsWith('`') && cPart.endsWith('`') && cPart.length > 2) {
+        if (cPart.startsWith("`") && cPart.endsWith("`") && cPart.length > 2) {
           return (
             <code
               key={`c-${cIdx}`}
@@ -570,9 +630,16 @@ export default function AIAssistantPage() {
 
         const boldParts = cPart.split(/(\*\*.*?\*\*)/g);
         return boldParts.map((bPart, bIdx) => {
-          if (bPart.startsWith('**') && bPart.endsWith('**') && bPart.length > 4) {
+          if (
+            bPart.startsWith("**") &&
+            bPart.endsWith("**") &&
+            bPart.length > 4
+          ) {
             return (
-              <strong key={`b-${cIdx}-${bIdx}`} className="text-[#F3E0A9] font-bold">
+              <strong
+                key={`b-${cIdx}-${bIdx}`}
+                className="text-[#F3E0A9] font-bold"
+              >
                 {bPart.slice(2, -2)}
               </strong>
             );
@@ -580,9 +647,17 @@ export default function AIAssistantPage() {
 
           const italicParts = bPart.split(/(\*.*?\*)/g);
           return italicParts.map((iPart, iIdx) => {
-            if (iPart.startsWith('*') && iPart.endsWith('*') && iPart.length > 2 && !iPart.startsWith('**')) {
+            if (
+              iPart.startsWith("*") &&
+              iPart.endsWith("*") &&
+              iPart.length > 2 &&
+              !iPart.startsWith("**")
+            ) {
               return (
-                <em key={`i-${cIdx}-${bIdx}-${iIdx}`} className="text-gray-300 italic">
+                <em
+                  key={`i-${cIdx}-${bIdx}-${iIdx}`}
+                  className="text-gray-300 italic"
+                >
                   {iPart.slice(1, -1)}
                 </em>
               );
@@ -615,9 +690,13 @@ export default function AIAssistantPage() {
       const trimmed = line.trim();
 
       // Table detection: line starts and ends with |
-      if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+      if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
         const tableLines: string[] = [];
-        while (i < lines.length && lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) {
+        while (
+          i < lines.length &&
+          lines[i].trim().startsWith("|") &&
+          lines[i].trim().endsWith("|")
+        ) {
           tableLines.push(lines[i].trim());
           i++;
         }
@@ -626,8 +705,8 @@ export default function AIAssistantPage() {
           .map((tLine) =>
             tLine
               .slice(1, -1)
-              .split('|')
-              .map((c) => c.trim())
+              .split("|")
+              .map((c) => c.trim()),
           )
           .filter((cells) => !cells.every((c) => /^:?-+:?$/.test(c)));
 
@@ -636,12 +715,18 @@ export default function AIAssistantPage() {
           const bodyRows = parsedRows.slice(1);
 
           elements.push(
-            <div key={`tbl-${i}`} className="my-2.5 overflow-x-auto rounded-xl border border-white/10 bg-[#0E111C]">
+            <div
+              key={`tbl-${i}`}
+              className="my-2.5 overflow-x-auto rounded-xl border border-white/10 bg-[#0E111C]"
+            >
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-white/10 bg-white/5">
                     {headerRow.map((hCell, hIdx) => (
-                      <th key={hIdx} className="px-3 py-2 text-[#E5C158] font-bold text-[11px] whitespace-nowrap">
+                      <th
+                        key={hIdx}
+                        className="px-3 py-2 text-[#E5C158] font-bold text-[11px] whitespace-nowrap"
+                      >
                         {formatInline(hCell)}
                       </th>
                     ))}
@@ -649,9 +734,15 @@ export default function AIAssistantPage() {
                 </thead>
                 <tbody className="divide-y divide-white/5">
                   {bodyRows.map((bRow, rIdx) => (
-                    <tr key={rIdx} className="hover:bg-white/5 transition-colors">
+                    <tr
+                      key={rIdx}
+                      className="hover:bg-white/5 transition-colors"
+                    >
                       {bRow.map((bCell, cIdx) => (
-                        <td key={cIdx} className="px-3 py-2 text-gray-300 whitespace-nowrap">
+                        <td
+                          key={cIdx}
+                          className="px-3 py-2 text-gray-300 whitespace-nowrap"
+                        >
                           {formatInline(bCell)}
                         </td>
                       ))}
@@ -659,19 +750,22 @@ export default function AIAssistantPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </div>,
           );
         }
         continue;
       }
 
       // Headers (### Header)
-      if (trimmed.startsWith('###') || trimmed.startsWith('##')) {
-        const cleanHeader = trimmed.replace(/^#+\s*/, '');
+      if (trimmed.startsWith("###") || trimmed.startsWith("##")) {
+        const cleanHeader = trimmed.replace(/^#+\s*/, "");
         elements.push(
-          <div key={`h-${i}`} className="pt-2 pb-1 font-bold text-sm text-[#E5C158] flex items-center gap-1.5">
+          <div
+            key={`h-${i}`}
+            className="pt-2 pb-1 font-bold text-sm text-[#E5C158] flex items-center gap-1.5"
+          >
             <span>{formatInline(cleanHeader)}</span>
-          </div>
+          </div>,
         );
         i++;
         continue;
@@ -679,12 +773,17 @@ export default function AIAssistantPage() {
 
       // Bullet points (- or • or *)
       if (/^[-*•]\s+/.test(trimmed)) {
-        const bulletContent = trimmed.replace(/^[-*•]\s+/, '');
+        const bulletContent = trimmed.replace(/^[-*•]\s+/, "");
         elements.push(
-          <div key={`b-${i}`} className="flex items-start gap-2 pl-2 my-1 text-gray-200">
+          <div
+            key={`b-${i}`}
+            className="flex items-start gap-2 pl-2 my-1 text-gray-200"
+          >
             <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37] mt-1.5 shrink-0" />
-            <div className="flex-1 leading-relaxed">{formatInline(bulletContent)}</div>
-          </div>
+            <div className="flex-1 leading-relaxed">
+              {formatInline(bulletContent)}
+            </div>
+          </div>,
         );
         i++;
         continue;
@@ -701,7 +800,7 @@ export default function AIAssistantPage() {
       elements.push(
         <p key={`p-${i}`} className="my-0.5 leading-relaxed">
           {formatInline(line)}
-        </p>
+        </p>,
       );
       i++;
     }
@@ -717,7 +816,8 @@ export default function AIAssistantPage() {
           <ShieldAlert className="w-12 h-12 text-rose-400 mx-auto" />
           <h1 className="text-xl font-extrabold text-white">Acceso Denegado</h1>
           <p className="text-sm text-gray-400">
-            Debes iniciar sesión en el panel de administrador primero para acceder a la IA.
+            Debes iniciar sesión en el panel de administrador primero para
+            acceder a la IA.
           </p>
           <Link
             href="/admin"
@@ -741,7 +841,9 @@ export default function AIAssistantPage() {
             title="Volver al Panel Administrador"
           >
             <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
-            <span className="text-xs sm:text-sm font-bold hidden sm:inline">Panel Admin</span>
+            <span className="text-xs sm:text-sm font-bold hidden sm:inline">
+              Panel Admin
+            </span>
           </Link>
 
           <div className="h-6 w-px bg-white/10" />
@@ -751,8 +853,8 @@ export default function AIAssistantPage() {
             onClick={() => setShowHistorySidebar((prev) => !prev)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
               showHistorySidebar
-                ? 'bg-purple-600/30 border-purple-500/60 text-purple-200 shadow-lg'
-                : 'bg-white/5 border-white/10 text-gray-300 hover:text-white hover:bg-white/10'
+                ? "bg-purple-600/30 border-purple-500/60 text-purple-200 shadow-lg"
+                : "bg-white/5 border-white/10 text-gray-300 hover:text-white hover:bg-white/10"
             }`}
             title="Ver historial de conversaciones"
           >
@@ -833,7 +935,7 @@ export default function AIAssistantPage() {
             bg-[#0B0D17] border-r border-white/10
             flex flex-col justify-between
             transition-transform duration-300 ease-in-out
-            ${showHistorySidebar ? 'translate-x-0' : '-translate-x-full lg:hidden'}
+            ${showHistorySidebar ? "translate-x-0" : "-translate-x-full lg:hidden"}
           `}
         >
           {/* Sidebar Top Header */}
@@ -870,11 +972,13 @@ export default function AIAssistantPage() {
             ) : (
               sessions.map((sess) => {
                 const isActive = sess.id === activeSessionId;
-                const formattedTime = new Date(sess.updatedAt).toLocaleDateString('es-ES', {
-                  month: 'short',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
+                const formattedTime = new Date(
+                  sess.updatedAt,
+                ).toLocaleDateString("es-ES", {
+                  month: "short",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
                 });
 
                 return (
@@ -883,14 +987,16 @@ export default function AIAssistantPage() {
                     onClick={() => handleSelectSession(sess.id)}
                     className={`group w-full text-left p-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-between gap-2 border ${
                       isActive
-                        ? 'bg-purple-950/40 border-[#D4AF37]/50 text-white shadow-lg'
-                        : 'bg-white/[0.02] border-transparent hover:bg-white/5 text-gray-300 hover:text-white'
+                        ? "bg-purple-950/40 border-[#D4AF37]/50 text-white shadow-lg"
+                        : "bg-white/[0.02] border-transparent hover:bg-white/5 text-gray-300 hover:text-white"
                     }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       <MessageSquare
                         className={`w-4 h-4 shrink-0 ${
-                          isActive ? 'text-[#D4AF37]' : 'text-gray-500 group-hover:text-gray-300'
+                          isActive
+                            ? "text-[#D4AF37]"
+                            : "text-gray-500 group-hover:text-gray-300"
                         }`}
                       />
                       <div className="min-w-0 flex-1">
@@ -941,18 +1047,18 @@ export default function AIAssistantPage() {
                 <div
                   key={msg.id}
                   className={`flex items-start gap-3 ${
-                    msg.sender === 'user' ? 'flex-row-reverse' : 'flex-row'
+                    msg.sender === "user" ? "flex-row-reverse" : "flex-row"
                   }`}
                 >
                   {/* Avatar */}
                   <div
                     className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-md ${
-                      msg.sender === 'user'
-                        ? 'gold-gradient-bg text-black'
-                        : 'bg-gradient-to-br from-purple-600 to-indigo-700 text-white'
+                      msg.sender === "user"
+                        ? "gold-gradient-bg text-black"
+                        : "bg-gradient-to-br from-purple-600 to-indigo-700 text-white"
                     }`}
                   >
-                    {msg.sender === 'user' ? (
+                    {msg.sender === "user" ? (
                       <User className="w-4 h-4" />
                     ) : (
                       <Bot className="w-4 h-4" />
@@ -962,9 +1068,9 @@ export default function AIAssistantPage() {
                   {/* Message Bubble */}
                   <div
                     className={`max-w-[85%] sm:max-w-[80%] rounded-2xl p-4 text-xs sm:text-sm leading-relaxed ${
-                      msg.sender === 'user'
-                        ? 'bg-gradient-to-r from-[#D4AF37]/20 to-[#AA8826]/20 border border-[#D4AF37]/40 text-white shadow-gold-glow'
-                        : 'bg-[#121626] border border-white/10 text-gray-200 shadow-xl'
+                      msg.sender === "user"
+                        ? "bg-gradient-to-r from-[#D4AF37]/20 to-[#AA8826]/20 border border-[#D4AF37]/40 text-white shadow-gold-glow"
+                        : "bg-[#121626] border border-white/10 text-gray-200 shadow-xl"
                     }`}
                   >
                     <div className="space-y-1">
@@ -1005,7 +1111,9 @@ export default function AIAssistantPage() {
               <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/50 text-amber-200 text-xs flex items-center justify-between gap-3 shadow-lg shadow-amber-950/30">
                 <div className="flex items-center gap-2.5">
                   <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 animate-pulse" />
-                  <span className="font-medium leading-relaxed">{quotaAlert}</span>
+                  <span className="font-medium leading-relaxed">
+                    {quotaAlert}
+                  </span>
                 </div>
                 <button
                   onClick={() => setQuotaAlert(null)}
@@ -1023,7 +1131,9 @@ export default function AIAssistantPage() {
               <div className="p-3 rounded-2xl bg-amber-950/40 border border-amber-500/40 text-amber-200 text-xs flex items-center justify-between gap-3 shadow-md">
                 <div className="flex items-center gap-2">
                   <Edit3 className="w-4 h-4 text-[#D4AF37] shrink-0" />
-                  <span className="font-medium leading-snug">{templateNotice}</span>
+                  <span className="font-medium leading-snug">
+                    {templateNotice}
+                  </span>
                 </div>
                 <button
                   onClick={() => setTemplateNotice(null)}
@@ -1092,7 +1202,7 @@ export default function AIAssistantPage() {
             bg-[#0B0D17] border-l border-white/10
             flex flex-col
             transition-transform duration-300 ease-in-out
-            ${showPromptsMobile ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'}
+            ${showPromptsMobile ? "translate-x-0" : "translate-x-full lg:translate-x-0"}
           `}
         >
           {/* Header Panel Derecho */}
@@ -1120,7 +1230,7 @@ export default function AIAssistantPage() {
           <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
             {PRESET_PROMPTS.map((p, idx) => {
               const Icon = p.icon;
-              const isTemplate = p.type === 'template';
+              const isTemplate = p.type === "template";
               return (
                 <button
                   key={idx}
@@ -1128,8 +1238,8 @@ export default function AIAssistantPage() {
                   disabled={loading}
                   className={`w-full text-left p-3 rounded-2xl glass-card border transition-all group disabled:opacity-50 relative overflow-hidden ${
                     isTemplate
-                      ? 'border-amber-500/20 hover:border-amber-500/50 hover:bg-amber-500/[0.04]'
-                      : 'border-white/10 hover:border-[#D4AF37]/50 hover:bg-white/[0.04]'
+                      ? "border-amber-500/20 hover:border-amber-500/50 hover:bg-amber-500/[0.04]"
+                      : "border-white/10 hover:border-[#D4AF37]/50 hover:bg-white/[0.04]"
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -1140,11 +1250,11 @@ export default function AIAssistantPage() {
                       <span
                         className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
                           isTemplate
-                            ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
-                            : 'bg-purple-500/10 text-purple-300 border-purple-500/30'
+                            ? "bg-amber-500/10 text-amber-300 border-amber-500/30"
+                            : "bg-purple-500/10 text-purple-300 border-purple-500/30"
                         }`}
                       >
-                        {isTemplate ? '✏️ Plantilla' : '⚡ Directa'}
+                        {isTemplate ? "✏️ Plantilla" : "⚡ Directa"}
                       </span>
                     </div>
                     <Icon className="w-4 h-4 text-[#D4AF37] group-hover:scale-110 transition-transform" />
@@ -1156,7 +1266,11 @@ export default function AIAssistantPage() {
                     {p.description}
                   </p>
                   <div className="flex items-center gap-1 text-[10px] text-[#D4AF37] font-semibold mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span>{isTemplate ? 'Cargar plantilla al chat' : 'Consultar ahora'}</span>
+                    <span>
+                      {isTemplate
+                        ? "Cargar plantilla al chat"
+                        : "Consultar ahora"}
+                    </span>
                     <ChevronRight className="w-3 h-3" />
                   </div>
                 </button>
@@ -1168,7 +1282,8 @@ export default function AIAssistantPage() {
           <div className="p-3 border-t border-white/10 bg-[#0E111F]/50 flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
             <span className="text-[11px] text-gray-400 leading-tight">
-              Lee y modifica tu MongoDB en tiempo real — ventas, precios, stock y más.
+              Lee y modifica tu MongoDB en tiempo real — ventas, precios, stock
+              y más.
             </span>
           </div>
         </aside>

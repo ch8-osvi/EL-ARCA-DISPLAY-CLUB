@@ -1,20 +1,22 @@
-import { getActiveExchangeRate } from '@/lib/exchangeRate';
-import { NextResponse } from 'next/server';
-import connectToDatabase from '@/lib/mongoose';
-import { Sale } from '@/lib/models/Sale';
-import { Product } from '@/lib/models/Product';
-import { StockHistory } from '@/lib/models/StockHistory';
-import { getHavanaMonthDay, getHavanaDateKey } from '@/lib/dateUtils';
+import { atomicResponse } from "@/lib/security/atomic-response";
+import { requireAdmin } from "@/lib/security/admin";
+import { getActiveExchangeRate } from "@/lib/exchangeRate";
+import { NextResponse } from "next/server";
+import connectToDatabase from "@/lib/mongoose";
+import { Sale } from "@/lib/models/Sale";
+import { Product } from "@/lib/models/Product";
+import { StockHistory } from "@/lib/models/StockHistory";
+import { getHavanaMonthDay, getHavanaDateKey } from "@/lib/dateUtils";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 /** Generates order number: MMDD + 3 random letters + product count (zero-padded to 2) in Cuba timezone */
 function generateOrderNumber(totalItems: number): string {
   const { mm, dd } = getHavanaMonthDay();
   const letters = Array.from({ length: 3 }, () =>
-    String.fromCharCode(65 + Math.floor(Math.random() * 26))
-  ).join('');
-  const count = String(totalItems).padStart(2, '0');
+    String.fromCharCode(65 + Math.floor(Math.random() * 26)),
+  ).join("");
+  const count = String(totalItems).padStart(2, "0");
   return `${mm}${dd}${letters}${count}`;
 }
 
@@ -22,7 +24,7 @@ function generateOrderNumber(totalItems: number): string {
  * GET /api/sales
  * Returns all sales sorted newest first, plus daily summary metrics (gross, refunds, net).
  */
-export async function GET() {
+async function handleGET() {
   try {
     await connectToDatabase();
 
@@ -32,32 +34,56 @@ export async function GET() {
     // Daily summary (Cuba timezone today, excluding cancelled orders)
     const havanaTodayKey = getHavanaDateKey();
     const todaySales = sales.filter(
-      (s) => getHavanaDateKey(s.createdAt) === havanaTodayKey && s.status !== 'CANCELLED'
+      (s) =>
+        getHavanaDateKey(s.createdAt) === havanaTodayKey &&
+        s.status !== "CANCELLED",
     );
 
     // USD CASH DRAWER (Transactions paid in USD)
-    const todayUSDSales     = todaySales.filter((s) => (s.currency || 'USD') === 'USD');
+    const todayUSDSales = todaySales.filter(
+      (s) => (s.currency || "USD") === "USD",
+    );
     const todayPaidUSDSales = todayUSDSales.filter((s) => s.paid);
-    const todayGrossUSD     = todayPaidUSDSales.reduce((acc, s) => acc + s.totalUSD, 0);
-    const todayRefundsUSD   = todayUSDSales.reduce((acc, s) => acc + (s.totalRefundedUSD || 0), 0);
-    const todayNetUSD       = parseFloat((todayGrossUSD - todayRefundsUSD).toFixed(2));
-    const todayPendingUSD   = todayUSDSales.filter((s) => !s.paid).reduce((acc, s) => acc + s.totalUSD, 0);
+    const todayGrossUSD = todayPaidUSDSales.reduce(
+      (acc, s) => acc + s.totalUSD,
+      0,
+    );
+    const todayRefundsUSD = todayUSDSales.reduce(
+      (acc, s) => acc + (s.totalRefundedUSD || 0),
+      0,
+    );
+    const todayNetUSD = parseFloat(
+      (todayGrossUSD - todayRefundsUSD).toFixed(2),
+    );
+    const todayPendingUSD = todayUSDSales
+      .filter((s) => !s.paid)
+      .reduce((acc, s) => acc + s.totalUSD, 0);
 
     // CUP CASH DRAWER (Transactions paid in CUP)
-    const todayCUPSales     = todaySales.filter((s) => s.currency === 'CUP');
+    const todayCUPSales = todaySales.filter((s) => s.currency === "CUP");
     const todayPaidCUPSales = todayCUPSales.filter((s) => s.paid);
-    const todayGrossCUP     = todayPaidCUPSales.reduce((acc, s) => acc + s.totalCUP, 0);
-    const todayRefundsCUP   = todayCUPSales.reduce((acc, s) => acc + (s.totalRefundedCUP || 0), 0);
-    const todayNetCUP       = parseFloat((todayGrossCUP - todayRefundsCUP).toFixed(2));
-    const todayPendingCUP   = todayCUPSales.filter((s) => !s.paid).reduce((acc, s) => acc + s.totalCUP, 0);
+    const todayGrossCUP = todayPaidCUPSales.reduce(
+      (acc, s) => acc + s.totalCUP,
+      0,
+    );
+    const todayRefundsCUP = todayCUPSales.reduce(
+      (acc, s) => acc + (s.totalRefundedCUP || 0),
+      0,
+    );
+    const todayNetCUP = parseFloat(
+      (todayGrossCUP - todayRefundsCUP).toFixed(2),
+    );
+    const todayPendingCUP = todayCUPSales
+      .filter((s) => !s.paid)
+      .reduce((acc, s) => acc + s.totalCUP, 0);
 
     return NextResponse.json({
       success: true,
       sales,
       daily: {
-        count:           todaySales.length,
-        usdCount:        todayUSDSales.length,
-        cupCount:        todayCUPSales.length,
+        count: todaySales.length,
+        usdCount: todayUSDSales.length,
+        cupCount: todayCUPSales.length,
 
         // USD Drawer
         todayGrossUSD,
@@ -73,8 +99,11 @@ export async function GET() {
       },
     });
   } catch (err) {
-    console.error('[sales GET]', err);
-    return NextResponse.json({ success: false, error: 'Error obteniendo ventas' }, { status: 500 });
+    console.error("[sales GET]", err);
+    return NextResponse.json(
+      { success: false, error: "Error obteniendo ventas" },
+      { status: 500 },
+    );
   }
 }
 
@@ -85,7 +114,7 @@ export async function GET() {
  *  - toggle-paid: toggles paid status on an existing sale
  *  - refund: processes partial or total return, restores stock, logs reason & returns audit
  */
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   try {
     await connectToDatabase();
     const body = await req.json();
@@ -94,29 +123,47 @@ export async function POST(req: Request) {
     // --------------------------------------------------------
     // ACTION: CREATE SALE
     // --------------------------------------------------------
-    if (action === 'create') {
+    if (action === "create") {
       const { clientName, items, currency, exchangeRate, paid, notes } = body;
 
       if (!Array.isArray(items) || items.length === 0) {
         return NextResponse.json(
-          { success: false, error: 'La orden debe tener al menos 1 producto' },
-          { status: 400 }
+          { success: false, error: "La orden debe tener al menos 1 producto" },
+          { status: 400 },
         );
       }
 
       const activeRate = await getActiveExchangeRate();
-      if (!activeRate) return NextResponse.json({ success: false, error: 'Configura la tasa antes de facturar' }, { status: 503 });
-      if (exchangeRate !== activeRate.rate) return NextResponse.json({ success: false, error: 'La tasa cambió. Actualiza el POS antes de facturar.' }, { status: 409 });
+      if (!activeRate)
+        return NextResponse.json(
+          { success: false, error: "Configura la tasa antes de facturar" },
+          { status: 503 },
+        );
+      if (exchangeRate !== activeRate.rate)
+        return NextResponse.json(
+          {
+            success: false,
+            error: "La tasa cambió. Actualiza el POS antes de facturar.",
+          },
+          { status: 409 },
+        );
       const rateNum = activeRate.rate;
 
       // Validate and deduct stock for each item atomically
       const processedItems: any[] = [];
       for (const item of items) {
         const { productId, qty } = item;
-        if (!productId || !qty || qty < 1) {
+        if (
+          !productId ||
+          !Number.isSafeInteger(qty) ||
+          qty < 1 ||
+          qty > 10000 ||
+          !Number.isFinite(item.precioUSD) ||
+          item.precioUSD < 0
+        ) {
           return NextResponse.json(
             { success: false, error: `Ítem inválido: ${JSON.stringify(item)}` },
-            { status: 400 }
+            { status: 400 },
           );
         }
 
@@ -124,7 +171,7 @@ export async function POST(req: Request) {
         if (!product) {
           return NextResponse.json(
             { success: false, error: `Producto no encontrado: ${productId}` },
-            { status: 404 }
+            { status: 404 },
           );
         }
         if (product.stock < qty) {
@@ -133,48 +180,51 @@ export async function POST(req: Request) {
               success: false,
               error: `Stock insuficiente para ${product.marca} ${product.modelo}. Disponible: ${product.stock}, solicitado: ${qty}`,
             },
-            { status: 409 }
+            { status: 409 },
           );
         }
 
         const stockBefore = product.stock;
-        
+
         // 🚨 ACTUALIZACIÓN ATÓMICA ($inc) PARA EVITAR RACE CONDITIONS 🚨
         const updatedProduct = await Product.findOneAndUpdate(
           { id: productId, stock: { $gte: qty } },
-          { 
+          {
             $inc: { stock: -qty },
           },
-          { new: true }
+          { new: true },
         );
 
         if (!updatedProduct) {
           return NextResponse.json(
-            { success: false, error: `Error de concurrencia: El stock de ${product.marca} ${product.modelo} cambió mientras se procesaba la orden.` },
-            { status: 409 }
+            {
+              success: false,
+              error: `Error de concurrencia: El stock de ${product.marca} ${product.modelo} cambió mientras se procesaba la orden.`,
+            },
+            { status: 409 },
           );
         }
 
         // Record stock movement
         await StockHistory.create({
-          productId:   product.id,
+          productId: product.id,
           productName: `${product.marca} ${product.modelo} (${product.calidad})`,
-          type:        'salida',
+          type: "salida",
           qty,
           stockBefore,
-          stockAfter:  product.stock,
-          reason:      `Venta POS`,
+          stockAfter: updatedProduct.stock,
+          reason: `Venta POS`,
         });
 
         const subtotalUSD = parseFloat((item.precioUSD * qty).toFixed(2));
         processedItems.push({
           productId,
-          marca:       product.marca,
-          modelo:      product.modelo,
-          calidad:     product.calidad,
+          marca: product.marca,
+          modelo: product.modelo,
+          calidad: product.calidad,
           qty,
           returnedQty: 0,
-          precioUSD:   item.precioUSD,
+          precioUSD: item.precioUSD,
           subtotalUSD,
         });
       }
@@ -182,14 +232,14 @@ export async function POST(req: Request) {
       // Calculate totals
       const totalItemsCount = processedItems.reduce((acc, i) => acc + i.qty, 0);
       const subtotalUSD = parseFloat(
-        processedItems.reduce((acc, i) => acc + i.subtotalUSD, 0).toFixed(2)
+        processedItems.reduce((acc, i) => acc + i.subtotalUSD, 0).toFixed(2),
       );
-      const totalUSD  = subtotalUSD;
+      const totalUSD = subtotalUSD;
 
-      const totalCUP  = parseFloat((totalUSD * rateNum).toFixed(2));
+      const totalCUP = parseFloat((totalUSD * rateNum).toFixed(2));
 
       // Generate unique order number (retry up to 5 times on collision)
-      let orderNumber = '';
+      let orderNumber = "";
       for (let attempt = 0; attempt < 5; attempt++) {
         orderNumber = generateOrderNumber(totalItemsCount);
         const exists = await Sale.findOne({ orderNumber });
@@ -198,16 +248,16 @@ export async function POST(req: Request) {
 
       const sale = await Sale.create({
         orderNumber,
-        clientName: clientName || 'Consumidor Final',
+        clientName: clientName || "Consumidor Final",
         items: processedItems,
-        currency:     currency || 'USD',
+        currency: currency || "USD",
         exchangeRate: rateNum,
         subtotalUSD,
         totalUSD,
         totalCUP,
-        paid:  paid !== undefined ? paid : true,
-        notes: notes || '',
-        status: 'COMPLETED',
+        paid: paid !== undefined ? paid : true,
+        notes: notes || "",
+        status: "COMPLETED",
         totalRefundedUSD: 0,
         totalRefundedCUP: 0,
         refunds: [],
@@ -219,27 +269,30 @@ export async function POST(req: Request) {
     // --------------------------------------------------------
     // ACTION: REFUND / RETURN ITEM(S)
     // --------------------------------------------------------
-    if (action === 'refund') {
+    if (action === "refund") {
       const { saleId, returns, reason } = body;
 
       if (!saleId || !Array.isArray(returns) || returns.length === 0) {
         return NextResponse.json(
-          { success: false, error: 'saleId y lista de devoluciones son requeridos' },
-          { status: 400 }
+          {
+            success: false,
+            error: "saleId y lista de devoluciones son requeridos",
+          },
+          { status: 400 },
         );
       }
       if (!reason || !reason.trim()) {
         return NextResponse.json(
-          { success: false, error: 'Debes indicar el motivo de la devolución' },
-          { status: 400 }
+          { success: false, error: "Debes indicar el motivo de la devolución" },
+          { status: 400 },
         );
       }
 
       const sale = await Sale.findById(saleId);
       if (!sale) {
         return NextResponse.json(
-          { success: false, error: 'Venta no encontrada' },
-          { status: 404 }
+          { success: false, error: "Venta no encontrada" },
+          { status: 404 },
         );
       }
 
@@ -249,14 +302,26 @@ export async function POST(req: Request) {
 
       for (const ret of returns) {
         const { productId, qty } = ret;
-        const qtyNum = parseInt(qty, 10);
-        if (!productId || !qtyNum || isNaN(qtyNum) || qtyNum < 1) continue;
+        const qtyNum = Number(qty);
+        if (
+          !productId ||
+          !Number.isSafeInteger(qtyNum) ||
+          qtyNum < 1 ||
+          qtyNum > 10000
+        )
+          return NextResponse.json(
+            { success: false, error: "Cantidad inválida para devolución" },
+            { status: 400 },
+          );
 
         const item = sale.items.find((i) => i.productId === productId);
         if (!item) {
           return NextResponse.json(
-            { success: false, error: `El producto con ID ${productId} no está en esta orden` },
-            { status: 400 }
+            {
+              success: false,
+              error: `El producto con ID ${productId} no está en esta orden`,
+            },
+            { status: 400 },
           );
         }
 
@@ -269,7 +334,7 @@ export async function POST(req: Request) {
               success: false,
               error: `No puedes devolver ${qtyNum} unidades de ${item.marca} ${item.modelo}. Máximo disponible para devolución: ${availableToReturn}`,
             },
-            { status: 400 }
+            { status: 400 },
           );
         }
 
@@ -277,24 +342,27 @@ export async function POST(req: Request) {
         item.returnedQty = currentlyReturned + qtyNum;
 
         const itemRefundUSD = parseFloat((item.precioUSD * qtyNum).toFixed(2));
-        const itemRefundCUP = parseFloat((itemRefundUSD * sale.exchangeRate).toFixed(2));
+        const itemRefundCUP = parseFloat(
+          (itemRefundUSD * sale.exchangeRate).toFixed(2),
+        );
 
         totalBatchRefundUSD += itemRefundUSD;
         totalBatchRefundCUP += itemRefundCUP;
 
-        const itemDestination: 'stock' | 'merma' = ret.destination === 'merma' ? 'merma' : 'stock';
+        const itemDestination: "stock" | "merma" =
+          ret.destination === "merma" ? "merma" : "stock";
 
         const logEntry = {
           productId,
-          marca:       item.marca,
-          modelo:      item.modelo,
-          calidad:     item.calidad,
-          qty:         qtyNum,
-          refundUSD:   itemRefundUSD,
-          refundCUP:   itemRefundCUP,
-          reason:      reason.trim(),
+          marca: item.marca,
+          modelo: item.modelo,
+          calidad: item.calidad,
+          qty: qtyNum,
+          refundUSD: itemRefundUSD,
+          refundCUP: itemRefundCUP,
+          reason: reason.trim(),
           destination: itemDestination,
-          createdAt:   new Date(),
+          createdAt: new Date(),
         };
 
         sale.refunds.push(logEntry);
@@ -305,63 +373,71 @@ export async function POST(req: Request) {
         if (product) {
           const stockBefore = product.stock;
 
-          if (itemDestination === 'stock') {
+          if (itemDestination === "stock") {
             // Reincorporate good units into sellable stock atomically
             const updatedProduct = await Product.findOneAndUpdate(
               { id: productId },
               {
                 $inc: { stock: qtyNum },
-                $set: { isHidden: false } // ensure it's visible if it has stock
               },
-              { new: true }
+              { new: true },
             );
-            
-            const stockAfter = updatedProduct ? updatedProduct.stock : stockBefore + qtyNum;
+
+            const stockAfter = updatedProduct
+              ? updatedProduct.stock
+              : stockBefore + qtyNum;
 
             // Record in StockHistory as 'entrada'
             await StockHistory.create({
-              productId:   product.id,
+              productId: product.id,
               productName: `${product.marca} ${product.modelo} (${product.calidad})`,
-              type:        'entrada',
-              qty:         qtyNum,
+              type: "entrada",
+              qty: qtyNum,
               stockBefore,
-              stockAfter:  stockAfter,
-              reason:      `Devolución Orden #${sale.orderNumber}: ${reason.trim()} [Reintegrado a Stock]`,
+              stockAfter: stockAfter,
+              reason: `Devolución Orden #${sale.orderNumber}: ${reason.trim()} [Reintegrado a Stock]`,
             });
           } else {
             // MERMA: Defective / Broken part. Do NOT increase sellable stock!
             await StockHistory.create({
-              productId:   product.id,
+              productId: product.id,
               productName: `${product.marca} ${product.modelo} (${product.calidad})`,
-              type:        'merma',
-              qty:         qtyNum,
+              type: "merma",
+              qty: qtyNum,
               stockBefore,
-              stockAfter:  stockBefore,
-              reason:      `Devolución Orden #${sale.orderNumber}: ${reason.trim()} [MERMA / ROTO / DEFECTUOSO - No apto para venta]`,
+              stockAfter: stockBefore,
+              reason: `Devolución Orden #${sale.orderNumber}: ${reason.trim()} [MERMA / ROTO / DEFECTUOSO - No apto para venta]`,
             });
           }
         }
       }
 
       // Update sale refunded totals
-      sale.totalRefundedUSD = parseFloat(((sale.totalRefundedUSD || 0) + totalBatchRefundUSD).toFixed(2));
-      sale.totalRefundedCUP = parseFloat(((sale.totalRefundedCUP || 0) + totalBatchRefundCUP).toFixed(2));
+      sale.totalRefundedUSD = parseFloat(
+        ((sale.totalRefundedUSD || 0) + totalBatchRefundUSD).toFixed(2),
+      );
+      sale.totalRefundedCUP = parseFloat(
+        ((sale.totalRefundedCUP || 0) + totalBatchRefundCUP).toFixed(2),
+      );
 
       // Calculate status
       const totalPurchased = sale.items.reduce((acc, i) => acc + i.qty, 0);
-      const totalReturned  = sale.items.reduce((acc, i) => acc + (i.returnedQty || 0), 0);
+      const totalReturned = sale.items.reduce(
+        (acc, i) => acc + (i.returnedQty || 0),
+        0,
+      );
 
       if (totalReturned >= totalPurchased) {
-        sale.status = 'REFUNDED';
+        sale.status = "REFUNDED";
       } else if (totalReturned > 0) {
-        sale.status = 'PARTIALLY_REFUNDED';
+        sale.status = "PARTIALLY_REFUNDED";
       }
 
       await sale.save();
 
       return NextResponse.json({
         success: true,
-        message: 'Devolución procesada y stock reintegrado con éxito',
+        message: "Devolución procesada y stock reintegrado con éxito",
         sale,
         refundLogs,
         totalRefundUSD: totalBatchRefundUSD,
@@ -372,29 +448,52 @@ export async function POST(req: Request) {
     // --------------------------------------------------------
     // ACTION: TOGGLE PAID
     // --------------------------------------------------------
-    if (action === 'toggle-paid') {
+    if (action === "toggle-paid") {
       const { saleId } = body;
       if (!saleId) {
         return NextResponse.json(
-          { success: false, error: 'saleId requerido' },
-          { status: 400 }
+          { success: false, error: "saleId requerido" },
+          { status: 400 },
         );
       }
       const sale = await Sale.findById(saleId);
       if (!sale) {
         return NextResponse.json(
-          { success: false, error: 'Venta no encontrada' },
-          { status: 404 }
+          { success: false, error: "Venta no encontrada" },
+          { status: 404 },
         );
       }
+      if (["CANCELLED", "REFUNDED"].includes(sale.status))
+        return NextResponse.json(
+          { success: false, error: "La orden está anulada o devuelta" },
+          { status: 409 },
+        );
       sale.paid = !sale.paid;
       await sale.save();
       return NextResponse.json({ success: true, sale });
     }
 
-    return NextResponse.json({ success: false, error: 'Acción no válida' }, { status: 400 });
+    return NextResponse.json(
+      { success: false, error: "Acción no válida" },
+      { status: 400 },
+    );
   } catch (err) {
-    console.error('[sales POST]', err);
-    return NextResponse.json({ success: false, error: 'Error procesando solicitud de venta' }, { status: 500 });
+    console.error("[sales POST]", err);
+    return NextResponse.json(
+      { success: false, error: "Error procesando solicitud de venta" },
+      { status: 500 },
+    );
   }
+}
+
+export async function GET(req: Request, context: any) {
+  const denied = await requireAdmin(req);
+  if (denied) return denied;
+  return (handleGET as any)(req, context);
+}
+
+export async function POST(req: Request, context: any) {
+  const denied = await requireAdmin(req);
+  if (denied) return denied;
+  return atomicResponse(() => (handlePOST as any)(req.clone(), context));
 }

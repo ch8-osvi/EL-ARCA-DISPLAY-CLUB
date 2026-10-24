@@ -3,12 +3,16 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node --require ./scripts/local-network.cjs node_modules/next/dist/bin/next dev",
     "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
+    "start": "node --require ./scripts/local-network.cjs node_modules/next/dist/bin/next start",
+    "lint": "tsc --noEmit --incremental false",
     "sync-excel": "python scripts/parse-excel.py",
-    "bot:start": "node whatsapp-bridge/server.js"
+    "bot:start": "node whatsapp-bridge/server.js",
+    "test": "node --test scripts/tests/*.test.cjs",
+    "typecheck": "tsc --noEmit --incremental false",
+    "format": "prettier --write src scripts whatsapp-bridge/*.js README.md docs/*.md",
+    "test:integration": "node scripts/verify-bot-integration.cjs"
   },
   "dependencies": {
     "@vercel/analytics": "^1.6.1",
@@ -16,11 +20,11 @@
     "dotenv": "^18.0.3",
     "lucide-react": "^0.475.0",
     "mongoose": "^9.9.2",
-    "next": "^15.1.7",
+    "next": "^15.5.28",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^3.0.1",
-    "xlsx": "^0.18.5",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "xlsx-js-style": "^1.2.0"
   },
   "devDependencies": {
@@ -28,8 +32,14 @@
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "autoprefixer": "^10.4.20",
-    "postcss": "^8.5.2",
+    "postcss": "^8.5.23",
+    "prettier": "3.6.2",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.3"
+  },
+  "overrides": {
+    "source-map-js": "^1.2.2",
+    "postcss-selector-parser": "^7.1.6",
+    "postcss": "$postcss"
   }
 }

@@ -6,3 +6,10 @@ node_modules
 *.log
 .env*.local
 .vercel
+
+# Local access credentials and verification artifacts
+.admin-access.local.txt
+.security-sync.local.cjs
+.bot-verification.local.cjs
+whatsapp-bridge/spool/
+whatsapp-bridge/*.local.log

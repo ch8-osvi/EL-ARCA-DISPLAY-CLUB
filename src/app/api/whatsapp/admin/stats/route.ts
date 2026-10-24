@@ -1,134 +1,197 @@
-import { NextResponse } from 'next/server';
-import connectToDatabase from '@/lib/mongoose';
-import { WhatsAppLog } from '@/lib/models/WhatsAppLog';
-import { getWhatsAppConfig } from '@/lib/models/WhatsAppConfig';
-import { getActiveExchangeRate } from '@/lib/exchangeRate';
-import { getHavanaDateKey } from '@/lib/dateUtils';
-
-export const dynamic = 'force-dynamic';
-
-export async function GET() {
+import { requireAdmin } from "@/lib/security/admin";
+import connect from "@/lib/mongoose";
+import { WhatsAppLog } from "@/lib/models/WhatsAppLog";
+import {
+  BotConversation,
+  BotOutbound,
+  BotOperation,
+} from "@/lib/models/BotState";
+import { getWhatsAppConfig } from "@/lib/models/WhatsAppConfig";
+import { getActiveExchangeRate } from "@/lib/exchangeRate";
+import { getHavanaDateKey } from "@/lib/dateUtils";
+import { escapeRegex } from "@/lib/security/validation";
+export const dynamic = "force-dynamic";
+export async function GET(req: Request) {
+  const denied = await requireAdmin(req);
+  if (denied) return denied;
   try {
-    await connectToDatabase();
-
-    const now = new Date();
-    const todayKey = getHavanaDateKey(now);
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-
-    // Auto-reparación no bloqueante de registros antiguos con LID de WhatsApp
-    WhatsAppLog.updateMany(
-      { senderPhone: '113198191661280' },
-      { $set: { senderPhone: '5352031972', role: 'admin' } }
-    ).catch(() => {});
-
-    const [totalLogs, todayLogs, recentLogs, config, rateDoc] = await Promise.all([
-      WhatsAppLog.countDocuments({}),
-      WhatsAppLog.countDocuments({ createdAt: { $gte: startOfToday } }),
-      WhatsAppLog.find({}).sort({ createdAt: -1 }).limit(100).lean(),
-      getWhatsAppConfig(),
-      getActiveExchangeRate(),
-    ]);
-
-    // Unique clients today
-    const uniqueClientsToday = new Set<string>();
-    const uniqueClientsAllTime = new Set<string>();
-    let clientQueriesToday = 0;
-    let adminCommandsToday = 0;
-
-    for (const log of recentLogs) {
-      const isOsvaldo =
-        log.senderPhone === '113198191661280' ||
-        log.senderPhone === '5352031972' ||
-        (log.senderPhone || '').endsWith('52031972');
-
-      const resolvedRole = isOsvaldo ? 'admin' : log.role;
-
-      if (resolvedRole === 'client') {
-        uniqueClientsAllTime.add(log.senderPhone);
-        if (new Date(log.timestamp).getTime() >= startOfToday.getTime()) {
-          uniqueClientsToday.add(log.senderPhone);
-          clientQueriesToday++;
-        }
-      } else {
-        if (new Date(log.timestamp).getTime() >= startOfToday.getTime()) {
-          adminCommandsToday++;
-        }
-      }
-    }
-
-    // Top mentioned keywords or brands
-    const brandCounts: Record<string, number> = {};
-    for (const log of recentLogs) {
-      const text = (log.userMessage || '').toUpperCase();
-      ['SAMSUNG', 'XIAOMI', 'REDMI', 'IPHONE', 'MOTOROLA', 'HUAWEI', 'HONOR', 'REALME', 'POCO', 'TECNO'].forEach((b) => {
-        if (text.includes(b)) {
-          brandCounts[b] = (brandCounts[b] || 0) + 1;
-        }
-      });
-    }
-
-    const topBrands = Object.entries(brandCounts)
-      .map(([brand, count]) => ({ brand, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5);
-
-    return NextResponse.json({
-      status: 'ok',
-      metrics: {
-        totalLogs,
-        todayLogsCount: todayLogs,
-        clientQueriesToday,
-        adminCommandsToday,
-        uniqueClientsTodayCount: uniqueClientsToday.size,
-        uniqueClientsTotalCount: uniqueClientsAllTime.size,
-        activeRate: rateDoc?.rate || 340,
-        botStatus: config.botStatus || 'online',
-        botPhone: config.botPhone || '',
-        topBrands,
-      },
-      recentLogs: recentLogs.map((l) => {
-        const isOsvaldo =
-          l.senderPhone === '113198191661280' ||
-          l.senderPhone === '5352031972' ||
-          (l.senderPhone || '').endsWith('52031972');
-        return {
+    await connect();
+    const params = new URL(req.url).searchParams;
+    const page = Math.max(1, Math.min(10000, Number(params.get("page")) || 1));
+    const search = (params.get("search") || "").slice(0, 100);
+    const role = params.get("role");
+    const filter: any = { deletedAt: { $exists: false } };
+    if (role === "admin" || role === "client") filter.role = role;
+    if (search)
+      filter.$or = [
+        "senderPhone",
+        "userMessage",
+        "botReply",
+        "actionExecuted",
+      ].map((f) => ({ [f]: new RegExp(escapeRegex(search), "i") }));
+    const day = {
+      $eq: [
+        {
+          $dateToString: {
+            date: "$createdAt",
+            format: "%Y-%m-%d",
+            timezone: "America/Havana",
+          },
+        },
+        getHavanaDateKey(),
+      ],
+    };
+    const [data, logs, count, cfg, rate, paused, outbound, confirmed] =
+      await Promise.all([
+        WhatsAppLog.aggregate([
+          { $match: { deletedAt: { $exists: false } } },
+          {
+            $facet: {
+              total: [{ $count: "n" }],
+              today: [{ $match: { $expr: day } }, { $count: "n" }],
+              clients: [
+                { $match: { role: "client" } },
+                { $group: { _id: "$senderPhone" } },
+                { $count: "n" },
+              ],
+              clientsToday: [
+                { $match: { role: "client", $expr: day } },
+                { $group: { _id: "$senderPhone" } },
+                { $count: "n" },
+              ],
+              queries: [
+                { $match: { role: "client", $expr: day } },
+                { $count: "n" },
+              ],
+              commands: [
+                {
+                  $match: {
+                    role: "admin",
+                    actionExecuted: "OPERACION_CONFIRMADA",
+                    $expr: day,
+                  },
+                },
+                { $count: "n" },
+              ],
+              failures: [
+                { $match: { status: "failed", $expr: day } },
+                { $count: "n" },
+              ],
+              tokens: [
+                { $match: { $expr: day } },
+                { $group: { _id: null, n: { $sum: "$tokens" } } },
+              ],
+            },
+          },
+        ]),
+        WhatsAppLog.find(filter)
+          .sort({ createdAt: -1 })
+          .skip((page - 1) * 100)
+          .limit(100)
+          .lean(),
+        WhatsAppLog.countDocuments(filter),
+        getWhatsAppConfig(),
+        getActiveExchangeRate(),
+        BotConversation.find({ paused: true }).select("_id").limit(100).lean(),
+        BotOutbound.find({})
+          .sort({ createdAt: -1 })
+          .limit(30)
+          .select("_id to status createdAt error")
+          .lean(),
+        BotOperation.countDocuments({
+          $expr: day,
+          results: { $exists: true, $ne: [] },
+        }),
+      ]);
+    const v = (name: string) => data[0]?.[name]?.[0]?.n || 0;
+    return Response.json(
+      {
+        status: "ok",
+        page,
+        totalPages: Math.max(1, Math.ceil(count / 100)),
+        matchingLogs: count,
+        generatedAt: new Date().toISOString(),
+        pausedPhones: paused.map((p) => p._id),
+        outbound,
+        metrics: {
+          totalLogs: v("total"),
+          todayLogsCount: v("today"),
+          clientQueriesToday: v("queries"),
+          adminCommandsToday: confirmed,
+          uniqueClientsTodayCount: v("clientsToday"),
+          uniqueClientsTotalCount: v("clients"),
+          failuresToday: v("failures"),
+          tokensToday: v("tokens"),
+          activeRate: rate?.rate ?? null,
+          botStatus:
+            cfg.botStatus === "online" &&
+            cfg.lastPingAt &&
+            Date.now() - cfg.lastPingAt.getTime() < 60000
+              ? "online"
+              : "offline",
+          botPhone: cfg.botPhone,
+          lastPingAt: cfg.lastPingAt,
+          topBrands: [],
+        },
+        recentLogs: logs.map((l) => ({
           id: String(l._id),
           timestamp: l.timestamp || l.createdAt,
-          senderPhone: isOsvaldo ? '5352031972' : l.senderPhone,
-          role: isOsvaldo ? 'admin' : l.role,
+          senderPhone: l.senderPhone,
+          role: l.role,
           userMessage: l.userMessage,
           botReply: l.botReply,
-          actionExecuted: l.actionExecuted || '',
+          actionExecuted: l.actionExecuted || "",
           responseTimeMs: l.responseTimeMs || 0,
-        };
-      }),
-    });
-  } catch (err: any) {
-    console.error('[WhatsApp Admin Stats Error]', err);
-    return NextResponse.json({ error: err.message || 'Error fetching stats' }, { status: 500 });
+          status: l.status,
+          direction: l.direction,
+        })),
+      },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  } catch {
+    return Response.json(
+      {
+        error:
+          "No se pudieron cargar los datos. El estado del bot no está verificado.",
+      },
+      { status: 503 },
+    );
   }
 }
-
 export async function DELETE(req: Request) {
-  try {
-    await connectToDatabase();
-    const { searchParams } = new URL(req.url);
-    const id = searchParams.get('id');
-    const clearAll = searchParams.get('clearAll') === 'true';
-
-    if (clearAll) {
-      await WhatsAppLog.deleteMany({});
-      return NextResponse.json({ success: true, message: 'Todos los registros de WhatsApp han sido vaciados' });
-    }
-
-    if (id) {
-      await WhatsAppLog.findByIdAndDelete(id);
-      return NextResponse.json({ success: true, message: 'Registro eliminado' });
-    }
-
-    return NextResponse.json({ error: 'Parámetro id o clearAll requerido' }, { status: 400 });
-  } catch (err: any) {
-    console.error('[WhatsApp Admin Delete Error]', err);
-    return NextResponse.json({ error: err.message || 'Error al eliminar' }, { status: 500 });
-  }
+  const denied = await requireAdmin(req);
+  if (denied) return denied;
+  await connect();
+  const params = new URL(req.url).searchParams,
+    id = params.get("id");
+  if (!id && !params.has("clearAll"))
+    return Response.json({ error: "Falta id o clearAll" }, { status: 400 });
+  const result = await WhatsAppLog.updateMany(
+    id ? { _id: id } : { deletedAt: { $exists: false } },
+    {
+      $set: {
+        deletedAt: new Date(),
+        expiresAt: new Date(Date.now() + 30 * 86400000),
+      },
+    },
+  );
+  return Response.json({
+    success: true,
+    message: "Registros archivados. Recuperables durante 30 días.",
+    count: result.modifiedCount,
+  });
+}
+export async function PATCH(req: Request) {
+  const denied = await requireAdmin(req);
+  if (denied) return denied;
+  await connect();
+  const body = await req.json();
+  await WhatsAppLog.updateMany(
+    body.id ? { _id: body.id } : { deletedAt: { $exists: true } },
+    {
+      $unset: { deletedAt: 1 },
+      $set: { expiresAt: new Date(Date.now() + 90 * 86400000) },
+    },
+  );
+  return Response.json({ success: true });
 }

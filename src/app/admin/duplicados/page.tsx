@@ -1,7 +1,8 @@
-'use client';
+"use client";
+import { checkAdminSession, loginAdmin } from "@/lib/auth-client";
 
-import React, { useState, useEffect, useMemo } from 'react';
-import Link from 'next/link';
+import React, { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import {
   ArrowLeft,
   GitMerge,
@@ -20,26 +21,28 @@ import {
   RefreshCw,
   ShieldCheck,
   Check,
-} from 'lucide-react';
-import { Product } from '@/lib/types';
-import { detectDuplicates, DuplicatePair } from '@/lib/duplicateDetector';
-import { fuzzyMatchProduct } from '@/lib/searchUtils';
+} from "lucide-react";
+import { Product } from "@/lib/types";
+import { detectDuplicates, DuplicatePair } from "@/lib/duplicateDetector";
+import { fuzzyMatchProduct } from "@/lib/searchUtils";
 
 export default function DuplicadosPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
   const [ignoredPairs, setIgnoredPairs] = useState<Set<string>>(new Set());
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [mergedCount, setMergedCount] = useState(0);
-  const [activeTab, setActiveTab] = useState<'suggestions' | 'ignored' | 'manual'>('suggestions');
+  const [activeTab, setActiveTab] = useState<
+    "suggestions" | "ignored" | "manual"
+  >("suggestions");
 
   // Manual Merge state
   const [manualProdA, setManualProdA] = useState<Product | null>(null);
   const [manualProdB, setManualProdB] = useState<Product | null>(null);
-  const [manualSearchA, setManualSearchA] = useState('');
-  const [manualSearchB, setManualSearchB] = useState('');
+  const [manualSearchA, setManualSearchA] = useState("");
+  const [manualSearchB, setManualSearchB] = useState("");
 
   // Merge Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -47,10 +50,10 @@ export default function DuplicadosPage() {
     prodA: Product;
     prodB: Product;
   } | null>(null);
-  const [primaryTarget, setPrimaryTarget] = useState<'A' | 'B'>('A');
-  const [finalModelo, setFinalModelo] = useState('');
-  const [finalPrecio, setFinalPrecio] = useState('');
-  const [finalCalidad, setFinalCalidad] = useState('');
+  const [primaryTarget, setPrimaryTarget] = useState<"A" | "B">("A");
+  const [finalModelo, setFinalModelo] = useState("");
+  const [finalPrecio, setFinalPrecio] = useState("");
+  const [finalCalidad, setFinalCalidad] = useState("");
   const [isSubmittingMerge, setIsSubmittingMerge] = useState(false);
 
   const triggerToast = (msg: string) => {
@@ -60,22 +63,19 @@ export default function DuplicadosPage() {
 
   // Auth verification
   useEffect(() => {
-    const auth = sessionStorage.getItem('el_arca_admin_auth');
-    if (auth === 'true') {
-      setIsAuthenticated(true);
-    }
+    void checkAdminSession().then(setIsAuthenticated);
   }, []);
 
   const fetchProducts = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/products');
+      const res = await fetch("/api/products");
       if (res.ok) {
         const data = await res.json();
         setProducts(data.products || []);
       }
-      
-      const ignoredRes = await fetch('/api/duplicados/ignored');
+
+      const ignoredRes = await fetch("/api/duplicados/ignored");
       if (ignoredRes.ok) {
         const ignoredData = await ignoredRes.json();
         if (ignoredData.success && Array.isArray(ignoredData.ignoredIds)) {
@@ -83,8 +83,8 @@ export default function DuplicadosPage() {
         }
       }
     } catch (err) {
-      console.error('Error fetching data:', err);
-      triggerToast('Error cargando catálogo');
+      console.error("Error fetching data:", err);
+      triggerToast("Error cargando catálogo");
     } finally {
       setLoading(false);
     }
@@ -136,10 +136,14 @@ export default function DuplicadosPage() {
   // Ignore a pair for this session
   const handleIgnorePair = async (pair: DuplicatePair) => {
     try {
-      const res = await fetch('/api/duplicados/ignored', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pairId: pair.pairId, productAId: pair.productA.id, productBId: pair.productB.id }),
+      const res = await fetch("/api/duplicados/ignored", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pairId: pair.pairId,
+          productAId: pair.productA.id,
+          productBId: pair.productB.id,
+        }),
       });
       if (res.ok) {
         setIgnoredPairs((prev) => {
@@ -147,33 +151,36 @@ export default function DuplicadosPage() {
           next.add(pair.pairId);
           return next;
         });
-        triggerToast('Sugerencia descartada (movida a Ignoradas)');
+        triggerToast("Sugerencia descartada (movida a Ignoradas)");
       } else {
-        triggerToast('Error al ignorar sugerencia');
+        triggerToast("Error al ignorar sugerencia");
       }
     } catch (e) {
-      triggerToast('Error de red al ignorar');
+      triggerToast("Error de red al ignorar");
     }
   };
 
   // Restore a pair to automatic suggestions
   const handleRestorePair = async (pairId: string) => {
     try {
-      const res = await fetch(`/api/duplicados/ignored?pairId=${encodeURIComponent(pairId)}`, {
-        method: 'DELETE',
-      });
+      const res = await fetch(
+        `/api/duplicados/ignored?pairId=${encodeURIComponent(pairId)}`,
+        {
+          method: "DELETE",
+        },
+      );
       if (res.ok) {
         setIgnoredPairs((prev) => {
           const next = new Set(prev);
           next.delete(pairId);
           return next;
         });
-        triggerToast('Sugerencia restaurada a Automáticas');
+        triggerToast("Sugerencia restaurada a Automáticas");
       } else {
-        triggerToast('Error al restaurar sugerencia');
+        triggerToast("Error al restaurar sugerencia");
       }
     } catch (e) {
-      triggerToast('Error de red al restaurar');
+      triggerToast("Error de red al restaurar");
     }
   };
 
@@ -181,15 +188,17 @@ export default function DuplicadosPage() {
   const handleOpenMerge = (prodA: Product, prodB: Product) => {
     setSelectedPair({ prodA, prodB });
     // Default primary target to A
-    setPrimaryTarget('A');
+    setPrimaryTarget("A");
     // Pre-populate with the more descriptive or newer model name
     const defaultModelo =
       prodB.modelo.length > prodA.modelo.length ? prodB.modelo : prodA.modelo;
     setFinalModelo(defaultModelo);
     // Pre-populate price (prefer higher price or prodA)
     const defaultPrice = Math.max(prodA.precio || 0, prodB.precio || 0);
-    setFinalPrecio(defaultPrice > 0 ? defaultPrice.toString() : prodA.precio.toString());
-    setFinalCalidad(prodA.calidad || prodB.calidad || 'ORIGINAL C/M');
+    setFinalPrecio(
+      defaultPrice > 0 ? defaultPrice.toString() : prodA.precio.toString(),
+    );
+    setFinalCalidad(prodA.calidad || prodB.calidad || "ORIGINAL C/M");
     setIsModalOpen(true);
   };
 
@@ -199,24 +208,26 @@ export default function DuplicadosPage() {
 
     const parsedPrice = parseFloat(finalPrecio);
     if (isNaN(parsedPrice) || parsedPrice < 0) {
-      triggerToast('Ingresa un precio válido');
+      triggerToast("Ingresa un precio válido");
       return;
     }
 
     if (!finalModelo.trim()) {
-      triggerToast('El nombre del modelo no puede estar vacío');
+      triggerToast("El nombre del modelo no puede estar vacío");
       return;
     }
 
-    const primaryProd = primaryTarget === 'A' ? selectedPair.prodA : selectedPair.prodB;
-    const secondaryProd = primaryTarget === 'A' ? selectedPair.prodB : selectedPair.prodA;
+    const primaryProd =
+      primaryTarget === "A" ? selectedPair.prodA : selectedPair.prodB;
+    const secondaryProd =
+      primaryTarget === "A" ? selectedPair.prodB : selectedPair.prodA;
 
     setIsSubmittingMerge(true);
 
     try {
-      const res = await fetch('/api/products/merge', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/products/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           primaryId: primaryProd.id,
           secondaryId: secondaryProd.id,
@@ -229,7 +240,7 @@ export default function DuplicadosPage() {
       const data = await res.json();
 
       if (res.ok && data.success) {
-        triggerToast(data.message || 'Productos fusionados con éxito');
+        triggerToast(data.message || "Productos fusionados con éxito");
         setMergedCount((c) => c + 1);
 
         // Update local state with the returned catalog
@@ -245,11 +256,11 @@ export default function DuplicadosPage() {
         setManualProdA(null);
         setManualProdB(null);
       } else {
-        triggerToast(data.error || 'Error al ejecutar fusión');
+        triggerToast(data.error || "Error al ejecutar fusión");
       }
     } catch (err) {
-      console.error('Error executing merge:', err);
-      triggerToast('Error de red al fusionar productos');
+      console.error("Error executing merge:", err);
+      triggerToast("Error de red al fusionar productos");
     } finally {
       setIsSubmittingMerge(false);
     }
@@ -292,9 +303,12 @@ export default function DuplicadosPage() {
             <GitMerge className="w-8 h-8" />
           </div>
           <div className="space-y-2">
-            <h1 className="text-xl font-bold text-white">Acceso Administrativo Requerido</h1>
+            <h1 className="text-xl font-bold text-white">
+              Acceso Administrativo Requerido
+            </h1>
             <p className="text-sm text-gray-400">
-              Debes iniciar sesión en el panel de administración para gestionar y fusionar productos.
+              Debes iniciar sesión en el panel de administración para gestionar
+              y fusionar productos.
             </p>
           </div>
           <Link
@@ -315,7 +329,9 @@ export default function DuplicadosPage() {
         <div className="fixed bottom-6 right-6 z-50 animate-slide-up">
           <div className="glass-panel px-5 py-3.5 rounded-2xl border border-[#D4AF37]/50 shadow-2xl flex items-center gap-3 bg-[#10131E]/95 backdrop-blur-xl">
             <CheckCircle2 className="w-5 h-5 text-[#E5C158] shrink-0" />
-            <span className="text-xs sm:text-sm font-semibold text-white">{toastMessage}</span>
+            <span className="text-xs sm:text-sm font-semibold text-white">
+              {toastMessage}
+            </span>
           </div>
         </div>
       )}
@@ -353,7 +369,10 @@ export default function DuplicadosPage() {
               Limpieza y Fusión de Duplicados
             </h1>
             <p className="text-xs sm:text-sm text-gray-300 leading-relaxed">
-              Detecta automáticamente repuestos que son el mismo producto pero entraron con nombres o abreviaturas diferentes (ej. A02S / A03S vs A04E Universal). Únelos en 1 solo registro sumando su stock y conservando todo el historial de auditoría.
+              Detecta automáticamente repuestos que son el mismo producto pero
+              entraron con nombres o abreviaturas diferentes (ej. A02S / A03S vs
+              A04E Universal). Únelos en 1 solo registro sumando su stock y
+              conservando todo el historial de auditoría.
             </p>
           </div>
 
@@ -393,11 +412,11 @@ export default function DuplicadosPage() {
         {/* Tab Selector */}
         <div className="flex items-center gap-3 border-b border-white/10 pb-2 flex-wrap">
           <button
-            onClick={() => setActiveTab('suggestions')}
+            onClick={() => setActiveTab("suggestions")}
             className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 transition-all ${
-              activeTab === 'suggestions'
-                ? 'bg-amber-500/20 text-[#F3E0A9] border border-[#D4AF37]/40 shadow-sm'
-                : 'text-gray-400 hover:text-white hover:bg-white/5'
+              activeTab === "suggestions"
+                ? "bg-amber-500/20 text-[#F3E0A9] border border-[#D4AF37]/40 shadow-sm"
+                : "text-gray-400 hover:text-white hover:bg-white/5"
             }`}
           >
             <Layers className="w-4 h-4" />
@@ -408,11 +427,11 @@ export default function DuplicadosPage() {
           </button>
 
           <button
-            onClick={() => setActiveTab('ignored')}
+            onClick={() => setActiveTab("ignored")}
             className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 transition-all ${
-              activeTab === 'ignored'
-                ? 'bg-red-500/10 text-red-400 border border-red-500/30 shadow-sm'
-                : 'text-gray-400 hover:text-white hover:bg-white/5'
+              activeTab === "ignored"
+                ? "bg-red-500/10 text-red-400 border border-red-500/30 shadow-sm"
+                : "text-gray-400 hover:text-white hover:bg-white/5"
             }`}
           >
             <AlertTriangle className="w-4 h-4" />
@@ -423,11 +442,11 @@ export default function DuplicadosPage() {
           </button>
 
           <button
-            onClick={() => setActiveTab('manual')}
+            onClick={() => setActiveTab("manual")}
             className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 transition-all ${
-              activeTab === 'manual'
-                ? 'bg-amber-500/20 text-[#F3E0A9] border border-[#D4AF37]/40 shadow-sm'
-                : 'text-gray-400 hover:text-white hover:bg-white/5'
+              activeTab === "manual"
+                ? "bg-amber-500/20 text-[#F3E0A9] border border-[#D4AF37]/40 shadow-sm"
+                : "text-gray-400 hover:text-white hover:bg-white/5"
             }`}
           >
             <GitMerge className="w-4 h-4" />
@@ -436,7 +455,7 @@ export default function DuplicadosPage() {
         </div>
 
         {/* TAB 1: SUGGESTIONS */}
-        {activeTab === 'suggestions' && (
+        {activeTab === "suggestions" && (
           <div className="space-y-6">
             {/* Search Input for Pairs */}
             <div className="relative w-full max-w-md">
@@ -455,7 +474,10 @@ export default function DuplicadosPage() {
             {loading ? (
               <div className="grid grid-cols-1 gap-5">
                 {[...Array(3)].map((_, i) => (
-                  <div key={i} className="glass-card rounded-2xl p-5 border border-white/5 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-6 animate-pulse">
+                  <div
+                    key={i}
+                    className="glass-card rounded-2xl p-5 border border-white/5 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-6 animate-pulse"
+                  >
                     <div className="flex-1 space-y-4">
                       <div className="flex items-center gap-2">
                         <div className="w-20 h-6 bg-white/10 rounded-lg"></div>
@@ -495,17 +517,19 @@ export default function DuplicadosPage() {
                 </div>
                 <div className="space-y-1">
                   <h3 className="text-lg font-bold text-white">
-                    {searchTerm ? 'No hay duplicados con ese filtro' : '¡Catálogo 100% Limpio!'}
+                    {searchTerm
+                      ? "No hay duplicados con ese filtro"
+                      : "¡Catálogo 100% Limpio!"}
                   </h3>
                   <p className="text-xs sm:text-sm text-gray-400">
                     {searchTerm
-                      ? 'Intenta con otro término de búsqueda o revisa la pestaña de Fusión Manual.'
-                      : 'No se detectaron repuestos duplicados o multi-compatibles sin unificar en este momento.'}
+                      ? "Intenta con otro término de búsqueda o revisa la pestaña de Fusión Manual."
+                      : "No se detectaron repuestos duplicados o multi-compatibles sin unificar en este momento."}
                   </p>
                 </div>
                 {searchTerm && (
                   <button
-                    onClick={() => setSearchTerm('')}
+                    onClick={() => setSearchTerm("")}
                     className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-semibold text-gray-300"
                   >
                     Limpiar Filtro
@@ -515,7 +539,8 @@ export default function DuplicadosPage() {
             ) : (
               <div className="grid grid-cols-1 gap-5">
                 {visiblePairs.map((pair) => {
-                  const combinedStock = (pair.productA.stock || 0) + (pair.productB.stock || 0);
+                  const combinedStock =
+                    (pair.productA.stock || 0) + (pair.productB.stock || 0);
                   return (
                     <div
                       key={pair.pairId}
@@ -549,8 +574,15 @@ export default function DuplicadosPage() {
                               {pair.productA.modelo}
                             </p>
                             <div className="flex items-center justify-between text-xs pt-1 border-t border-white/5">
-                              <span className="text-gray-400">Stock: <strong className="text-gray-200">{pair.productA.stock} uds</strong></span>
-                              <span className="text-[#F3E0A9] font-bold">${pair.productA.precio} USD</span>
+                              <span className="text-gray-400">
+                                Stock:{" "}
+                                <strong className="text-gray-200">
+                                  {pair.productA.stock} uds
+                                </strong>
+                              </span>
+                              <span className="text-[#F3E0A9] font-bold">
+                                ${pair.productA.precio} USD
+                              </span>
                             </div>
                           </div>
 
@@ -563,8 +595,15 @@ export default function DuplicadosPage() {
                               {pair.productB.modelo}
                             </p>
                             <div className="flex items-center justify-between text-xs pt-1 border-t border-white/5">
-                              <span className="text-gray-400">Stock: <strong className="text-gray-200">{pair.productB.stock} uds</strong></span>
-                              <span className="text-[#F3E0A9] font-bold">${pair.productB.precio} USD</span>
+                              <span className="text-gray-400">
+                                Stock:{" "}
+                                <strong className="text-gray-200">
+                                  {pair.productB.stock} uds
+                                </strong>
+                              </span>
+                              <span className="text-[#F3E0A9] font-bold">
+                                ${pair.productB.precio} USD
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -572,9 +611,14 @@ export default function DuplicadosPage() {
                         {/* Reasons */}
                         {pair.reasons.length > 0 && (
                           <div className="text-[11px] text-gray-400 flex items-center gap-2 flex-wrap">
-                            <span className="text-amber-400 font-semibold">Motivo:</span>
+                            <span className="text-amber-400 font-semibold">
+                              Motivo:
+                            </span>
                             {pair.reasons.map((r, i) => (
-                              <span key={i} className="inline-flex items-center gap-1 text-gray-300">
+                              <span
+                                key={i}
+                                className="inline-flex items-center gap-1 text-gray-300"
+                              >
                                 • {r}
                               </span>
                             ))}
@@ -585,14 +629,18 @@ export default function DuplicadosPage() {
                       {/* Right: Actions */}
                       <div className="flex flex-col sm:flex-row lg:flex-col items-center gap-2.5 shrink-0 justify-center">
                         <div className="text-center w-full pb-1 lg:pb-0">
-                          <span className="text-[10px] text-gray-400 uppercase tracking-wider block">Stock Unificado</span>
+                          <span className="text-[10px] text-gray-400 uppercase tracking-wider block">
+                            Stock Unificado
+                          </span>
                           <span className="text-base font-extrabold text-emerald-400">
                             {combinedStock} unidades
                           </span>
                         </div>
 
                         <button
-                          onClick={() => handleOpenMerge(pair.productA, pair.productB)}
+                          onClick={() =>
+                            handleOpenMerge(pair.productA, pair.productB)
+                          }
                           className="w-full sm:w-auto lg:w-44 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-amber-500/15 transition-all hover:scale-102"
                         >
                           <GitMerge className="w-3.5 h-3.5" />
@@ -615,7 +663,7 @@ export default function DuplicadosPage() {
         )}
 
         {/* TAB 1.5: IGNORED SUGGESTIONS */}
-        {activeTab === 'ignored' && (
+        {activeTab === "ignored" && (
           <div className="space-y-6">
             <div className="relative w-full max-w-md">
               <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
@@ -633,7 +681,9 @@ export default function DuplicadosPage() {
             {loading ? (
               <div className="py-24 text-center space-y-3">
                 <RefreshCw className="w-6 h-6 animate-spin text-red-400 mx-auto" />
-                <p className="text-xs text-gray-400">Cargando sugerencias ignoradas...</p>
+                <p className="text-xs text-gray-400">
+                  Cargando sugerencias ignoradas...
+                </p>
               </div>
             ) : ignoredVisiblePairs.length === 0 ? (
               <div className="glass-panel rounded-3xl p-12 text-center border border-white/10 max-w-xl mx-auto space-y-4">
@@ -642,17 +692,21 @@ export default function DuplicadosPage() {
                 </div>
                 <div className="space-y-1">
                   <h3 className="text-lg font-bold text-white">
-                    {searchTerm ? 'No hay resultados' : 'No has ignorado sugerencias'}
+                    {searchTerm
+                      ? "No hay resultados"
+                      : "No has ignorado sugerencias"}
                   </h3>
                   <p className="text-xs sm:text-sm text-gray-400">
-                    Las sugerencias que decidas ignorar en la pestaña automática aparecerán aquí.
+                    Las sugerencias que decidas ignorar en la pestaña automática
+                    aparecerán aquí.
                   </p>
                 </div>
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-5">
                 {ignoredVisiblePairs.map((pair) => {
-                  const combinedStock = (pair.productA.stock || 0) + (pair.productB.stock || 0);
+                  const combinedStock =
+                    (pair.productA.stock || 0) + (pair.productB.stock || 0);
                   return (
                     <div
                       key={pair.pairId}
@@ -706,12 +760,15 @@ export default function DuplicadosPage() {
         )}
 
         {/* TAB 2: MANUAL MERGE */}
-        {activeTab === 'manual' && (
+        {activeTab === "manual" && (
           <div className="glass-panel rounded-3xl p-6 sm:p-8 border border-white/10 space-y-6">
             <div className="space-y-1">
-              <h2 className="text-lg font-bold text-white">Fusión Manual de Cualquier Par de Repuestos</h2>
+              <h2 className="text-lg font-bold text-white">
+                Fusión Manual de Cualquier Par de Repuestos
+              </h2>
               <p className="text-xs sm:text-sm text-gray-400">
-                Selecciona manualmente dos repuestos de tu catálogo para unificarlos en un solo producto con stock combinado.
+                Selecciona manualmente dos repuestos de tu catálogo para
+                unificarlos en un solo producto con stock combinado.
               </p>
             </div>
 
@@ -738,9 +795,18 @@ export default function DuplicadosPage() {
                       <span className="text-[10px] font-bold text-amber-300 uppercase block">
                         {manualProdA.marca} • {manualProdA.calidad}
                       </span>
-                      <h4 className="text-sm font-bold text-white mt-0.5">{manualProdA.modelo}</h4>
+                      <h4 className="text-sm font-bold text-white mt-0.5">
+                        {manualProdA.modelo}
+                      </h4>
                       <p className="text-xs text-gray-400 mt-1">
-                        Stock: <strong className="text-white">{manualProdA.stock} uds</strong> • Precio: <strong className="text-[#F3E0A9]">${manualProdA.precio} USD</strong>
+                        Stock:{" "}
+                        <strong className="text-white">
+                          {manualProdA.stock} uds
+                        </strong>{" "}
+                        • Precio:{" "}
+                        <strong className="text-[#F3E0A9]">
+                          ${manualProdA.precio} USD
+                        </strong>
                       </p>
                     </div>
                     <button
@@ -758,15 +824,21 @@ export default function DuplicadosPage() {
                           key={p.id}
                           onClick={() => {
                             setManualProdA(p);
-                            setManualSearchA('');
+                            setManualSearchA("");
                           }}
                           className="p-3 rounded-xl bg-[#10131E] border border-white/5 hover:border-[#D4AF37]/50 hover:bg-[#171B2B] cursor-pointer transition-all flex items-center justify-between text-xs"
                         >
                           <div>
-                            <span className="text-[10px] font-bold text-[#D4AF37] uppercase">{p.marca} ({p.calidad})</span>
-                            <p className="font-semibold text-white">{p.modelo}</p>
+                            <span className="text-[10px] font-bold text-[#D4AF37] uppercase">
+                              {p.marca} ({p.calidad})
+                            </span>
+                            <p className="font-semibold text-white">
+                              {p.modelo}
+                            </p>
                           </div>
-                          <span className="font-bold text-gray-300">{p.stock} uds</span>
+                          <span className="font-bold text-gray-300">
+                            {p.stock} uds
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -796,9 +868,18 @@ export default function DuplicadosPage() {
                       <span className="text-[10px] font-bold text-blue-300 uppercase block">
                         {manualProdB.marca} • {manualProdB.calidad}
                       </span>
-                      <h4 className="text-sm font-bold text-white mt-0.5">{manualProdB.modelo}</h4>
+                      <h4 className="text-sm font-bold text-white mt-0.5">
+                        {manualProdB.modelo}
+                      </h4>
                       <p className="text-xs text-gray-400 mt-1">
-                        Stock: <strong className="text-white">{manualProdB.stock} uds</strong> • Precio: <strong className="text-[#F3E0A9]">${manualProdB.precio} USD</strong>
+                        Stock:{" "}
+                        <strong className="text-white">
+                          {manualProdB.stock} uds
+                        </strong>{" "}
+                        • Precio:{" "}
+                        <strong className="text-[#F3E0A9]">
+                          ${manualProdB.precio} USD
+                        </strong>
                       </p>
                     </div>
                     <button
@@ -816,15 +897,21 @@ export default function DuplicadosPage() {
                           key={p.id}
                           onClick={() => {
                             setManualProdB(p);
-                            setManualSearchB('');
+                            setManualSearchB("");
                           }}
                           className="p-3 rounded-xl bg-[#10131E] border border-white/5 hover:border-blue-500/50 hover:bg-[#171B2B] cursor-pointer transition-all flex items-center justify-between text-xs"
                         >
                           <div>
-                            <span className="text-[10px] font-bold text-blue-400 uppercase">{p.marca} ({p.calidad})</span>
-                            <p className="font-semibold text-white">{p.modelo}</p>
+                            <span className="text-[10px] font-bold text-blue-400 uppercase">
+                              {p.marca} ({p.calidad})
+                            </span>
+                            <p className="font-semibold text-white">
+                              {p.modelo}
+                            </p>
                           </div>
-                          <span className="font-bold text-gray-300">{p.stock} uds</span>
+                          <span className="font-bold text-gray-300">
+                            {p.stock} uds
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -837,7 +924,11 @@ export default function DuplicadosPage() {
             {manualProdA && manualProdB && (
               <div className="pt-4 border-t border-white/10 flex items-center justify-between flex-wrap gap-4">
                 <div className="text-xs text-gray-300">
-                  Total combinado al fusionar: <strong className="text-emerald-400">{(manualProdA.stock || 0) + (manualProdB.stock || 0)} unidades</strong>
+                  Total combinado al fusionar:{" "}
+                  <strong className="text-emerald-400">
+                    {(manualProdA.stock || 0) + (manualProdB.stock || 0)}{" "}
+                    unidades
+                  </strong>
                 </div>
                 <button
                   onClick={() => handleOpenMerge(manualProdA, manualProdB)}
@@ -867,7 +958,10 @@ export default function DuplicadosPage() {
                     Fusión y Unificación de Repuestos
                   </h3>
                   <p className="text-xs text-gray-400">
-                    Marca: <strong className="text-[#E5C158]">{selectedPair.prodA.marca}</strong>
+                    Marca:{" "}
+                    <strong className="text-[#E5C158]">
+                      {selectedPair.prodA.marca}
+                    </strong>
                   </p>
                 </div>
               </div>
@@ -890,50 +984,76 @@ export default function DuplicadosPage() {
                   {/* Option A */}
                   <div
                     onClick={() => {
-                      setPrimaryTarget('A');
+                      setPrimaryTarget("A");
                       setFinalModelo(selectedPair.prodA.modelo);
                       setFinalPrecio(selectedPair.prodA.precio.toString());
                       setFinalCalidad(selectedPair.prodA.calidad);
                     }}
                     className={`p-4 rounded-2xl border cursor-pointer transition-all ${
-                      primaryTarget === 'A'
-                        ? 'bg-amber-500/10 border-[#D4AF37] ring-1 ring-[#D4AF37]'
-                        : 'bg-[#10131E] border-white/10 hover:border-white/20'
+                      primaryTarget === "A"
+                        ? "bg-amber-500/10 border-[#D4AF37] ring-1 ring-[#D4AF37]"
+                        : "bg-[#10131E] border-white/10 hover:border-white/20"
                     }`}
                   >
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] font-extrabold text-[#E5C158] uppercase">Opción A (ID: {selectedPair.prodA.id})</span>
-                      {primaryTarget === 'A' && <Check className="w-4 h-4 text-[#D4AF37]" />}
+                      <span className="text-[10px] font-extrabold text-[#E5C158] uppercase">
+                        Opción A (ID: {selectedPair.prodA.id})
+                      </span>
+                      {primaryTarget === "A" && (
+                        <Check className="w-4 h-4 text-[#D4AF37]" />
+                      )}
                     </div>
-                    <p className="text-xs font-bold text-white line-clamp-2">{selectedPair.prodA.modelo}</p>
+                    <p className="text-xs font-bold text-white line-clamp-2">
+                      {selectedPair.prodA.modelo}
+                    </p>
                     <div className="mt-2 flex items-center justify-between text-[11px] text-gray-400">
-                      <span>Stock: <strong className="text-gray-200">{selectedPair.prodA.stock} uds</strong></span>
-                      <span className="text-[#F3E0A9] font-bold">${selectedPair.prodA.precio} USD</span>
+                      <span>
+                        Stock:{" "}
+                        <strong className="text-gray-200">
+                          {selectedPair.prodA.stock} uds
+                        </strong>
+                      </span>
+                      <span className="text-[#F3E0A9] font-bold">
+                        ${selectedPair.prodA.precio} USD
+                      </span>
                     </div>
                   </div>
 
                   {/* Option B */}
                   <div
                     onClick={() => {
-                      setPrimaryTarget('B');
+                      setPrimaryTarget("B");
                       setFinalModelo(selectedPair.prodB.modelo);
                       setFinalPrecio(selectedPair.prodB.precio.toString());
                       setFinalCalidad(selectedPair.prodB.calidad);
                     }}
                     className={`p-4 rounded-2xl border cursor-pointer transition-all ${
-                      primaryTarget === 'B'
-                        ? 'bg-amber-500/10 border-[#D4AF37] ring-1 ring-[#D4AF37]'
-                        : 'bg-[#10131E] border-white/10 hover:border-white/20'
+                      primaryTarget === "B"
+                        ? "bg-amber-500/10 border-[#D4AF37] ring-1 ring-[#D4AF37]"
+                        : "bg-[#10131E] border-white/10 hover:border-white/20"
                     }`}
                   >
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] font-extrabold text-[#E5C158] uppercase">Opción B (ID: {selectedPair.prodB.id})</span>
-                      {primaryTarget === 'B' && <Check className="w-4 h-4 text-[#D4AF37]" />}
+                      <span className="text-[10px] font-extrabold text-[#E5C158] uppercase">
+                        Opción B (ID: {selectedPair.prodB.id})
+                      </span>
+                      {primaryTarget === "B" && (
+                        <Check className="w-4 h-4 text-[#D4AF37]" />
+                      )}
                     </div>
-                    <p className="text-xs font-bold text-white line-clamp-2">{selectedPair.prodB.modelo}</p>
+                    <p className="text-xs font-bold text-white line-clamp-2">
+                      {selectedPair.prodB.modelo}
+                    </p>
                     <div className="mt-2 flex items-center justify-between text-[11px] text-gray-400">
-                      <span>Stock: <strong className="text-gray-200">{selectedPair.prodB.stock} uds</strong></span>
-                      <span className="text-[#F3E0A9] font-bold">${selectedPair.prodB.precio} USD</span>
+                      <span>
+                        Stock:{" "}
+                        <strong className="text-gray-200">
+                          {selectedPair.prodB.stock} uds
+                        </strong>
+                      </span>
+                      <span className="text-[#F3E0A9] font-bold">
+                        ${selectedPair.prodB.precio} USD
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -980,14 +1100,18 @@ export default function DuplicadosPage() {
                     <div className="flex items-center gap-1 text-[10px]">
                       <button
                         type="button"
-                        onClick={() => setFinalPrecio(selectedPair.prodA.precio.toString())}
+                        onClick={() =>
+                          setFinalPrecio(selectedPair.prodA.precio.toString())
+                        }
                         className="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 text-[#F3E0A9]"
                       >
                         ${selectedPair.prodA.precio}
                       </button>
                       <button
                         type="button"
-                        onClick={() => setFinalPrecio(selectedPair.prodB.precio.toString())}
+                        onClick={() =>
+                          setFinalPrecio(selectedPair.prodB.precio.toString())
+                        }
                         className="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 text-[#F3E0A9]"
                       >
                         ${selectedPair.prodB.precio}
@@ -1013,7 +1137,9 @@ export default function DuplicadosPage() {
                   <input
                     type="text"
                     value={finalCalidad}
-                    onChange={(e) => setFinalCalidad(e.target.value.toUpperCase())}
+                    onChange={(e) =>
+                      setFinalCalidad(e.target.value.toUpperCase())
+                    }
                     className="w-full px-4 py-2.5 bg-[#10131E] border border-white/10 rounded-xl text-white font-bold text-xs sm:text-sm focus:outline-none focus:border-[#D4AF37]"
                   />
                 </div>
@@ -1025,13 +1151,22 @@ export default function DuplicadosPage() {
                   Resultado Matemático del Inventario
                 </span>
                 <div className="flex items-center justify-between text-xs sm:text-sm text-gray-200">
-                  <span>Stock Actual: <strong>{selectedPair.prodA.stock}</strong> (A) + <strong>{selectedPair.prodB.stock}</strong> (B)</span>
+                  <span>
+                    Stock Actual: <strong>{selectedPair.prodA.stock}</strong>{" "}
+                    (A) + <strong>{selectedPair.prodB.stock}</strong> (B)
+                  </span>
                   <span className="text-emerald-400 font-extrabold text-base">
-                    = {(selectedPair.prodA.stock || 0) + (selectedPair.prodB.stock || 0)} unidades
+                    ={" "}
+                    {(selectedPair.prodA.stock || 0) +
+                      (selectedPair.prodB.stock || 0)}{" "}
+                    unidades
                   </span>
                 </div>
                 <p className="text-[11px] text-gray-400 leading-snug pt-1 border-t border-white/5">
-                  🛡️ <strong>Trazabilidad protegida:</strong> Todo el historial de entradas, salidas y ventas previas de ambos repuestos se conservará unificado. El producto secundario quedará eliminado del catálogo.
+                  🛡️ <strong>Trazabilidad protegida:</strong> Todo el historial
+                  de entradas, salidas y ventas previas de ambos repuestos se
+                  conservará unificado. El producto secundario quedará eliminado
+                  del catálogo.
                 </p>
               </div>
             </div>

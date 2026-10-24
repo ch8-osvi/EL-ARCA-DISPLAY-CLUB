@@ -1,13 +1,13 @@
-'use client';
+"use client";
+import { checkAdminSession, loginAdmin } from "@/lib/auth-client";
 
-import { useActiveExchangeRate } from '@/lib/useActiveExchangeRate';
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import Link from 'next/link';
-import Navbar from '@/components/Navbar';
-import AdminProductCard from '@/components/AdminProductCard';
-import seedProducts from '@/data/products_seed.json';
-import { Product } from '@/lib/types';
-import * as XLSXStyle from 'xlsx-js-style';
+import { useActiveExchangeRate } from "@/lib/useActiveExchangeRate";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import Link from "next/link";
+import Navbar from "@/components/Navbar";
+import AdminProductCard from "@/components/AdminProductCard";
+import seedProducts from "@/data/products_seed.json";
+import { Product } from "@/lib/types";
 import {
   Lock,
   KeyRound,
@@ -34,15 +34,15 @@ import {
   TrendingDown,
   ChevronDown,
   ChevronUp,
-} from 'lucide-react';
+} from "lucide-react";
 import {
   getCanonicalBrand,
   getBrandCounts,
   getSortedBrands,
   matchBrandFilter,
   sortProductsByPopularity,
-} from '@/lib/brandUtils';
-import { fuzzyMatchProduct } from '@/lib/searchUtils';
+} from "@/lib/brandUtils";
+import { fuzzyMatchProduct } from "@/lib/searchUtils";
 
 const SkeletonProductCard = () => (
   <div className="glass-card rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden animate-pulse">
@@ -75,20 +75,22 @@ const SkeletonProductCard = () => (
 
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [passwordInput, setPasswordInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState("");
   const [loginError, setLoginError] = useState(false);
 
   const [products, setProducts] = useState<Product[]>([]);
   const [deletedCount, setDeletedCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedBrand, setSelectedBrand] = useState('ALL');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedBrand, setSelectedBrand] = useState("ALL");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // ElTOQUE Rate logic
   const [currentRate, setCurrentRate] = useActiveExchangeRate();
   const [eltoqueRate, setEltoqueRate] = useState<number | null>(null);
-  const [referenceStatus, setReferenceStatus] = useState('Verificando referencia elTOQUE…');
+  const [referenceStatus, setReferenceStatus] = useState(
+    "Verificando referencia elTOQUE…",
+  );
   const [referenceStale, setReferenceStale] = useState(true);
   const [savingRate, setSavingRate] = useState(false);
   const [loadingRates, setLoadingRates] = useState(true);
@@ -96,12 +98,12 @@ export default function AdminPage() {
 
   // New product form modal state
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newMarca, setNewMarca] = useState('');
-  const [newModelo, setNewModelo] = useState('');
-  const [newCalidadSelect, setNewCalidadSelect] = useState('ORIGINAL C/M');
-  const [newCalidadCustom, setNewCalidadCustom] = useState('');
-  const [newPrecio, setNewPrecio] = useState('');
-  const [newStock, setNewStock] = useState('1');
+  const [newMarca, setNewMarca] = useState("");
+  const [newModelo, setNewModelo] = useState("");
+  const [newCalidadSelect, setNewCalidadSelect] = useState("ORIGINAL C/M");
+  const [newCalidadCustom, setNewCalidadCustom] = useState("");
+  const [newPrecio, setNewPrecio] = useState("");
+  const [newStock, setNewStock] = useState("1");
 
   // Excel Upload modal state
   const [showExcelModal, setShowExcelModal] = useState(false);
@@ -111,36 +113,37 @@ export default function AdminPage() {
 
   // Check login session
   useEffect(() => {
-    const auth = sessionStorage.getItem('el_arca_admin_auth');
-    if (auth === 'true') {
-      setIsAuthenticated(true);
-      // Auto-heal cookie for middleware if it was lost
-      document.cookie = "el_arca_admin_session=authenticated; path=/; max-age=86400";
-    }
+    void checkAdminSession().then(setIsAuthenticated);
   }, []);
 
   // Fetch product list
   const fetchProducts = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/products');
+      const res = await fetch("/api/products");
       if (res.ok) {
         const data = await res.json();
         if (data.products && Array.isArray(data.products)) {
           setProducts(data.products);
           setDeletedCount(data.deletedCount || 0);
-          localStorage.setItem('el_arca_products', JSON.stringify(data.products));
-          localStorage.setItem('el_arca_deleted', (data.deletedCount || 0).toString());
+          localStorage.setItem(
+            "el_arca_products",
+            JSON.stringify(data.products),
+          );
+          localStorage.setItem(
+            "el_arca_deleted",
+            (data.deletedCount || 0).toString(),
+          );
           setLoading(false);
           return;
         }
       }
     } catch (err) {
-      console.warn('API error in admin, using localStorage fallback');
+      console.warn("API error in admin, using localStorage fallback");
     }
 
-    const local = localStorage.getItem('el_arca_products');
-    const localDeleted = localStorage.getItem('el_arca_deleted');
+    const local = localStorage.getItem("el_arca_products");
+    const localDeleted = localStorage.getItem("el_arca_deleted");
     if (localDeleted) {
       setDeletedCount(parseInt(localDeleted) || 0);
     }
@@ -159,12 +162,11 @@ export default function AdminPage() {
   useEffect(() => {
     if (isAuthenticated) {
       fetchProducts();
-      
-      const savedMin = localStorage.getItem('el_arca_eltoque_minimized');
-      if (savedMin === 'true') {
+
+      const savedMin = localStorage.getItem("el_arca_eltoque_minimized");
+      if (savedMin === "true") {
         setIsEltoqueMinimized(true);
       }
-
     }
   }, [isAuthenticated]);
 
@@ -173,64 +175,91 @@ export default function AdminPage() {
     let active = true;
     const refresh = async () => {
       try {
-        const response = await fetch('/api/eltoque', { cache: 'no-store' });
+        const response = await fetch("/api/eltoque", { cache: "no-store" });
         const data = await response.json();
         if (!active) return;
         setEltoqueRate(data.success ? data.rate : null);
         setReferenceStale(!data.success || data.stale);
-        setReferenceStatus(data.success
-          ? [data.stale ? 'Referencia desactualizada.' : 'Referencia elTOQUE (últimas 24 horas).',
-             'Verificada: ' + new Date(data.updatedAt).toLocaleString(),
-             'Fecha informada por elTOQUE: ' + data.providerDate,
-             data.warning || ''].filter(Boolean).join(' ')
-          : 'Referencia elTOQUE no disponible. Se mantiene la tasa activa del negocio.');
+        setReferenceStatus(
+          data.success
+            ? [
+                data.stale
+                  ? "Referencia desactualizada."
+                  : "Referencia elTOQUE (últimas 24 horas).",
+                "Verificada: " + new Date(data.updatedAt).toLocaleString(),
+                "Fecha informada por elTOQUE: " + data.providerDate,
+                data.warning || "",
+              ]
+                .filter(Boolean)
+                .join(" ")
+            : "Referencia elTOQUE no disponible. Se mantiene la tasa activa del negocio.",
+        );
       } catch {
-        if (active) { setReferenceStale(true); setReferenceStatus('No se pudo verificar elTOQUE. Se mantiene la tasa activa del negocio.'); }
-      } finally { if (active) setLoadingRates(false); }
+        if (active) {
+          setReferenceStale(true);
+          setReferenceStatus(
+            "No se pudo verificar elTOQUE. Se mantiene la tasa activa del negocio.",
+          );
+        }
+      } finally {
+        if (active) setLoadingRates(false);
+      }
     };
     void refresh();
     const timer = window.setInterval(refresh, 60000);
-    window.addEventListener('focus', refresh);
-    return () => { active = false; clearInterval(timer); window.removeEventListener('focus', refresh); };
+    window.addEventListener("focus", refresh);
+    return () => {
+      active = false;
+      clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+    };
   }, [isAuthenticated]);
 
   const handleAjustarTasa = async () => {
     if (!eltoqueRate || referenceStale || savingRate) return;
     setSavingRate(true);
     try {
-      const response = await fetch('/api/exchange-rate', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rate: eltoqueRate, source: 'eltoque' }),
+      const response = await fetch("/api/exchange-rate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rate: eltoqueRate, source: "eltoque" }),
       });
       const data = await response.json();
-      if (!response.ok || !data.success) throw new Error(data.error || 'No se pudo guardar la tasa');
+      if (!response.ok || !data.success)
+        throw new Error(data.error || "No se pudo guardar la tasa");
       setCurrentRate(data.rate);
-      window.dispatchEvent(new Event('exchange-rate-changed'));
-      try { localStorage.setItem('el_arca_rate_updated', String(Date.now())); } catch {}
-      triggerToast('Tasa del negocio guardada: ' + data.rate + ' CUP');
+      window.dispatchEvent(new Event("exchange-rate-changed"));
+      try {
+        localStorage.setItem("el_arca_rate_updated", String(Date.now()));
+      } catch {}
+      triggerToast("Tasa del negocio guardada: " + data.rate + " CUP");
     } catch (error) {
-      triggerToast(error instanceof Error ? error.message : 'Error ajustando la tasa', 3000);
-    } finally { setSavingRate(false); }
+      triggerToast(
+        error instanceof Error ? error.message : "Error ajustando la tasa",
+        3000,
+      );
+    } finally {
+      setSavingRate(false);
+    }
   };
 
   // Handle Login Submit
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (passwordInput === 'arca2026' || passwordInput === 'admin') {
+    if (await loginAdmin(passwordInput)) {
       setIsAuthenticated(true);
-      sessionStorage.setItem('el_arca_admin_auth', 'true');
-      document.cookie = "el_arca_admin_session=authenticated; path=/; max-age=86400";
+
       setLoginError(false);
     } else {
       setLoginError(true);
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await fetch("/api/auth/session", { method: "DELETE" });
     setIsAuthenticated(false);
-    sessionStorage.removeItem('el_arca_admin_auth');
-    document.cookie = "el_arca_admin_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-    window.location.href = '/';
+
+    window.location.href = "/";
   };
 
   // Trigger Toast Notification with custom duration
@@ -248,18 +277,18 @@ export default function AdminPage() {
     setProducts(updated);
     const newDeleted = deletedCount + 1;
     setDeletedCount(newDeleted);
-    localStorage.setItem('el_arca_products', JSON.stringify(updated));
-    localStorage.setItem('el_arca_deleted', newDeleted.toString());
+    localStorage.setItem("el_arca_products", JSON.stringify(updated));
+    localStorage.setItem("el_arca_deleted", newDeleted.toString());
 
     try {
-      await fetch('/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete', id }),
+      await fetch("/api/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", id }),
       });
-      triggerToast('Producto eliminado del catálogo global en Vercel');
+      triggerToast("Producto eliminado del catálogo global en Vercel");
     } catch (err) {
-      triggerToast('Producto eliminado en modo local');
+      triggerToast("Producto eliminado en modo local");
     }
   };
 
@@ -267,7 +296,7 @@ export default function AdminPage() {
   const handleRestoreCatalog = async () => {
     if (
       !confirm(
-        '¿Deseas restaurar la lista completa de 163 repuestos originales del Excel?'
+        "¿Deseas restaurar la lista completa de 163 repuestos originales del Excel?",
       )
     ) {
       return;
@@ -276,18 +305,18 @@ export default function AdminPage() {
     const original = seedProducts as Product[];
     setProducts(original);
     setDeletedCount(0);
-    localStorage.setItem('el_arca_products', JSON.stringify(original));
-    localStorage.setItem('el_arca_deleted', '0');
+    localStorage.setItem("el_arca_products", JSON.stringify(original));
+    localStorage.setItem("el_arca_deleted", "0");
 
     try {
-      await fetch('/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'restore' }),
+      await fetch("/api/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "restore" }),
       });
-      triggerToast('Catálogo restaurado a los 163 productos del Excel');
+      triggerToast("Catálogo restaurado a los 163 productos del Excel");
     } catch {
-      triggerToast('Catálogo restaurado localmente');
+      triggerToast("Catálogo restaurado localmente");
     }
   };
 
@@ -297,21 +326,21 @@ export default function AdminPage() {
     if (!newModelo || !newPrecio) return;
 
     const finalCalidad =
-      newCalidadSelect === 'CUSTOM'
-        ? newCalidadCustom.trim().toUpperCase() || 'ORIGINAL C/M'
+      newCalidadSelect === "CUSTOM"
+        ? newCalidadCustom.trim().toUpperCase() || "ORIGINAL C/M"
         : newCalidadSelect.trim().toUpperCase();
 
-    const marcaTrimmed = (newMarca || 'VARIOS').toUpperCase().trim();
+    const marcaTrimmed = (newMarca || "VARIOS").toUpperCase().trim();
     const modeloTrimmed = newModelo.toUpperCase().trim();
     const parsedStock = Math.max(0, parseInt(newStock, 10) || 1);
     const parsedPrecio = parseFloat(newPrecio) || 0;
 
     // Check if duplicate exists in local state
     const existingIndex = products.findIndex(
-      (p) => 
+      (p) =>
         p.marca.toUpperCase() === marcaTrimmed &&
         p.modelo.toUpperCase() === modeloTrimmed &&
-        p.calidad.toUpperCase() === finalCalidad
+        p.calidad.toUpperCase() === finalCalidad,
     );
 
     let updated: Product[];
@@ -338,14 +367,14 @@ export default function AdminPage() {
     }
 
     setProducts(updated);
-    localStorage.setItem('el_arca_products', JSON.stringify(updated));
+    localStorage.setItem("el_arca_products", JSON.stringify(updated));
 
     try {
-      const res = await fetch('/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: 'add',
+          action: "add",
           product: {
             marca: marcaTrimmed,
             modelo: modeloTrimmed,
@@ -358,153 +387,189 @@ export default function AdminPage() {
       const data = await res.json();
       if (res.ok && data.success) {
         if (data.wasUpdated) {
-          triggerToast(`Producto existente reconocido: se sumaron +${parsedStock} uds al stock (Total: ${data.product.stock} uds)`);
+          triggerToast(
+            `Producto existente reconocido: se sumaron +${parsedStock} uds al stock (Total: ${data.product.stock} uds)`,
+          );
         } else {
-          triggerToast('Nuevo producto agregado con éxito');
+          triggerToast("Nuevo producto agregado con éxito");
         }
       } else {
-        triggerToast(data.message || 'Producto procesado');
+        triggerToast(data.message || "Producto procesado");
       }
     } catch {
-      triggerToast(existingIndex !== -1 ? 'Stock sumado localmente' : 'Producto agregado localmente');
+      triggerToast(
+        existingIndex !== -1
+          ? "Stock sumado localmente"
+          : "Producto agregado localmente",
+      );
     }
 
-    setNewMarca('');
-    setNewModelo('');
-    setNewCalidadSelect('ORIGINAL C/M');
-    setNewCalidadCustom('');
-    setNewPrecio('');
-    setNewStock('1');
+    setNewMarca("");
+    setNewModelo("");
+    setNewCalidadSelect("ORIGINAL C/M");
+    setNewCalidadCustom("");
+    setNewPrecio("");
+    setNewStock("1");
     setShowAddModal(false);
   };
 
   // Export current product list to Excel — with full professional styling
-  const handleExportExcel = () => {
-    if (products.length === 0) {
-      triggerToast('No hay productos para exportar');
-      return;
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const s = (style: any) => style;
-
-    const BRAND_HEADER = s({
-      font: { bold: true, sz: 12, color: { rgb: 'FFFFFF' }, name: 'Arial' },
-      fill: { patternType: 'solid', fgColor: { rgb: '000000' } },
-      alignment: { horizontal: 'center', vertical: 'center' },
-    });
-
-    const COL_HDR = s({
-      font: { bold: true, sz: 11, color: { rgb: '000000' }, name: 'Arial' },
-      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-    });
-
-    const PRICE_HDR = s({
-      font: { bold: true, sz: 11, color: { rgb: '5B9BD5' }, name: 'Arial' },
-      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-    });
-
-    const DATA = s({
-      font: { sz: 11, color: { rgb: '000000' }, name: 'Arial' },
-      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-    });
-
-    const PRICE_DATA = s({
-      font: { bold: true, sz: 11, color: { rgb: '5B9BD5' }, name: 'Arial' },
-      alignment: { horizontal: 'center', vertical: 'center' },
-      numFmt: '$#,##0.00',
-    });
-
-    const COLS = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ws: Record<string, any> = {};
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const merges: any[] = [];
-
-    const grouped = new Map<string, typeof products>();
-    products.forEach((p) => {
-      const brand = getCanonicalBrand(p.marca);
-      if (!grouped.has(brand)) grouped.set(brand, []);
-      grouped.get(brand)!.push(p);
-    });
-    // Sort brands by the number of products they have (highest first)
-    const sortedBrands = Array.from(grouped.keys()).sort((a, b) => {
-      return grouped.get(b)!.length - grouped.get(a)!.length;
-    });
-
-    let row = 0;
-
-    // Header row
-    const headers = ['MARCA', 'MODELO', 'CALIDAD', 'PRECIO \nUSD', '', '', 'UNIDADES'];
-    headers.forEach((h, ci) => {
-      ws[`${COLS[ci]}${row + 1}`] = {
-        v: h,
-        t: 's',
-        s: ci === 3 ? PRICE_HDR : COL_HDR,
-      };
-    });
-    row++;
-
-    const getCalidadStyle = (calidad: string) => {
-      const c = calidad.toUpperCase().trim();
-      const baseFont = { sz: 11, name: 'Arial' };
-      const baseAlign = { horizontal: 'center', vertical: 'center', wrapText: true };
-      
-      if (c === 'ORIGINAL C/M' || c === 'INCELL C/M' || c === 'OLED C/M') {
-        return s({ font: { ...baseFont, bold: true, color: { rgb: '000000' } }, alignment: baseAlign });
+  const handleExportExcel = async () => {
+    try {
+      const XLSXStyle = await import("xlsx-js-style");
+      if (products.length === 0) {
+        triggerToast("No hay productos para exportar");
+        return;
       }
-      if (c.includes('AMOLED C/M') || c.includes('OLED SOFT')) {
-        return s({ font: { ...baseFont, bold: true, color: { rgb: '8A2BE2' } }, alignment: baseAlign }); // Violet
-      }
-      if (c.includes('MECHANIC')) {
-        return s({ font: { ...baseFont, bold: true, color: { rgb: 'FF0000' } }, alignment: baseAlign }); // Red
-      }
-      return DATA;
-    };
 
-    sortedBrands.forEach((brand) => {
-      const items = grouped.get(brand)!;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const s = (style: any) => style;
 
-      // Brand header row (black background)
-      ws[`A${row + 1}`] = { v: '', t: 's', s: BRAND_HEADER };
-      ws[`B${row + 1}`] = { v: brand, t: 's', s: BRAND_HEADER };
-      for (let c = 2; c < 7; c++) {
-        ws[`${COLS[c]}${row + 1}`] = { v: '', t: 's', s: BRAND_HEADER };
-      }
-      merges.push({ s: { r: row, c: 1 }, e: { r: row, c: 3 } });
+      const BRAND_HEADER = s({
+        font: { bold: true, sz: 12, color: { rgb: "FFFFFF" }, name: "Arial" },
+        fill: { patternType: "solid", fgColor: { rgb: "000000" } },
+        alignment: { horizontal: "center", vertical: "center" },
+      });
+
+      const COL_HDR = s({
+        font: { bold: true, sz: 11, color: { rgb: "000000" }, name: "Arial" },
+        alignment: { horizontal: "center", vertical: "center", wrapText: true },
+      });
+
+      const PRICE_HDR = s({
+        font: { bold: true, sz: 11, color: { rgb: "5B9BD5" }, name: "Arial" },
+        alignment: { horizontal: "center", vertical: "center", wrapText: true },
+      });
+
+      const DATA = s({
+        font: { sz: 11, color: { rgb: "000000" }, name: "Arial" },
+        alignment: { horizontal: "center", vertical: "center", wrapText: true },
+      });
+
+      const PRICE_DATA = s({
+        font: { bold: true, sz: 11, color: { rgb: "5B9BD5" }, name: "Arial" },
+        alignment: { horizontal: "center", vertical: "center" },
+        numFmt: "$#,##0.00",
+      });
+
+      const COLS = ["A", "B", "C", "D", "E", "F", "G"];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ws: Record<string, any> = {};
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const merges: any[] = [];
+
+      const grouped = new Map<string, typeof products>();
+      products.forEach((p) => {
+        const brand = getCanonicalBrand(p.marca);
+        if (!grouped.has(brand)) grouped.set(brand, []);
+        grouped.get(brand)!.push(p);
+      });
+      // Sort brands by the number of products they have (highest first)
+      const sortedBrands = Array.from(grouped.keys()).sort((a, b) => {
+        return grouped.get(b)!.length - grouped.get(a)!.length;
+      });
+
+      let row = 0;
+
+      // Header row
+      const headers = [
+        "MARCA",
+        "MODELO",
+        "CALIDAD",
+        "PRECIO \nUSD",
+        "",
+        "",
+        "UNIDADES",
+      ];
+      headers.forEach((h, ci) => {
+        ws[`${COLS[ci]}${row + 1}`] = {
+          v: h,
+          t: "s",
+          s: ci === 3 ? PRICE_HDR : COL_HDR,
+        };
+      });
       row++;
 
-      // Data rows
-      items.forEach((p) => {
-        ws[`A${row + 1}`] = { v: p.marca, t: 's', s: DATA };
-        ws[`B${row + 1}`] = { v: p.modelo, t: 's', s: DATA };
-        ws[`C${row + 1}`] = { v: p.calidad, t: 's', s: getCalidadStyle(p.calidad) };
-        ws[`D${row + 1}`] = { v: p.precio, t: 'n', s: PRICE_DATA };
-        ws[`E${row + 1}`] = { v: '', t: 's', s: DATA };
-        ws[`F${row + 1}`] = { v: '', t: 's', s: DATA };
-        ws[`G${row + 1}`] = { v: Number(p.stock) || 0, t: 'n', s: DATA };
+      const getCalidadStyle = (calidad: string) => {
+        const c = calidad.toUpperCase().trim();
+        const baseFont = { sz: 11, name: "Arial" };
+        const baseAlign = {
+          horizontal: "center",
+          vertical: "center",
+          wrapText: true,
+        };
+
+        if (c === "ORIGINAL C/M" || c === "INCELL C/M" || c === "OLED C/M") {
+          return s({
+            font: { ...baseFont, bold: true, color: { rgb: "000000" } },
+            alignment: baseAlign,
+          });
+        }
+        if (c.includes("AMOLED C/M") || c.includes("OLED SOFT")) {
+          return s({
+            font: { ...baseFont, bold: true, color: { rgb: "8A2BE2" } },
+            alignment: baseAlign,
+          }); // Violet
+        }
+        if (c.includes("MECHANIC")) {
+          return s({
+            font: { ...baseFont, bold: true, color: { rgb: "FF0000" } },
+            alignment: baseAlign,
+          }); // Red
+        }
+        return DATA;
+      };
+
+      sortedBrands.forEach((brand) => {
+        const items = grouped.get(brand)!;
+
+        // Brand header row (black background)
+        ws[`A${row + 1}`] = { v: "", t: "s", s: BRAND_HEADER };
+        ws[`B${row + 1}`] = { v: brand, t: "s", s: BRAND_HEADER };
+        for (let c = 2; c < 7; c++) {
+          ws[`${COLS[c]}${row + 1}`] = { v: "", t: "s", s: BRAND_HEADER };
+        }
+        merges.push({ s: { r: row, c: 1 }, e: { r: row, c: 3 } });
         row++;
+
+        // Data rows
+        items.forEach((p) => {
+          ws[`A${row + 1}`] = { v: p.marca, t: "s", s: DATA };
+          ws[`B${row + 1}`] = { v: p.modelo, t: "s", s: DATA };
+          ws[`C${row + 1}`] = {
+            v: p.calidad,
+            t: "s",
+            s: getCalidadStyle(p.calidad),
+          };
+          ws[`D${row + 1}`] = { v: p.precio, t: "n", s: PRICE_DATA };
+          ws[`E${row + 1}`] = { v: "", t: "s", s: DATA };
+          ws[`F${row + 1}`] = { v: "", t: "s", s: DATA };
+          ws[`G${row + 1}`] = { v: Number(p.stock) || 0, t: "n", s: DATA };
+          row++;
+        });
       });
-    });
 
-    ws['!ref'] = `A1:G${row}`;
-    ws['!merges'] = merges;
-    ws['!cols'] = [
-      { wch: 15 }, // A: MARCA
-      { wch: 45 }, // B: MODELO
-      { wch: 20 }, // C: CALIDAD
-      { wch: 15 }, // D: PRECIO USD
-      { wch: 5 },  // E
-      { wch: 5 },  // F
-      { wch: 12 }, // G: UNIDADES
-    ];
-    // No ws['!rows'] so Excel auto-fits the row heights for multi-line wrapped text
+      ws["!ref"] = `A1:G${row}`;
+      ws["!merges"] = merges;
+      ws["!cols"] = [
+        { wch: 15 }, // A: MARCA
+        { wch: 45 }, // B: MODELO
+        { wch: 20 }, // C: CALIDAD
+        { wch: 15 }, // D: PRECIO USD
+        { wch: 5 }, // E
+        { wch: 5 }, // F
+        { wch: 12 }, // G: UNIDADES
+      ];
+      // No ws['!rows'] so Excel auto-fits the row heights for multi-line wrapped text
 
-    const wb = XLSXStyle.utils.book_new();
-    XLSXStyle.utils.book_append_sheet(wb, ws, 'DISPLAYS');
-    const fileName = `EL_ARCA_DISPLAY_CLUB_${new Date().toISOString().slice(0, 10)}.xlsx`;
-    XLSXStyle.writeFile(wb, fileName);
-    triggerToast(`Catálogo exportado con formato: ${fileName}`);
+      const wb = XLSXStyle.utils.book_new();
+      XLSXStyle.utils.book_append_sheet(wb, ws, "DISPLAYS");
+      const fileName = `EL_ARCA_DISPLAY_CLUB_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      XLSXStyle.writeFile(wb, fileName);
+      triggerToast(`Catálogo exportado con formato: ${fileName}`);
+    } catch {
+      triggerToast("No se pudo exportar el catálogo. Inténtalo de nuevo.");
+    }
   };
 
   // Handle Uploading and Parsing New Excel File directly in the browser
@@ -514,27 +579,40 @@ export default function AdminPage() {
     if (!files || files.length === 0) return;
 
     const file = files[0];
+    if (file.size > 20 * 1024 * 1024) {
+      triggerToast("El archivo supera el límite de 20 MB.");
+      return;
+    }
     setIsProcessingExcel(true);
 
     const reader = new FileReader();
     reader.onload = async (evt) => {
       try {
+        const XLSXRead = await import("xlsx");
         const bstr = evt.target?.result;
-        const wb = XLSXStyle.read(bstr, { type: 'array' });
+        const wb = XLSXRead.read(bstr, { type: "array" });
 
         // Find sheet 'DISPLAYS' or default to first sheet
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        let sheetName = wb.SheetNames.find((s: any) => String(s).toUpperCase() === 'DISPLAYS');
+        let sheetName = wb.SheetNames.find(
+          (s: any) => String(s).toUpperCase() === "DISPLAYS",
+        );
         if (!sheetName) sheetName = wb.SheetNames[0];
 
         const sheet = wb.Sheets[sheetName];
 
         // --- Strategy: read with header:1 (raw arrays) so we see EVERY row including brand headers ---
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const rawRows: any[][] = XLSXStyle.utils.sheet_to_json(sheet, { header: 1, defval: null });
+        const rawRows: any[][] = XLSXRead.utils.sheet_to_json(sheet, {
+          header: 1,
+          defval: null,
+        });
 
         if (!rawRows || rawRows.length === 0) {
-          triggerToast('El archivo Excel está vacío o no contiene hojas válidas.', 5000);
+          triggerToast(
+            "El archivo Excel está vacío o no contiene hojas válidas.",
+            5000,
+          );
           setIsProcessingExcel(false);
           return;
         }
@@ -542,12 +620,15 @@ export default function AdminPage() {
         // Helper: safe string clean (collapses whitespace/newlines)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const cleanStr = (val: any): string =>
-          val != null ? String(val).replace(/\n/g, ' ').replace(/\s+/g, ' ').trim() : '';
+          val != null
+            ? String(val).replace(/\n/g, " ").replace(/\s+/g, " ").trim()
+            : "";
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const toNum = (val: any): number => {
-          if (typeof val === 'number') return val;
-          if (typeof val === 'string') return parseFloat(val.replace(/[^0-9.]/g, '')) || 0;
+          if (typeof val === "number") return val;
+          if (typeof val === "string")
+            return parseFloat(val.replace(/[^0-9.]/g, "")) || 0;
           return 0;
         };
 
@@ -568,15 +649,35 @@ export default function AdminPage() {
           let foundHeader = false;
           row.forEach((cell, idx) => {
             const s = cleanStr(cell).toUpperCase();
-            if (s === 'MARCA') { colMarca = idx; foundHeader = true; }
-            else if (s === 'MODELO') { colModelo = idx; foundHeader = true; }
-            else if (s === 'CALIDAD') { colCalidad = idx; }
+            if (s === "MARCA") {
+              colMarca = idx;
+              foundHeader = true;
+            } else if (s === "MODELO") {
+              colModelo = idx;
+              foundHeader = true;
+            } else if (s === "CALIDAD") {
+              colCalidad = idx;
+            }
             // "PRECIO \nUSD" or "PRECIO USD" or just "PRECIO"
-            else if (s.startsWith('PRECIO') || (s.includes('USD') && !s.includes('UNIDAD'))) { colPrecio = idx; }
+            else if (
+              s.startsWith("PRECIO") ||
+              (s.includes("USD") && !s.includes("UNIDAD"))
+            ) {
+              colPrecio = idx;
+            }
             // "UNIDADES" or "STOCK" or "CANTIDAD"
-            else if (s.includes('UNIDAD') || s.includes('STOCK') || s.includes('CANT')) { colStock = idx; }
+            else if (
+              s.includes("UNIDAD") ||
+              s.includes("STOCK") ||
+              s.includes("CANT")
+            ) {
+              colStock = idx;
+            }
           });
-          if (foundHeader) { headerRowIdx = r; break; }
+          if (foundHeader) {
+            headerRowIdx = r;
+            break;
+          }
         }
 
         // -----------------------------------------------------------------
@@ -585,17 +686,36 @@ export default function AdminPage() {
         // are used to fill in the currentBrand for rows that lack MARCA.
         // -----------------------------------------------------------------
         const parsedProducts: Product[] = [];
-        let currentBrand = 'VARIOS';
+        let currentBrand = "VARIOS";
         let skippedNoPriceCount = 0;
         let zeroStockCount = 0;
         let withStockCount = 0;
 
         // Canonical brand names that can appear as section headers
         const BRAND_KEYWORDS = [
-          'SAMSUNG', 'IPHONE', 'XIAOMI', 'REDMI', 'POCO',
-          'MOTOROLA', 'HUAWEI', 'HONOR', 'INFINIX', 'TECNO', 'ITEL',
-          'OPPO', 'REALME', 'NARZO', 'RENO', 'ZTE', 'NUBIA',
-          'TCL', 'ALCATEL', 'LG', 'VIVO', 'BLACKVIEW', 'NOKIA',
+          "SAMSUNG",
+          "IPHONE",
+          "XIAOMI",
+          "REDMI",
+          "POCO",
+          "MOTOROLA",
+          "HUAWEI",
+          "HONOR",
+          "INFINIX",
+          "TECNO",
+          "ITEL",
+          "OPPO",
+          "REALME",
+          "NARZO",
+          "RENO",
+          "ZTE",
+          "NUBIA",
+          "TCL",
+          "ALCATEL",
+          "LG",
+          "VIVO",
+          "BLACKVIEW",
+          "NOKIA",
         ];
 
         for (let i = 0; i < rawRows.length; i++) {
@@ -604,19 +724,20 @@ export default function AdminPage() {
           const row = rawRows[i];
           if (!row || row.length === 0) continue;
 
-          const rawMarca   = cleanStr(row[colMarca]);
-          const rawModelo  = cleanStr(row[colModelo]);
+          const rawMarca = cleanStr(row[colMarca]);
+          const rawModelo = cleanStr(row[colModelo]);
           const rawCalidad = cleanStr(row[colCalidad]);
-          const rawPrecio  = row[colPrecio];
+          const rawPrecio = row[colPrecio];
           // Stock can be null when defval:null — that means blank cell
-          const rawStock   = row[colStock];
+          const rawStock = row[colStock];
 
           // Completely empty row → skip
           if (!rawMarca && !rawModelo) continue;
 
           // Detect brand-section header rows:
           // These have no price AND the modelo (or marca) contains only a brand name.
-          const noPriceCell = (rawPrecio === null || rawPrecio === undefined || rawPrecio === '');
+          const noPriceCell =
+            rawPrecio === null || rawPrecio === undefined || rawPrecio === "";
           const upperMod = rawModelo.toUpperCase();
           const upperMarca = rawMarca.toUpperCase();
 
@@ -624,7 +745,11 @@ export default function AdminPage() {
           if (noPriceCell) {
             const isBrandHeader =
               (!rawModelo && rawMarca) ||
-              BRAND_KEYWORDS.some(b => upperMod === b || (upperMod.length < 40 && upperMod.includes(b) && !rawCalidad));
+              BRAND_KEYWORDS.some(
+                (b) =>
+                  upperMod === b ||
+                  (upperMod.length < 40 && upperMod.includes(b) && !rawCalidad),
+              );
 
             if (isBrandHeader) {
               currentBrand = (rawMarca || rawModelo).toUpperCase();
@@ -633,7 +758,7 @@ export default function AdminPage() {
           }
 
           // Skip the repeated header row (MODELO/MARCA text as values)
-          if (upperMod === 'MODELO' || upperMarca === 'MARCA') continue;
+          if (upperMod === "MODELO" || upperMarca === "MARCA") continue;
 
           // ------ PRICE ------
           const priceNum = toNum(rawPrecio);
@@ -644,7 +769,11 @@ export default function AdminPage() {
 
           // ------ STOCK ------
           let stockNum = 0;
-          if (rawStock !== null && rawStock !== undefined && String(rawStock).trim() !== '') {
+          if (
+            rawStock !== null &&
+            rawStock !== undefined &&
+            String(rawStock).trim() !== ""
+          ) {
             const s = toNum(rawStock);
             stockNum = Math.max(0, Math.floor(s));
           }
@@ -655,14 +784,16 @@ export default function AdminPage() {
             zeroStockCount++;
           }
 
-          const finalBrand = (rawMarca || currentBrand || 'VARIOS').toUpperCase().trim();
+          const finalBrand = (rawMarca || currentBrand || "VARIOS")
+            .toUpperCase()
+            .trim();
           const finalModel = rawModelo.toUpperCase().trim();
 
           parsedProducts.push({
-            id: `display-excel-${String(parsedProducts.length + 1).padStart(3, '0')}`,
+            id: `display-excel-${String(parsedProducts.length + 1).padStart(3, "0")}`,
             marca: finalBrand,
             modelo: finalModel,
-            calidad: (rawCalidad || 'ORIGINAL').toUpperCase().trim(),
+            calidad: (rawCalidad || "ORIGINAL").toUpperCase().trim(),
             precio: priceNum,
             stock: stockNum,
           });
@@ -670,8 +801,8 @@ export default function AdminPage() {
 
         if (parsedProducts.length === 0) {
           triggerToast(
-            '⚠️ No se detectaron repuestos válidos en la hoja. Asegúrate de incluir las columnas: MARCA, MODELO, CALIDAD, PRECIO.',
-            6000
+            "⚠️ No se detectaron repuestos válidos en la hoja. Asegúrate de incluir las columnas: MARCA, MODELO, CALIDAD, PRECIO.",
+            6000,
           );
           setIsProcessingExcel(false);
           return;
@@ -680,17 +811,23 @@ export default function AdminPage() {
         // Update Products globally and locally
         setProducts(parsedProducts);
         setDeletedCount(0);
-        localStorage.setItem('el_arca_products', JSON.stringify(parsedProducts));
-        localStorage.setItem('el_arca_deleted', '0');
+        localStorage.setItem(
+          "el_arca_products",
+          JSON.stringify(parsedProducts),
+        );
+        localStorage.setItem("el_arca_deleted", "0");
 
         try {
-          await fetch('/api/products', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'sync', initialList: parsedProducts }),
+          await fetch("/api/products", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "sync",
+              initialList: parsedProducts,
+            }),
           });
         } catch {
-          console.warn('Sync server call failed, saved locally');
+          console.warn("Sync server call failed, saved locally");
         }
 
         let summaryMsg = `✅ ¡Catálogo importado con ${parsedProducts.length} productos! (${withStockCount} con stock disponible, ${zeroStockCount} con stock 0).`;
@@ -700,11 +837,14 @@ export default function AdminPage() {
         triggerToast(summaryMsg, 8000);
         setShowExcelModal(false);
       } catch (err) {
-        console.error('Error procesando Excel:', err);
-        triggerToast('❌ Error al leer el archivo Excel. Revisa el formato e intenta nuevamente.', 6000);
+        console.error("Error procesando Excel:", err);
+        triggerToast(
+          "❌ Error al leer el archivo Excel. Revisa el formato e intenta nuevamente.",
+          6000,
+        );
       } finally {
         setIsProcessingExcel(false);
-        e.target.value = '';
+        e.target.value = "";
       }
     };
 
@@ -724,7 +864,7 @@ export default function AdminPage() {
 
   // Brand list sorted by frequency (majority of models first)
   const brands = useMemo(() => {
-    return ['ALL', ...getSortedBrands(availableProducts)];
+    return ["ALL", ...getSortedBrands(availableProducts)];
   }, [availableProducts]);
 
   // Filtered list inside admin with Intelligent Fuzzy Search
@@ -732,7 +872,10 @@ export default function AdminPage() {
     const scoredList = availableProducts
       .map((p) => {
         // Filter by selected brand
-        if (selectedBrand !== 'ALL' && !matchBrandFilter(p.marca, selectedBrand)) {
+        if (
+          selectedBrand !== "ALL" &&
+          !matchBrandFilter(p.marca, selectedBrand)
+        ) {
           return null;
         }
 
@@ -745,7 +888,9 @@ export default function AdminPage() {
 
         return { product: p, score: 0 };
       })
-      .filter((item): item is { product: Product; score: number } => item !== null);
+      .filter(
+        (item): item is { product: Product; score: number } => item !== null,
+      );
 
     if (searchTerm.trim()) {
       scoredList.sort((a, b) => b.score - a.score);
@@ -754,7 +899,7 @@ export default function AdminPage() {
 
     return sortProductsByPopularity(
       scoredList.map((item) => item.product),
-      brandCounts
+      brandCounts,
     );
   }, [availableProducts, selectedBrand, searchTerm, brandCounts]);
 
@@ -765,7 +910,11 @@ export default function AdminPage() {
         <div className="w-full max-w-md glass-panel rounded-3xl p-8 border border-[#D4AF37]/30 shadow-2xl space-y-6">
           <div className="text-center space-y-3">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#E5C158] to-[#AA8826] p-[1px] shadow-gold-glow mx-auto flex items-center justify-center">
-              <img src="/logo.png" alt="Logo" className="w-12 h-12 object-contain" />
+              <img
+                src="/logo.png"
+                alt="Logo"
+                className="w-12 h-12 object-contain"
+              />
             </div>
             <h1 className="text-2xl font-extrabold text-white tracking-tight">
               Acceso Administrativo
@@ -833,7 +982,6 @@ export default function AdminPage() {
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        
         {/* Notificación de elTOQUE (Colapsable con Skeleton Anti-CLS) */}
         {loadingRates ? (
           isEltoqueMinimized ? (
@@ -859,91 +1007,112 @@ export default function AdminPage() {
               </div>
             </div>
           )
+        ) : eltoqueRate === null ? (
+          <div className="glass-panel p-4 rounded-2xl border border-white/10">
+            <p role="status" className="text-xs leading-relaxed text-gray-400">
+              {referenceStatus}
+            </p>
+          </div>
+        ) : isEltoqueMinimized ? (
+          <div
+            className={`glass-panel p-2 px-4 rounded-xl border inline-flex items-center gap-3 animate-fade-in shadow-lg cursor-pointer transition-colors w-max ${
+              eltoqueRate === currentRate
+                ? "border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20"
+                : "border-blue-500/40 bg-blue-500/10 hover:bg-blue-500/20"
+            }`}
+            onClick={() => {
+              setIsEltoqueMinimized(false);
+              localStorage.setItem("el_arca_eltoque_minimized", "false");
+            }}
+          >
+            {eltoqueRate === currentRate ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            ) : eltoqueRate > (currentRate ?? 0) ? (
+              <TrendingUp className="w-4 h-4 text-rose-400" />
+            ) : (
+              <TrendingDown className="w-4 h-4 text-emerald-400" />
+            )}
+            <span className="text-xs font-bold text-white">
+              Alerta elTOQUE: {eltoqueRate} CUP
+            </span>
+            <button className="ml-2 text-blue-300 hover:text-white transition-colors">
+              <ChevronDown className="w-4 h-4" />
+            </button>
+          </div>
         ) : (
-          eltoqueRate === null ? (
-            <div className="glass-panel p-4 rounded-2xl border border-white/10">
-              <p role="status" className="text-xs leading-relaxed text-gray-400">{referenceStatus}</p>
-            </div>
-          ) : (
-            isEltoqueMinimized ? (
-              <div 
-                className={`glass-panel p-2 px-4 rounded-xl border inline-flex items-center gap-3 animate-fade-in shadow-lg cursor-pointer transition-colors w-max ${
-                  eltoqueRate === currentRate ? 'border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20' : 'border-blue-500/40 bg-blue-500/10 hover:bg-blue-500/20'
+          <div
+            className={`glass-panel p-4 rounded-2xl border flex flex-col md:flex-row items-center justify-between gap-4 animate-fade-in shadow-lg ${
+              eltoqueRate === currentRate
+                ? "border-emerald-500/40 bg-emerald-500/10 shadow-emerald-500/5"
+                : "border-blue-500/40 bg-blue-500/10 shadow-blue-500/5"
+            }`}
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div
+                className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
+                  eltoqueRate === currentRate
+                    ? "bg-emerald-500/20"
+                    : "bg-blue-500/20"
                 }`}
-                onClick={() => {
-                  setIsEltoqueMinimized(false);
-                  localStorage.setItem('el_arca_eltoque_minimized', 'false');
-                }}
               >
                 {eltoqueRate === currentRate ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400" />
                 ) : eltoqueRate > (currentRate ?? 0) ? (
-                  <TrendingUp className="w-4 h-4 text-rose-400" />
+                  <TrendingUp className="w-5 h-5 text-rose-400" />
                 ) : (
-                  <TrendingDown className="w-4 h-4 text-emerald-400" />
+                  <TrendingDown className="w-5 h-5 text-emerald-400" />
                 )}
-                <span className="text-xs font-bold text-white">Alerta elTOQUE: {eltoqueRate} CUP</span>
-                <button className="ml-2 text-blue-300 hover:text-white transition-colors">
-                  <ChevronDown className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-white flex flex-wrap items-center gap-2">
+                  {referenceStale
+                    ? "Referencia pendiente de verificación"
+                    : eltoqueRate === currentRate
+                      ? "Mercado Sincronizado"
+                      : "Actualización de Mercado: elTOQUE"}
+                  <span className="px-2 py-0.5 rounded-full bg-[#10131E] text-[10px] text-gray-400 border border-white/5">
+                    1 USD = {eltoqueRate} CUP
+                  </span>
+                </h3>
+                <p
+                  className={`text-xs mt-0.5 max-w-xl ${eltoqueRate === currentRate ? "text-emerald-200/80" : "text-blue-200/80"}`}
+                >
+                  {eltoqueRate === currentRate
+                    ? `Excelente. Tu catálogo está perfectamente sincronizado con la tasa actual del mercado (${currentRate} CUP).`
+                    : eltoqueRate < (currentRate ?? 0)
+                      ? `📉 elTOQUE reporta una baja. Tu tasa actual está por encima (${currentRate} CUP). ¿Deseas ajustar tus precios para mantener competitividad?`
+                      : `📈 elTOQUE reporta un alza. Tu tasa actual está por debajo (${currentRate} CUP). Riesgo de pérdida de margen detectado.`}
+                </p>
+                <p
+                  role="status"
+                  className="text-xs leading-relaxed text-gray-400 mt-2 max-w-xl break-words"
+                >
+                  {referenceStatus}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => {
+                  setIsEltoqueMinimized(true);
+                  localStorage.setItem("el_arca_eltoque_minimized", "true");
+                }}
+                className="px-4 py-2 rounded-xl bg-[#10131E] hover:bg-white/5 border border-white/10 text-gray-300 text-xs font-semibold transition-colors flex items-center gap-1"
+              >
+                Ocultar
+                <ChevronUp className="w-3.5 h-3.5" />
+              </button>
+              {eltoqueRate !== currentRate && (
+                <button
+                  onClick={handleAjustarTasa}
+                  disabled={referenceStale || savingRate}
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md transition-all hover:scale-105"
+                >
+                  Ajustar a {eltoqueRate} CUP
                 </button>
-              </div>
-            ) : (
-              <div className={`glass-panel p-4 rounded-2xl border flex flex-col md:flex-row items-center justify-between gap-4 animate-fade-in shadow-lg ${
-                  eltoqueRate === currentRate ? 'border-emerald-500/40 bg-emerald-500/10 shadow-emerald-500/5' : 'border-blue-500/40 bg-blue-500/10 shadow-blue-500/5'
-                }`}>
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-                    eltoqueRate === currentRate ? 'bg-emerald-500/20' : 'bg-blue-500/20'
-                  }`}>
-                    {eltoqueRate === currentRate ? (
-                      <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                    ) : eltoqueRate > (currentRate ?? 0) ? (
-                      <TrendingUp className="w-5 h-5 text-rose-400" />
-                    ) : (
-                      <TrendingDown className="w-5 h-5 text-emerald-400" />
-                    )}
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="text-sm font-bold text-white flex flex-wrap items-center gap-2">
-                      {referenceStale ? 'Referencia pendiente de verificación' : eltoqueRate === currentRate ? 'Mercado Sincronizado' : 'Actualización de Mercado: elTOQUE'}
-                      <span className="px-2 py-0.5 rounded-full bg-[#10131E] text-[10px] text-gray-400 border border-white/5">
-                        1 USD = {eltoqueRate} CUP
-                      </span>
-                    </h3>
-                    <p className={`text-xs mt-0.5 max-w-xl ${eltoqueRate === currentRate ? 'text-emerald-200/80' : 'text-blue-200/80'}`}>
-                      {eltoqueRate === currentRate
-                        ? `Excelente. Tu catálogo está perfectamente sincronizado con la tasa actual del mercado (${currentRate} CUP).`
-                        : eltoqueRate < (currentRate ?? 0)
-                          ? `📉 elTOQUE reporta una baja. Tu tasa actual está por encima (${currentRate} CUP). ¿Deseas ajustar tus precios para mantener competitividad?`
-                          : `📈 elTOQUE reporta un alza. Tu tasa actual está por debajo (${currentRate} CUP). Riesgo de pérdida de margen detectado.`}
-                    </p>
-                    <p role="status" className="text-xs leading-relaxed text-gray-400 mt-2 max-w-xl break-words">{referenceStatus}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={() => {
-                      setIsEltoqueMinimized(true);
-                      localStorage.setItem('el_arca_eltoque_minimized', 'true');
-                    }}
-                    className="px-4 py-2 rounded-xl bg-[#10131E] hover:bg-white/5 border border-white/10 text-gray-300 text-xs font-semibold transition-colors flex items-center gap-1"
-                  >
-                    Ocultar
-                    <ChevronUp className="w-3.5 h-3.5" />
-                  </button>
-                  {eltoqueRate !== currentRate && (
-                    <button
-                      onClick={handleAjustarTasa}
-                      disabled={referenceStale || savingRate}
-                      className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md transition-all hover:scale-105"
-                    >
-                      Ajustar a {eltoqueRate} CUP
-                    </button>
-                  )}
-                </div>
-              </div>
-            )
-          )
+              )}
+            </div>
+          </div>
         )}
 
         {/* Admin Header Banner */}
@@ -957,7 +1126,8 @@ export default function AdminPage() {
               Gestión de Catálogo en Vivo
             </h1>
             <p className="text-xs sm:text-sm text-gray-300">
-              Puedes subir un nuevo Excel (.xlsx) o exportar el catálogo en tiempo real.
+              Puedes subir un nuevo Excel (.xlsx) o exportar el catálogo en
+              tiempo real.
             </p>
           </div>
 
@@ -1139,23 +1309,26 @@ export default function AdminPage() {
           {/* Brand Filter Chips */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
             {brands.map((b) => {
-              const count = b === 'ALL' ? availableProducts.length : brandCounts.get(b) || 0;
+              const count =
+                b === "ALL"
+                  ? availableProducts.length
+                  : brandCounts.get(b) || 0;
               return (
                 <button
                   key={b}
                   onClick={() => setSelectedBrand(b)}
                   className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all duration-200 flex items-center gap-1.5 ${
                     selectedBrand === b
-                      ? 'gold-gradient-bg text-black shadow-gold-glow scale-105'
-                      : 'bg-[#10131E] text-gray-300 hover:text-white border border-white/10 hover:border-white/20'
+                      ? "gold-gradient-bg text-black shadow-gold-glow scale-105"
+                      : "bg-[#10131E] text-gray-300 hover:text-white border border-white/10 hover:border-white/20"
                   }`}
                 >
-                  <span>{b === 'ALL' ? 'Todas las Marcas' : b}</span>
+                  <span>{b === "ALL" ? "Todas las Marcas" : b}</span>
                   <span
                     className={`text-[10px] px-1.5 py-0.5 rounded-md font-extrabold ${
                       selectedBrand === b
-                        ? 'bg-black/20 text-black'
-                        : 'bg-white/10 text-[#E5C158]'
+                        ? "bg-black/20 text-black"
+                        : "bg-white/10 text-[#E5C158]"
                     }`}
                   >
                     {count}
@@ -1206,9 +1379,17 @@ export default function AdminPage() {
               <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
                 <FileSpreadsheet className="w-6 h-6" />
               </div>
-              <h3 className="text-xl font-bold text-white">Actualizar Catálogo desde Excel</h3>
+              <h3 className="text-xl font-bold text-white">
+                Actualizar Catálogo desde Excel
+              </h3>
               <p className="text-xs text-gray-300 leading-relaxed">
-                Selecciona tu archivo de Excel (ej. <strong className="text-emerald-300">EL ARCA DISPLAY CLUB.xlsx</strong>). El sistema leerá automáticamente la hoja <strong>DISPLAYS</strong> y actualizará todos los modelos para tus clientes al instante.
+                Selecciona tu archivo de Excel (ej.{" "}
+                <strong className="text-emerald-300">
+                  EL ARCA DISPLAY CLUB.xlsx
+                </strong>
+                ). El sistema leerá automáticamente la hoja{" "}
+                <strong>DISPLAYS</strong> y actualizará todos los modelos para
+                tus clientes al instante.
               </p>
             </div>
 
@@ -1223,7 +1404,8 @@ export default function AdminPage() {
                     Haz clic aquí para seleccionar tu archivo Excel (.xlsx)
                   </span>
                   <span className="text-xs text-gray-400">
-                    Soporta archivos .xlsx con las columnas MARCA, MODELO, CALIDAD, PRECIO
+                    Soporta archivos .xlsx con las columnas MARCA, MODELO,
+                    CALIDAD, PRECIO
                   </span>
                 </div>
                 <input
@@ -1267,7 +1449,9 @@ export default function AdminPage() {
             </button>
 
             <div className="space-y-1">
-              <h3 className="text-xl font-bold text-white">Agregar Nuevo Display</h3>
+              <h3 className="text-xl font-bold text-white">
+                Agregar Nuevo Display
+              </h3>
               <p className="text-xs text-gray-400">
                 Añade un repuesto individual al catálogo público en tiempo real.
               </p>
@@ -1312,7 +1496,9 @@ export default function AdminPage() {
                     onChange={(e) => setNewCalidadSelect(e.target.value)}
                     className="w-full px-3 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-xs focus:border-[#D4AF37] focus:outline-none cursor-pointer"
                   >
-                    <option value="ORIGINAL C/M">ORIGINAL C/M (Con Marco)</option>
+                    <option value="ORIGINAL C/M">
+                      ORIGINAL C/M (Con Marco)
+                    </option>
                     <option value="INCELL C/M">INCELL C/M (Con Marco)</option>
                     <option value="OLED C/M">OLED C/M (Con Marco)</option>
                     <option value="ORIGINAL">ORIGINAL S/M (Sin Marco)</option>
@@ -1357,10 +1543,11 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              {newCalidadSelect === 'CUSTOM' && (
+              {newCalidadSelect === "CUSTOM" && (
                 <div>
                   <label className="text-xs font-semibold text-amber-300 block mb-1">
-                    Escribe la calidad personalizada (ej. ORIGINAL C/M ESPECIAL):
+                    Escribe la calidad personalizada (ej. ORIGINAL C/M
+                    ESPECIAL):
                   </label>
                   <input
                     type="text"
@@ -1398,16 +1585,18 @@ export default function AdminPage() {
       {toastMessage && (
         <div
           className={`fixed bottom-6 right-6 z-[100] glass-panel px-5 py-4 rounded-2xl shadow-2xl flex items-start gap-3 border max-w-lg transition-all duration-300 ${
-            toastMessage.toLowerCase().includes('error') || toastMessage.includes('❌')
-              ? 'border-rose-500/60 bg-[#1A1118] text-rose-200 shadow-rose-950/50'
-              : toastMessage.includes('⚠️')
-              ? 'border-amber-500/60 bg-[#1A1512] text-amber-200 shadow-amber-950/50'
-              : 'border-[#D4AF37]/40 bg-[#121522] text-white shadow-gold-glow'
+            toastMessage.toLowerCase().includes("error") ||
+            toastMessage.includes("❌")
+              ? "border-rose-500/60 bg-[#1A1118] text-rose-200 shadow-rose-950/50"
+              : toastMessage.includes("⚠️")
+                ? "border-amber-500/60 bg-[#1A1512] text-amber-200 shadow-amber-950/50"
+                : "border-[#D4AF37]/40 bg-[#121522] text-white shadow-gold-glow"
           }`}
         >
-          {toastMessage.toLowerCase().includes('error') || toastMessage.includes('❌') ? (
+          {toastMessage.toLowerCase().includes("error") ||
+          toastMessage.includes("❌") ? (
             <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
-          ) : toastMessage.includes('⚠️') ? (
+          ) : toastMessage.includes("⚠️") ? (
             <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
           ) : (
             <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />

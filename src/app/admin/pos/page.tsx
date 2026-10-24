@@ -1,8 +1,9 @@
-'use client';
+"use client";
+import { checkAdminSession, loginAdmin } from "@/lib/auth-client";
 
-import { useActiveExchangeRate } from '@/lib/useActiveExchangeRate';
-import React, { useState, useEffect, useMemo } from 'react';
-import Link from 'next/link';
+import { useActiveExchangeRate } from "@/lib/useActiveExchangeRate";
+import React, { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import {
   ArrowLeft,
   Search,
@@ -21,21 +22,21 @@ import {
   Layers,
   Bluetooth,
   Usb,
-} from 'lucide-react';
-import { Product } from '@/lib/types';
+} from "lucide-react";
+import { Product } from "@/lib/types";
 import {
   TicketContent,
   printTicket,
   printViaBluetooth,
   printViaUsb,
-} from '@/components/PrintTicket';
+} from "@/components/PrintTicket";
 import {
   getBrandCounts,
   getSortedBrands,
   matchBrandFilter,
   sortProductsByPopularity,
-} from '@/lib/brandUtils';
-import { fuzzyMatchProduct, roundCupPrice } from '@/lib/searchUtils';
+} from "@/lib/brandUtils";
+import { fuzzyMatchProduct, roundCupPrice } from "@/lib/searchUtils";
 
 interface CartItem {
   productId: string;
@@ -51,24 +52,29 @@ export default function PosPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedBrand, setSelectedBrand] = useState('ALL');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedBrand, setSelectedBrand] = useState("ALL");
 
   // Cart State
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [clientName, setClientName] = useState('');
-  const [currency, setCurrency] = useState<'USD' | 'CUP'>('USD');
+  const [clientName, setClientName] = useState("");
+  const [currency, setCurrency] = useState<"USD" | "CUP">("USD");
   const [exchangeRate, setExchangeRate] = useActiveExchangeRate();
   const [isEditingRate, setIsEditingRate] = useState(false);
-  const [tempRate, setTempRate] = useState<string>('');
+  const [tempRate, setTempRate] = useState<string>("");
   const [isPaid, setIsPaid] = useState(true);
-  const [notes, setNotes] = useState('');
+  const [notes, setNotes] = useState("");
   const [copies, setCopies] = useState<number>(1);
-  const [printMode, setPrintMode] = useState<'bluetooth' | 'usb' | 'system'>('bluetooth');
+  const [printMode, setPrintMode] = useState<"bluetooth" | "usb" | "system">(
+    "bluetooth",
+  );
 
   // Status & Modal states
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [toastMessage, setToastMessage] = useState<{ text: string; isError?: boolean } | null>(null);
+  const [toastMessage, setToastMessage] = useState<{
+    text: string;
+    isError?: boolean;
+  } | null>(null);
   const [completedOrder, setCompletedOrder] = useState<any | null>(null);
 
   const triggerToast = (text: string, isError = false) => {
@@ -78,10 +84,7 @@ export default function PosPage() {
 
   // Auth check
   useEffect(() => {
-    const auth = sessionStorage.getItem('el_arca_admin_auth');
-    if (auth === 'true') {
-      setIsAuthenticated(true);
-    }
+    void checkAdminSession().then(setIsAuthenticated);
   }, []);
 
   // Fetch products & exchange rate
@@ -89,8 +92,8 @@ export default function PosPage() {
     setLoading(true);
     try {
       const [prodRes, rateRes] = await Promise.all([
-        fetch('/api/products'),
-        fetch('/api/exchange-rate'),
+        fetch("/api/products"),
+        fetch("/api/exchange-rate"),
       ]);
 
       if (prodRes.ok) {
@@ -105,8 +108,8 @@ export default function PosPage() {
         }
       }
     } catch (err) {
-      console.error('Error fetching POS data:', err);
-      triggerToast('Error cargando catálogo o tasa', true);
+      console.error("Error fetching POS data:", err);
+      triggerToast("Error cargando catálogo o tasa", true);
     } finally {
       setLoading(false);
     }
@@ -122,25 +125,31 @@ export default function PosPage() {
   const handleSaveRate = async () => {
     const num = parseFloat(tempRate);
     if (!Number.isFinite(num) || num < 1) {
-      triggerToast('Ingresa una tasa válida mayor a 0', true);
+      triggerToast("Ingresa una tasa válida mayor a 0", true);
       return;
     }
 
     try {
-      const response = await fetch('/api/exchange-rate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/exchange-rate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rate: num }),
       });
       const data = await response.json();
-      if (!response.ok || !data.success) throw new Error(data.error || 'No se pudo guardar la tasa');
+      if (!response.ok || !data.success)
+        throw new Error(data.error || "No se pudo guardar la tasa");
       setExchangeRate(data.rate);
       setIsEditingRate(false);
-      window.dispatchEvent(new Event('exchange-rate-changed'));
-      try { localStorage.setItem('el_arca_rate_updated', String(Date.now())); } catch {}
-      triggerToast('Tasa CUP guardada: ' + data.rate);
+      window.dispatchEvent(new Event("exchange-rate-changed"));
+      try {
+        localStorage.setItem("el_arca_rate_updated", String(Date.now()));
+      } catch {}
+      triggerToast("Tasa CUP guardada: " + data.rate);
     } catch (err) {
-      triggerToast(err instanceof Error ? err.message : 'Error guardando tasa', true);
+      triggerToast(
+        err instanceof Error ? err.message : "Error guardando tasa",
+        true,
+      );
     }
   };
 
@@ -156,7 +165,7 @@ export default function PosPage() {
 
   // Brand list sorted by frequency (majority of models first)
   const brands = useMemo(() => {
-    return ['ALL', ...getSortedBrands(availableProducts)];
+    return ["ALL", ...getSortedBrands(availableProducts)];
   }, [availableProducts]);
 
   // Filtered & Sorted products with Intelligent Fuzzy Search
@@ -166,23 +175,25 @@ export default function PosPage() {
         if (!matchBrandFilter(p.marca, selectedBrand)) {
           return null;
         }
-        if (searchTerm.trim() !== '') {
+        if (searchTerm.trim() !== "") {
           const { match, score } = fuzzyMatchProduct(p, searchTerm);
           if (!match) return null;
           return { product: p, score };
         }
         return { product: p, score: 0 };
       })
-      .filter((item): item is { product: Product; score: number } => item !== null);
+      .filter(
+        (item): item is { product: Product; score: number } => item !== null,
+      );
 
-    if (searchTerm.trim() !== '') {
+    if (searchTerm.trim() !== "") {
       scoredList.sort((a, b) => b.score - a.score);
       return scoredList.map((item) => item.product);
     }
 
     return sortProductsByPopularity(
       scoredList.map((item) => item.product),
-      brandCounts
+      brandCounts,
     );
   }, [availableProducts, selectedBrand, searchTerm, brandCounts]);
 
@@ -201,7 +212,7 @@ export default function PosPage() {
           return prev;
         }
         return prev.map((item) =>
-          item.productId === product.id ? { ...item, qty: item.qty + 1 } : item
+          item.productId === product.id ? { ...item, qty: item.qty + 1 } : item,
         );
       } else {
         return [
@@ -221,20 +232,24 @@ export default function PosPage() {
   };
 
   const updateCartQty = (productId: string, delta: number) => {
-    setCart((prev) =>
-      prev
-        .map((item) => {
-          if (item.productId === productId) {
-            const newQty = item.qty + delta;
-            if (newQty > item.stockAvailable) {
-              triggerToast(`Stock disponible: ${item.stockAvailable} uds`, true);
-              return item;
+    setCart(
+      (prev) =>
+        prev
+          .map((item) => {
+            if (item.productId === productId) {
+              const newQty = item.qty + delta;
+              if (newQty > item.stockAvailable) {
+                triggerToast(
+                  `Stock disponible: ${item.stockAvailable} uds`,
+                  true,
+                );
+                return item;
+              }
+              return newQty > 0 ? { ...item, qty: newQty } : null;
             }
-            return newQty > 0 ? { ...item, qty: newQty } : null;
-          }
-          return item;
-        })
-        .filter(Boolean) as CartItem[]
+            return item;
+          })
+          .filter(Boolean) as CartItem[],
     );
   };
 
@@ -244,8 +259,8 @@ export default function PosPage() {
 
   const clearCart = () => {
     setCart([]);
-    setClientName('');
-    setNotes('');
+    setClientName("");
+    setNotes("");
   };
 
   // Calculations
@@ -278,22 +293,28 @@ export default function PosPage() {
       createdAt: orderData.createdAt,
     };
 
-    if (printMode === 'bluetooth') {
-      triggerToast('Buscando impresora Bluetooth...');
+    if (printMode === "bluetooth") {
+      triggerToast("Buscando impresora Bluetooth...");
       const res = await printViaBluetooth(ticketData, copies);
       if (res.success) {
-        triggerToast('¡Ticket impreso por Bluetooth exitosamente!');
+        triggerToast("¡Ticket impreso por Bluetooth exitosamente!");
       } else {
-        triggerToast(res.error || 'Error en Bluetooth, usando ventana de impresión...', true);
+        triggerToast(
+          res.error || "Error en Bluetooth, usando ventana de impresión...",
+          true,
+        );
         printTicket(ticketData, copies);
       }
-    } else if (printMode === 'usb') {
-      triggerToast('Conectando a puerto USB/Serial...');
+    } else if (printMode === "usb") {
+      triggerToast("Conectando a puerto USB/Serial...");
       const res = await printViaUsb(ticketData, copies);
       if (res.success) {
-        triggerToast('¡Ticket impreso por USB exitosamente!');
+        triggerToast("¡Ticket impreso por USB exitosamente!");
       } else {
-        triggerToast(res.error || 'Error en USB, usando ventana de impresión...', true);
+        triggerToast(
+          res.error || "Error en USB, usando ventana de impresión...",
+          true,
+        );
         printTicket(ticketData, copies);
       }
     } else {
@@ -304,15 +325,21 @@ export default function PosPage() {
   // Submit Order
   const handleCheckout = async (autoPrint = false) => {
     if (cart.length === 0) {
-      triggerToast('El carrito está vacío', true);
+      triggerToast("El carrito está vacío", true);
       return;
     }
 
-    if (!exchangeRate) { triggerToast('No hay una tasa activa disponible. Configúrala antes de facturar.', true); return; }
+    if (!exchangeRate) {
+      triggerToast(
+        "No hay una tasa activa disponible. Configúrala antes de facturar.",
+        true,
+      );
+      return;
+    }
     setIsSubmitting(true);
     try {
       const payload = {
-        action: 'create',
+        action: "create",
         clientName,
         items: cart,
         currency,
@@ -321,15 +348,15 @@ export default function PosPage() {
         notes,
       };
 
-      const res = await fetch('/api/sales', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/sales", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
       const data = await res.json();
       if (!res.ok || !data.success) {
-        triggerToast(data.error || 'Error al procesar la venta', true);
+        triggerToast(data.error || "Error al procesar la venta", true);
         setIsSubmitting(false);
         return;
       }
@@ -351,8 +378,8 @@ export default function PosPage() {
       // Reset cart
       clearCart();
     } catch (err) {
-      console.error('Error during checkout:', err);
-      triggerToast('Error de conexión al procesar la venta', true);
+      console.error("Error during checkout:", err);
+      triggerToast("Error de conexión al procesar la venta", true);
     } finally {
       setIsSubmitting(false);
     }
@@ -385,8 +412,8 @@ export default function PosPage() {
         <div
           className={`fixed bottom-6 right-6 z-[100] glass-panel px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-bounce border ${
             toastMessage.isError
-              ? 'border-rose-500/60 bg-[#1A1118] text-rose-300 shadow-rose-950/50'
-              : 'border-[#D4AF37]/40 bg-[#121522] text-white shadow-gold-glow'
+              ? "border-rose-500/60 bg-[#1A1118] text-rose-300 shadow-rose-950/50"
+              : "border-[#D4AF37]/40 bg-[#121522] text-white shadow-gold-glow"
           }`}
         >
           {toastMessage.isError ? (
@@ -399,20 +426,28 @@ export default function PosPage() {
       )}
 
       {/* Hidden Ticket Container for direct printing */}
-      <div style={{ display: 'none' }}>
-        {exchangeRate !== null && <TicketContent
-          orderNumber={completedOrder?.orderNumber || 'PREVIEW'}
-          clientName={clientName || completedOrder?.clientName || 'Consumidor Final'}
-          items={cart.length > 0 ? cart.map(i => ({ ...i, subtotalUSD: i.precioUSD * i.qty })) : completedOrder?.items || []}
-          currency={currency}
-          exchangeRate={exchangeRate}
-          subtotalUSD={subtotalUSD || completedOrder?.subtotalUSD || 0}
-          totalUSD={totalUSD || completedOrder?.totalUSD || 0}
-          totalCUP={totalCUP || completedOrder?.totalCUP || 0}
-          paid={isPaid}
-          notes={notes}
-          createdAt={completedOrder?.createdAt || new Date()}
-        />}
+      <div style={{ display: "none" }}>
+        {exchangeRate !== null && (
+          <TicketContent
+            orderNumber={completedOrder?.orderNumber || "PREVIEW"}
+            clientName={
+              clientName || completedOrder?.clientName || "Consumidor Final"
+            }
+            items={
+              cart.length > 0
+                ? cart.map((i) => ({ ...i, subtotalUSD: i.precioUSD * i.qty }))
+                : completedOrder?.items || []
+            }
+            currency={currency}
+            exchangeRate={exchangeRate}
+            subtotalUSD={subtotalUSD || completedOrder?.subtotalUSD || 0}
+            totalUSD={totalUSD || completedOrder?.totalUSD || 0}
+            totalCUP={totalCUP || completedOrder?.totalCUP || 0}
+            paid={isPaid}
+            notes={notes}
+            createdAt={completedOrder?.createdAt || new Date()}
+          />
+        )}
       </div>
 
       {/* POS Top Navbar */}
@@ -425,7 +460,9 @@ export default function PosPage() {
               title="Volver al Panel Admin"
             >
               <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
-              <span className="text-sm font-bold hidden md:inline">Panel Admin</span>
+              <span className="text-sm font-bold hidden md:inline">
+                Panel Admin
+              </span>
             </Link>
             <div className="h-6 w-px bg-white/10 hidden md:block" />
             <div className="flex items-center gap-2 min-w-0">
@@ -439,7 +476,9 @@ export default function PosPage() {
                   <span className="hidden sm:inline">Punto de Venta </span>
                   <span className="gold-gradient-text">POS</span>
                 </h1>
-                <p className="text-[10px] text-gray-400 hidden lg:block">Control de Caja & Facturación</p>
+                <p className="text-[10px] text-gray-400 hidden lg:block">
+                  Control de Caja & Facturación
+                </p>
               </div>
             </div>
           </div>
@@ -451,11 +490,11 @@ export default function PosPage() {
               <button
                 type="button"
                 id="btn-pos-currency-usd"
-                onClick={() => setCurrency('USD')}
+                onClick={() => setCurrency("USD")}
                 className={`px-2 sm:px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-bold transition-all duration-200 ${
-                  currency === 'USD'
-                    ? 'bg-gradient-to-r from-[#D4AF37] to-[#AA8826] text-black shadow-sm'
-                    : 'text-gray-400 hover:text-white'
+                  currency === "USD"
+                    ? "bg-gradient-to-r from-[#D4AF37] to-[#AA8826] text-black shadow-sm"
+                    : "text-gray-400 hover:text-white"
                 }`}
                 title="Ver precios y facturar en USD"
               >
@@ -464,11 +503,11 @@ export default function PosPage() {
               <button
                 type="button"
                 id="btn-pos-currency-cup"
-                onClick={() => setCurrency('CUP')}
+                onClick={() => setCurrency("CUP")}
                 className={`px-2 sm:px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-bold transition-all duration-200 ${
-                  currency === 'CUP'
-                    ? 'bg-gradient-to-r from-[#D4AF37] to-[#AA8826] text-black shadow-sm'
-                    : 'text-gray-400 hover:text-white'
+                  currency === "CUP"
+                    ? "bg-gradient-to-r from-[#D4AF37] to-[#AA8826] text-black shadow-sm"
+                    : "text-gray-400 hover:text-white"
                 }`}
                 title={`Ver precios y facturar en CUP (Tasa: 1 USD = ${exchangeRate} CUP)`}
               >
@@ -485,7 +524,9 @@ export default function PosPage() {
                   className="cursor-pointer flex items-center gap-1 text-[11px] sm:text-xs"
                   title="Clic para modificar tasa CUP"
                 >
-                  <span className="text-gray-400 text-[10px] hidden md:inline">1 USD =</span>
+                  <span className="text-gray-400 text-[10px] hidden md:inline">
+                    1 USD =
+                  </span>
                   <span className="font-extrabold text-emerald-300 underline decoration-dotted whitespace-nowrap">
                     {exchangeRate} CUP
                   </span>
@@ -552,23 +593,26 @@ export default function PosPage() {
             {/* Brand Chips */}
             <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
               {brands.map((b) => {
-                const count = b === 'ALL' ? availableProducts.length : brandCounts.get(b) || 0;
+                const count =
+                  b === "ALL"
+                    ? availableProducts.length
+                    : brandCounts.get(b) || 0;
                 return (
                   <button
                     key={b}
                     onClick={() => setSelectedBrand(b)}
                     className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all duration-200 flex items-center gap-1.5 ${
                       selectedBrand === b
-                        ? 'gold-gradient-bg text-black shadow-gold-glow scale-105'
-                        : 'bg-[#10131E] text-gray-300 hover:text-white border border-white/10 hover:border-white/20'
+                        ? "gold-gradient-bg text-black shadow-gold-glow scale-105"
+                        : "bg-[#10131E] text-gray-300 hover:text-white border border-white/10 hover:border-white/20"
                     }`}
                   >
-                    <span>{b === 'ALL' ? 'Todas las Marcas' : b}</span>
+                    <span>{b === "ALL" ? "Todas las Marcas" : b}</span>
                     <span
                       className={`text-[10px] px-1.5 py-0.5 rounded-md font-extrabold ${
                         selectedBrand === b
-                          ? 'bg-black/20 text-black'
-                          : 'bg-white/10 text-[#E5C158]'
+                          ? "bg-black/20 text-black"
+                          : "bg-white/10 text-[#E5C158]"
                       }`}
                     >
                       {count}
@@ -583,7 +627,10 @@ export default function PosPage() {
           {loading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 content-start auto-rows-max h-[520px] sm:h-[540px] lg:h-[560px] max-h-[580px] overflow-hidden pr-2 pb-4">
               {[...Array(6)].map((_, i) => (
-                <div key={i} className="glass-card rounded-2xl p-4 border border-white/5 flex flex-col justify-between min-h-[135px] animate-pulse">
+                <div
+                  key={i}
+                  className="glass-card rounded-2xl p-4 border border-white/5 flex flex-col justify-between min-h-[135px] animate-pulse"
+                >
                   <div>
                     <div className="flex items-center justify-between gap-1 mb-2">
                       <div className="w-16 h-5 bg-white/10 rounded-md"></div>
@@ -605,26 +652,32 @@ export default function PosPage() {
           ) : filteredProducts.length === 0 ? (
             <div className="glass-panel rounded-2xl p-12 text-center space-y-2 border border-white/10">
               <Layers className="w-8 h-8 text-gray-500 mx-auto" />
-              <p className="text-gray-300 font-bold text-sm">No se encontraron productos con stock</p>
+              <p className="text-gray-300 font-bold text-sm">
+                No se encontraron productos con stock
+              </p>
               <p className="text-xs text-gray-500">
-                Verifica la búsqueda o agrega más stock desde el módulo de Inventario.
+                Verifica la búsqueda o agrega más stock desde el módulo de
+                Inventario.
               </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 content-start auto-rows-max h-[520px] sm:h-[540px] lg:h-[560px] max-h-[580px] overflow-y-auto pr-2 pb-4">
               {filteredProducts.map((prod) => {
                 const inCart = cart.find((c) => c.productId === prod.id);
-                const availableAfterCart = prod.stock - (inCart ? inCart.qty : 0);
+                const availableAfterCart =
+                  prod.stock - (inCart ? inCart.qty : 0);
                 const cupRounded = roundCupPrice(prod.precio, exchangeRate);
-                const formattedCUP = (Number.isFinite(cupRounded) ? cupRounded.toLocaleString() : 'No disponible');
+                const formattedCUP = Number.isFinite(cupRounded)
+                  ? cupRounded.toLocaleString()
+                  : "No disponible";
 
                 return (
                   <div
                     key={prod.id}
                     className={`glass-card rounded-2xl p-4 border transition-all duration-200 flex flex-col justify-between min-h-[135px] ${
                       inCart
-                        ? 'border-[#D4AF37]/50 bg-[#121626]'
-                        : 'border-white/10 hover:border-white/20'
+                        ? "border-[#D4AF37]/50 bg-[#121626]"
+                        : "border-white/10 hover:border-white/20"
                     }`}
                   >
                     <div>
@@ -645,19 +698,26 @@ export default function PosPage() {
                     <div className="mt-3 pt-2.5 border-t border-white/5 flex items-center justify-between">
                       <div>
                         <span className="text-[10px] text-gray-400 block mb-0.5">
-                          Stock: <strong className="text-gray-200">{availableAfterCart}</strong>
+                          Stock:{" "}
+                          <strong className="text-gray-200">
+                            {availableAfterCart}
+                          </strong>
                         </span>
                         <div className="flex flex-col">
                           <div className="flex items-baseline gap-1">
                             <span className="text-base font-extrabold text-[#F3E0A9]">
-                              {currency === 'CUP' ? `${formattedCUP} CUP` : `$${prod.precio.toFixed(2)}`}
+                              {currency === "CUP"
+                                ? `${formattedCUP} CUP`
+                                : `$${prod.precio.toFixed(2)}`}
                             </span>
-                            {currency === 'USD' && (
-                              <span className="text-[10px] text-gray-400 font-semibold">USD</span>
+                            {currency === "USD" && (
+                              <span className="text-[10px] text-gray-400 font-semibold">
+                                USD
+                              </span>
                             )}
                           </div>
                           <span className="text-[10px] text-gray-400 font-medium">
-                            {currency === 'CUP'
+                            {currency === "CUP"
                               ? `≈ $${prod.precio.toFixed(2)} USD`
                               : `≈ ${formattedCUP} CUP`}
                           </span>
@@ -669,12 +729,14 @@ export default function PosPage() {
                         disabled={availableAfterCart <= 0}
                         className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
                           availableAfterCart <= 0
-                            ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
-                            : 'gold-gradient-bg text-black shadow-gold-glow hover:scale-105 active:scale-95'
+                            ? "bg-gray-800 text-gray-500 cursor-not-allowed"
+                            : "gold-gradient-bg text-black shadow-gold-glow hover:scale-105 active:scale-95"
                         }`}
                       >
                         <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                        <span>{inCart ? `Agregar (${inCart.qty})` : 'Vender'}</span>
+                        <span>
+                          {inCart ? `Agregar (${inCart.qty})` : "Vender"}
+                        </span>
                       </button>
                     </div>
                   </div>
@@ -712,7 +774,9 @@ export default function PosPage() {
               {cart.length === 0 ? (
                 <div className="py-8 text-center space-y-2">
                   <ShoppingCart className="w-8 h-8 text-gray-600 mx-auto" />
-                  <p className="text-xs text-gray-400">Selecciona repuestos para iniciar la venta</p>
+                  <p className="text-xs text-gray-400">
+                    Selecciona repuestos para iniciar la venta
+                  </p>
                 </div>
               ) : (
                 cart.map((item) => (
@@ -722,12 +786,18 @@ export default function PosPage() {
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[9px] font-bold text-[#D4AF37] uppercase">{item.marca}</span>
-                        <span className="text-[9px] text-gray-400">{item.calidad}</span>
+                        <span className="text-[9px] font-bold text-[#D4AF37] uppercase">
+                          {item.marca}
+                        </span>
+                        <span className="text-[9px] text-gray-400">
+                          {item.calidad}
+                        </span>
                       </div>
-                      <h4 className="text-xs font-bold text-white truncate">{item.modelo}</h4>
+                      <h4 className="text-xs font-bold text-white truncate">
+                        {item.modelo}
+                      </h4>
                       <span className="text-xs font-extrabold text-[#F3E0A9]">
-                        ${(item.precioUSD * item.qty).toFixed(2)}{' '}
+                        ${(item.precioUSD * item.qty).toFixed(2)}{" "}
                         <span className="text-[10px] text-gray-500 font-normal">
                           (${item.precioUSD} c/u)
                         </span>
@@ -789,22 +859,22 @@ export default function PosPage() {
                   <div className="flex rounded-xl bg-[#10131E] p-1 border border-white/10">
                     <button
                       type="button"
-                      onClick={() => setCurrency('USD')}
+                      onClick={() => setCurrency("USD")}
                       className={`flex-1 py-1.5 rounded-lg font-bold text-xs transition-all ${
-                        currency === 'USD'
-                          ? 'gold-gradient-bg text-black shadow-sm'
-                          : 'text-gray-400 hover:text-white'
+                        currency === "USD"
+                          ? "gold-gradient-bg text-black shadow-sm"
+                          : "text-gray-400 hover:text-white"
                       }`}
                     >
                       USD ($)
                     </button>
                     <button
                       type="button"
-                      onClick={() => setCurrency('CUP')}
+                      onClick={() => setCurrency("CUP")}
                       className={`flex-1 py-1.5 rounded-lg font-bold text-xs transition-all ${
-                        currency === 'CUP'
-                          ? 'bg-emerald-600 text-white shadow-sm'
-                          : 'text-gray-400 hover:text-white'
+                        currency === "CUP"
+                          ? "bg-emerald-600 text-white shadow-sm"
+                          : "text-gray-400 hover:text-white"
                       }`}
                     >
                       CUP
@@ -821,12 +891,12 @@ export default function PosPage() {
                     onClick={() => setIsPaid(!isPaid)}
                     className={`w-full py-2 px-3 rounded-xl font-bold text-xs border transition-all flex items-center justify-center gap-1.5 ${
                       isPaid
-                        ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
-                        : 'bg-amber-500/15 border-amber-500/30 text-amber-300'
+                        ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-400"
+                        : "bg-amber-500/15 border-amber-500/30 text-amber-300"
                     }`}
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>{isPaid ? 'Pagado' : 'Pendiente'}</span>
+                    <span>{isPaid ? "Pagado" : "Pendiente"}</span>
                   </button>
                 </div>
               </div>
@@ -853,11 +923,11 @@ export default function PosPage() {
                 <div className="grid grid-cols-3 gap-1 bg-[#10131E] p-1 rounded-xl border border-white/10 text-[11px]">
                   <button
                     type="button"
-                    onClick={() => setPrintMode('bluetooth')}
+                    onClick={() => setPrintMode("bluetooth")}
                     className={`py-1.5 px-2 rounded-lg font-bold flex items-center justify-center gap-1 transition-all ${
-                      printMode === 'bluetooth'
-                        ? 'bg-blue-600 text-white shadow-md'
-                        : 'text-gray-400 hover:text-white'
+                      printMode === "bluetooth"
+                        ? "bg-blue-600 text-white shadow-md"
+                        : "text-gray-400 hover:text-white"
                     }`}
                     title="Conectar por Bluetooth (ESC/POS)"
                   >
@@ -866,11 +936,11 @@ export default function PosPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setPrintMode('usb')}
+                    onClick={() => setPrintMode("usb")}
                     className={`py-1.5 px-2 rounded-lg font-bold flex items-center justify-center gap-1 transition-all ${
-                      printMode === 'usb'
-                        ? 'bg-emerald-600 text-white shadow-md'
-                        : 'text-gray-400 hover:text-white'
+                      printMode === "usb"
+                        ? "bg-emerald-600 text-white shadow-md"
+                        : "text-gray-400 hover:text-white"
                     }`}
                     title="Conectar por cable USB / Serial"
                   >
@@ -879,11 +949,11 @@ export default function PosPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setPrintMode('system')}
+                    onClick={() => setPrintMode("system")}
                     className={`py-1.5 px-2 rounded-lg font-bold flex items-center justify-center gap-1 transition-all ${
-                      printMode === 'system'
-                        ? 'bg-purple-600 text-white shadow-md'
-                        : 'text-gray-400 hover:text-white'
+                      printMode === "system"
+                        ? "bg-purple-600 text-white shadow-md"
+                        : "text-gray-400 hover:text-white"
                     }`}
                     title="Imprimir usando ventana de navegador"
                   >
@@ -904,8 +974,8 @@ export default function PosPage() {
                       onClick={() => setCopies(num)}
                       className={`w-6 h-6 rounded-lg text-xs font-bold ${
                         copies === num
-                          ? 'bg-[#D4AF37] text-black'
-                          : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
+                          ? "bg-[#D4AF37] text-black"
+                          : "bg-[#10131E] text-gray-400 hover:text-white border border-white/10"
                       }`}
                     >
                       {num}
@@ -919,11 +989,15 @@ export default function PosPage() {
             <div className="p-4 rounded-2xl bg-[#10131E] border border-[#D4AF37]/20 space-y-2">
               <div className="flex justify-between text-xs text-gray-400">
                 <span>Subtotal USD:</span>
-                <span className="font-bold text-white">${subtotalUSD.toFixed(2)}</span>
+                <span className="font-bold text-white">
+                  ${subtotalUSD.toFixed(2)}
+                </span>
               </div>
               <div className="flex justify-between text-xs text-gray-400">
                 <span>Tasa de Cambio:</span>
-                <span className="font-semibold text-emerald-400">{exchangeRate} CUP</span>
+                <span className="font-semibold text-emerald-400">
+                  {exchangeRate} CUP
+                </span>
               </div>
 
               <div className="pt-2 border-t border-white/10 flex justify-between items-baseline">
@@ -935,7 +1009,14 @@ export default function PosPage() {
                     ${totalUSD.toFixed(2)} USD
                   </div>
                   <div className="text-xs font-bold text-emerald-400">
-                    ≈ {(Number.isFinite(totalCUP) ? totalCUP.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : 'No disponible')} CUP
+                    ≈{" "}
+                    {Number.isFinite(totalCUP)
+                      ? totalCUP.toLocaleString("en-US", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })
+                      : "No disponible"}{" "}
+                    CUP
                   </div>
                 </div>
               </div>
@@ -949,7 +1030,11 @@ export default function PosPage() {
                 className="w-full py-3.5 rounded-2xl gold-gradient-bg text-black font-extrabold text-sm shadow-gold-glow flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:pointer-events-none"
               >
                 <Printer className="w-4 h-4" />
-                <span>{isSubmitting ? 'Procesando Venta...' : 'Vender & Imprimir Ticket'}</span>
+                <span>
+                  {isSubmitting
+                    ? "Procesando Venta..."
+                    : "Vender & Imprimir Ticket"}
+                </span>
               </button>
 
               <button

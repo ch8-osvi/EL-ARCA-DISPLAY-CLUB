@@ -1,41 +1,60 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { sendWhatsAppMessage, normalizePhoneNumber } from '@/lib/whatsapp/service';
-
-export const dynamic = 'force-dynamic';
-
-export async function POST(req: NextRequest) {
+import { requireAdmin } from "@/lib/security/admin";
+import { allowRequest } from "@/lib/security/limits";
+import { enqueueMessage } from "@/lib/whatsapp/outbox";
+import { WhatsAppLog } from "@/lib/models/WhatsAppLog";
+import { normalizePhoneNumber } from "@/lib/whatsapp/identity";
+export const dynamic = "force-dynamic";
+export async function POST(req: Request) {
+  const denied = await requireAdmin(req);
+  if (denied) return denied;
   try {
-    const body = await req.json();
-    const { to, text } = body || {};
-
-    const cleanTo = normalizePhoneNumber(to || '');
-    if (!cleanTo || !text || !text.trim()) {
-      return NextResponse.json(
-        { error: 'Parámetros to (teléfono) y text (mensaje) requeridos' },
-        { status: 400 }
+    if (!(await allowRequest("manual-send", 30, 60)))
+      return Response.json(
+        { error: "Límite de envíos temporal" },
+        { status: 429 },
       );
-    }
-
-    const success = await sendWhatsAppMessage(cleanTo, text.trim());
-    if (success) {
-      return NextResponse.json({
-        success: true,
-        message: 'Mensaje enviado exitosamente vía WhatsApp',
-        to: cleanTo,
-      });
-    } else {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'El bot local no está conectado o no es accesible directamente desde la nube de Vercel.',
-          reason: 'bridge_unreachable',
-          to: cleanTo,
+    const b = await req.json();
+    if (typeof b.text !== "string" || b.text.length > 20000)
+      return Response.json({ error: "Mensaje inválido" }, { status: 400 });
+    const id = await enqueueMessage(
+      b.to,
+      b.text,
+      typeof b.requestId === "string" &&
+        /^[a-zA-Z0-9-]{10,100}$/.test(b.requestId)
+        ? "manual:" + b.requestId
+        : undefined,
+    );
+    await WhatsAppLog.updateOne(
+      { messageId: id },
+      {
+        $setOnInsert: {
+          senderPhone: normalizePhoneNumber(b.to),
+          role: "admin",
+          direction: "manual",
+          userMessage: "Respuesta del equipo",
+          botReply: b.text,
+          actionExecuted: "RESPUESTA_MANUAL",
+          status: "queued",
+          timestamp: new Date(),
+          expiresAt: new Date(Date.now() + 90 * 86400000),
         },
-        { status: 502 }
-      );
-    }
-  } catch (err: any) {
-    console.error('[WhatsApp Admin Direct Send Error]', err);
-    return NextResponse.json({ error: err.message || 'Error al enviar mensaje' }, { status: 500 });
+      },
+      { upsert: true },
+    );
+    return Response.json(
+      {
+        success: true,
+        status: "queued",
+        id,
+        message:
+          "Mensaje en cola. La PC lo enviará cuando el bot esté conectado.",
+      },
+      { status: 202 },
+    );
+  } catch {
+    return Response.json(
+      { error: "No se pudo poner el mensaje en cola" },
+      { status: 400 },
+    );
   }
 }

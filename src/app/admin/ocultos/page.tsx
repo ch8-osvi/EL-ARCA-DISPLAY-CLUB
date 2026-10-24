@@ -1,10 +1,20 @@
-'use client';
+"use client";
+import { checkAdminSession, loginAdmin } from "@/lib/auth-client";
 
-import React, { useState, useEffect, useMemo } from 'react';
-import Link from 'next/link';
-import { ArrowLeft, EyeOff, RotateCcw, ShieldAlert, X, Plus, CheckCircle2, Search } from 'lucide-react';
-import { sortProductsByPopularity } from '@/lib/brandUtils';
-import { fuzzyMatchProduct } from '@/lib/searchUtils';
+import React, { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
+import {
+  ArrowLeft,
+  EyeOff,
+  RotateCcw,
+  ShieldAlert,
+  X,
+  Plus,
+  CheckCircle2,
+  Search,
+} from "lucide-react";
+import { sortProductsByPopularity } from "@/lib/brandUtils";
+import { fuzzyMatchProduct } from "@/lib/searchUtils";
 
 interface HiddenProduct {
   _id?: string;
@@ -19,7 +29,7 @@ interface HiddenProduct {
 
 export default function OcultosPage() {
   const [hiddenProducts, setHiddenProducts] = useState<HiddenProduct[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -32,23 +42,20 @@ export default function OcultosPage() {
   };
 
   useEffect(() => {
-    const auth = sessionStorage.getItem('el_arca_admin_auth');
-    if (auth === 'true') {
-      setIsAuthenticated(true);
-    }
+    void checkAdminSession().then(setIsAuthenticated);
   }, []);
 
   const fetchHidden = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/products/hidden');
+      const res = await fetch("/api/products/hidden");
       if (res.ok) {
         const data = await res.json();
         const raw = data.products || [];
         setHiddenProducts(sortProductsByPopularity(raw));
       }
     } catch (err) {
-      console.error('Error fetching hidden products:', err);
+      console.error("Error fetching hidden products:", err);
     } finally {
       setLoading(false);
     }
@@ -66,7 +73,10 @@ export default function OcultosPage() {
         if (!match) return null;
         return { product: p, score };
       })
-      .filter((item): item is { product: HiddenProduct; score: number } => item !== null);
+      .filter(
+        (item): item is { product: HiddenProduct; score: number } =>
+          item !== null,
+      );
 
     scored.sort((a, b) => b.score - a.score);
     return scored.map((item) => item.product);
@@ -75,23 +85,25 @@ export default function OcultosPage() {
   const handleDirectRestore = async (product: HiddenProduct) => {
     setRestoringId(product.id);
     try {
-      const res = await fetch('/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: 'unhide',
+          action: "unhide",
           id: product.id,
         }),
       });
 
       if (res.ok) {
         setHiddenProducts((prev) => prev.filter((p) => p.id !== product.id));
-        triggerToast(`¡${product.modelo} reactivado en catálogo! (${product.stock} uds conservadas)`);
+        triggerToast(
+          `¡${product.modelo} reactivado en catálogo! (${product.stock} uds conservadas)`,
+        );
       } else {
-        triggerToast('Error al restaurar producto');
+        triggerToast("Error al restaurar producto");
       }
     } catch {
-      triggerToast('Error de conexión');
+      triggerToast("Error de conexión");
     } finally {
       setRestoringId(null);
     }
@@ -103,7 +115,9 @@ export default function OcultosPage() {
         <div className="glass-panel rounded-3xl p-8 border border-rose-500/30 space-y-4 text-center max-w-sm">
           <ShieldAlert className="w-12 h-12 text-rose-400 mx-auto" />
           <h1 className="text-xl font-extrabold text-white">Acceso Denegado</h1>
-          <p className="text-sm text-gray-400">Debes iniciar sesión en el panel de administrador primero.</p>
+          <p className="text-sm text-gray-400">
+            Debes iniciar sesión en el panel de administrador primero.
+          </p>
           <Link
             href="/admin"
             className="block px-5 py-2.5 rounded-xl gold-gradient-bg text-black font-extrabold text-sm text-center"
@@ -128,13 +142,18 @@ export default function OcultosPage() {
       {/* Simple Header */}
       <header className="sticky top-0 z-40 w-full glass-panel border-b border-[#D4AF37]/15 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-4">
-          <Link href="/admin" className="flex items-center gap-2 text-[#D4AF37] hover:text-white transition-colors group">
+          <Link
+            href="/admin"
+            className="flex items-center gap-2 text-[#D4AF37] hover:text-white transition-colors group"
+          >
             <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
             <span className="text-sm font-bold">Volver al Panel</span>
           </Link>
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-rose-500/10 border border-rose-500/30">
             <EyeOff className="w-3.5 h-3.5 text-rose-400" />
-            <span className="text-xs font-bold text-rose-300">{hiddenProducts.length} Ocultos</span>
+            <span className="text-xs font-bold text-rose-300">
+              {hiddenProducts.length} Ocultos
+            </span>
           </div>
         </div>
       </header>
@@ -152,7 +171,7 @@ export default function OcultosPage() {
               Productos Ocultos y Apartados
             </h1>
             <p className="text-sm text-gray-400 max-w-xl">
-              Productos apartados o pausados temporalmente del catálogo público. 
+              Productos apartados o pausados temporalmente del catálogo público.
               Puedes reactivarlos con un solo clic conservando su stock actual.
             </p>
           </div>
@@ -175,7 +194,7 @@ export default function OcultosPage() {
             {searchTerm && (
               <button
                 id="btn-clear-search-hidden"
-                onClick={() => setSearchTerm('')}
+                onClick={() => setSearchTerm("")}
                 className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-400 hover:text-white"
                 title="Limpiar búsqueda"
               >
@@ -189,7 +208,10 @@ export default function OcultosPage() {
         {loading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
             {[...Array(8)].map((_, i) => (
-              <div key={i} className="glass-card rounded-2xl p-4 border border-rose-500/10 flex flex-col gap-3 animate-pulse min-h-[160px]">
+              <div
+                key={i}
+                className="glass-card rounded-2xl p-4 border border-rose-500/10 flex flex-col gap-3 animate-pulse min-h-[160px]"
+              >
                 <div className="flex items-center justify-between">
                   <div className="w-16 h-5 bg-rose-500/20 rounded-full"></div>
                   <div className="w-10 h-3 bg-white/10 rounded"></div>
@@ -211,17 +233,24 @@ export default function OcultosPage() {
             <div className="w-16 h-16 rounded-2xl bg-[#171B2B] border border-white/10 flex items-center justify-center mx-auto text-gray-500">
               <EyeOff className="w-8 h-8" />
             </div>
-            <h3 className="text-xl font-bold text-white">Sin productos ocultos</h3>
-            <p className="text-gray-400 text-sm">No hay productos ocultos en este momento. ¡El catálogo está completo!</p>
+            <h3 className="text-xl font-bold text-white">
+              Sin productos ocultos
+            </h3>
+            <p className="text-gray-400 text-sm">
+              No hay productos ocultos en este momento. ¡El catálogo está
+              completo!
+            </p>
           </div>
         ) : filteredHiddenProducts.length === 0 ? (
           <div className="glass-panel rounded-3xl py-14 px-6 text-center space-y-3 border border-white/10 max-w-md mx-auto">
-            <h3 className="text-base font-bold text-white">No hay coincidencias</h3>
+            <h3 className="text-base font-bold text-white">
+              No hay coincidencias
+            </h3>
             <p className="text-gray-400 text-xs">
               No se encontraron productos ocultos para "{searchTerm}".
             </p>
             <button
-              onClick={() => setSearchTerm('')}
+              onClick={() => setSearchTerm("")}
               className="px-4 py-2 rounded-xl bg-[#171B2B] text-rose-300 border border-rose-500/30 text-xs font-bold"
             >
               Limpiar búsqueda
@@ -240,7 +269,9 @@ export default function OcultosPage() {
                     <EyeOff className="w-2.5 h-2.5" />
                     Oculto
                   </span>
-                  <span className="text-[10px] text-gray-500 font-mono">{product.id}</span>
+                  <span className="text-[10px] text-gray-500 font-mono">
+                    {product.id}
+                  </span>
                 </div>
 
                 {/* Brand */}
@@ -248,7 +279,9 @@ export default function OcultosPage() {
                   <span className="text-[10px] font-extrabold tracking-widest text-[#D4AF37] uppercase block">
                     {product.marca}
                   </span>
-                  <h3 className="text-sm font-bold text-white leading-tight mt-0.5">{product.modelo}</h3>
+                  <h3 className="text-sm font-bold text-white leading-tight mt-0.5">
+                    {product.modelo}
+                  </h3>
                 </div>
 
                 {/* Quality, Stock & Price */}
@@ -260,11 +293,11 @@ export default function OcultosPage() {
                     <span
                       className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
                         product.stock > 0
-                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                          : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                          : "bg-rose-500/10 text-rose-400 border-rose-500/20"
                       }`}
                     >
-                      {product.stock > 0 ? `${product.stock} uds` : '0 uds'}
+                      {product.stock > 0 ? `${product.stock} uds` : "0 uds"}
                     </span>
                   </div>
                   <span className="text-base font-extrabold text-[#F3E0A9]">
@@ -279,8 +312,12 @@ export default function OcultosPage() {
                     disabled={restoringId === product.id}
                     className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition-all hover:scale-[1.02] disabled:opacity-50"
                   >
-                    <RotateCcw className={`w-3.5 h-3.5 ${restoringId === product.id ? 'animate-spin' : ''}`} />
-                    {restoringId === product.id ? 'Reactivando...' : 'Reactivar en Catálogo'}
+                    <RotateCcw
+                      className={`w-3.5 h-3.5 ${restoringId === product.id ? "animate-spin" : ""}`}
+                    />
+                    {restoringId === product.id
+                      ? "Reactivando..."
+                      : "Reactivar en Catálogo"}
                   </button>
                 </div>
               </div>
@@ -293,7 +330,8 @@ export default function OcultosPage() {
       <footer className="border-t border-white/10 bg-[#06070B] py-6 mt-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <span className="text-xs text-gray-500">
-            EL ARCA <span className="text-[#D4AF37]">DISPLAY CLUB</span> — Panel de Administración
+            EL ARCA <span className="text-[#D4AF37]">DISPLAY CLUB</span> — Panel
+            de Administración
           </span>
         </div>
       </footer>

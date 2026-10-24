@@ -1,70 +1,112 @@
-import { NextRequest, NextResponse } from 'next/server';
-import connectToDatabase from '@/lib/mongoose';
-import { getWhatsAppConfig } from '@/lib/models/WhatsAppConfig';
-import { normalizePhoneNumber } from '@/lib/whatsapp/service';
-
-export const dynamic = 'force-dynamic';
-
-export async function GET() {
-  try {
-    await connectToDatabase();
-    const config = await getWhatsAppConfig();
-    return NextResponse.json({
-      status: 'ok',
-      adminPhones: config.adminPhones || [],
-      blacklistedPhones: config.blacklistedPhones || [],
-      botPhone: config.botPhone || '',
-      botStatus: config.botStatus || 'online',
-    });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
+import { requireAdmin } from "@/lib/security/admin";
+import connect from "@/lib/mongoose";
+import { getWhatsAppConfig } from "@/lib/models/WhatsAppConfig";
+import { BotConversation, BotOperation } from "@/lib/models/BotState";
+import { normalizePhoneNumber, validPhone } from "@/lib/whatsapp/identity";
+import { randomUUID } from "node:crypto";
+export const dynamic = "force-dynamic";
+export async function GET(req: Request) {
+  const denied = await requireAdmin(req);
+  if (denied) return denied;
+  await connect();
+  const cfg = await getWhatsAppConfig();
+  return Response.json({
+    status: "ok",
+    adminPhones: cfg.adminPhones,
+    blacklistedPhones: cfg.blacklistedPhones,
+    botPhone: cfg.botPhone,
+    botStatus:
+      cfg.botStatus === "online" &&
+      cfg.lastPingAt &&
+      Date.now() - cfg.lastPingAt.getTime() < 60000
+        ? "online"
+        : "offline",
+    lastPingAt: cfg.lastPingAt,
+    scanUrl:
+      "http://127.0.0.1:" +
+      String(process.env.LOCAL_BRIDGE_PORT || 7860) +
+      "/scan",
+  });
 }
-
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
+  const denied = await requireAdmin(req);
+  if (denied) return denied;
   try {
-    await connectToDatabase();
     const body = await req.json();
-    const { action, phone } = body || {};
-
-    const cleanPhone = normalizePhoneNumber(phone || '');
-    if (!cleanPhone && (action === 'add_admin' || action === 'add_blacklist')) {
-      return NextResponse.json({ error: 'Número de teléfono inválido' }, { status: 400 });
-    }
-
-    const config = await getWhatsAppConfig();
-
-    if (action === 'add_admin') {
-      if (!config.adminPhones.includes(cleanPhone)) {
-        config.adminPhones.push(cleanPhone);
-      }
-    } else if (action === 'remove_admin') {
-      config.adminPhones = config.adminPhones.filter((p) => normalizePhoneNumber(p) !== cleanPhone);
-      // Garantizar que el número del dueño nunca se elimine por error
-      if (!config.adminPhones.includes('5352031972')) {
-        config.adminPhones.push('5352031972');
-      }
-    } else if (action === 'add_blacklist') {
-      if (!config.blacklistedPhones.includes(cleanPhone)) {
-        config.blacklistedPhones.push(cleanPhone);
-      }
-    } else if (action === 'remove_blacklist') {
-      config.blacklistedPhones = config.blacklistedPhones.filter((p) => normalizePhoneNumber(p) !== cleanPhone);
-    } else if (action === 'set_bot_phone') {
-      config.botPhone = cleanPhone;
-      config.botStatus = 'online';
-    } else {
-      return NextResponse.json({ error: 'Acción no reconocida' }, { status: 400 });
-    }
-
-    await config.save();
-
-    return NextResponse.json({
-      status: 'success',
-      adminPhones: config.adminPhones,
-      blacklistedPhones: config.blacklistedPhones,
+    const phone = normalizePhoneNumber(body.phone);
+    if (!validPhone(phone))
+      return Response.json(
+        { error: "Usa el número completo con código de país (8–15 dígitos)" },
+        { status: 400 },
+      );
+    await connect();
+    const cfg = await getWhatsAppConfig();
+    const owner = normalizePhoneNumber(process.env.ADMIN_PHONE_NUMBER || "");
+    const before = {
+      adminPhones: [...cfg.adminPhones],
+      blacklistedPhones: [...cfg.blacklistedPhones],
+    };
+    if (body.action === "add_admin") {
+      if (cfg.blacklistedPhones.includes(phone))
+        return Response.json(
+          { error: "Retira el bloqueo antes de dar permisos" },
+          { status: 400 },
+        );
+      if (!cfg.adminPhones.includes(phone)) cfg.adminPhones.push(phone);
+    } else if (body.action === "remove_admin") {
+      if (phone === owner || cfg.adminPhones.length <= 1)
+        return Response.json(
+          {
+            error:
+              "No puedes eliminar al propietario o al último administrador",
+          },
+          { status: 400 },
+        );
+      cfg.adminPhones = cfg.adminPhones.filter((p) => p !== phone);
+    } else if (body.action === "add_blacklist") {
+      if (phone === owner || cfg.adminPhones.includes(phone))
+        return Response.json(
+          { error: "No se puede bloquear a un administrador" },
+          { status: 400 },
+        );
+      if (!cfg.blacklistedPhones.includes(phone))
+        cfg.blacklistedPhones.push(phone);
+    } else if (body.action === "remove_blacklist")
+      cfg.blacklistedPhones = cfg.blacklistedPhones.filter((p) => p !== phone);
+    else if (["pause", "resume"].includes(body.action))
+      await BotConversation.updateOne(
+        { _id: phone },
+        body.action === "pause"
+          ? { $set: { paused: true }, $unset: { expiresAt: 1 } }
+          : {
+              $set: {
+                paused: false,
+                expiresAt: new Date(Date.now() + 86400000),
+              },
+            },
+        { upsert: true },
+      );
+    else return Response.json({ error: "Acción inválida" }, { status: 400 });
+    await cfg.save();
+    await BotOperation.create({
+      _id: randomUUID(),
+      actor: "web-admin",
+      actions: [{ type: body.action, phone }],
+      before,
+      after: {
+        adminPhones: cfg.adminPhones,
+        blacklistedPhones: cfg.blacklistedPhones,
+      },
     });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return Response.json({
+      status: "success",
+      adminPhones: cfg.adminPhones,
+      blacklistedPhones: cfg.blacklistedPhones,
+    });
+  } catch {
+    return Response.json(
+      { error: "No se pudo actualizar la configuración" },
+      { status: 500 },
+    );
   }
 }

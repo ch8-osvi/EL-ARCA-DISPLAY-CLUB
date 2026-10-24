@@ -1,192 +1,117 @@
-import { NextRequest, NextResponse } from 'next/server';
-import {
-  processWhatsAppAiMessage,
-  sendWhatsAppMessage,
-  normalizePhoneNumber,
-  resolveCanonicalPhone,
-} from '@/lib/whatsapp/service';
-import { getWhatsAppConfig } from '@/lib/models/WhatsAppConfig';
-
-export const dynamic = 'force-dynamic';
+import { verifyBridge, verifyMeta } from "@/lib/security/bridge";
+import { receiveMessage } from "@/lib/whatsapp/inbox";
+import { allowRequest } from "@/lib/security/limits";
+import { timingSafeEqual } from "node:crypto";
+import { after } from "next/server";
+import { BotOutbound } from "@/lib/models/BotState";
+import { processNextMessage } from "@/lib/whatsapp/inbox";
+import { dispatchProviderMessages } from "@/lib/whatsapp/providers";
+import connect from "@/lib/mongoose";
+export const dynamic = "force-dynamic";
 export const maxDuration = 60;
-
-// Set of recently processed message IDs to prevent re-delivery duplicates
-const processedMessageIds = new Set<string>();
-
-/**
- * GET /api/whatsapp/webhook
- * Healthcheck & Meta Webhook verification handshake
- */
-export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const mode = searchParams.get('hub.mode');
-  const token = searchParams.get('hub.verify_token');
-  const challenge = searchParams.get('hub.challenge');
-
-  const expectedToken = process.env.WHATSAPP_VERIFY_TOKEN || 'el_arca_whatsapp_secret_2026';
-
-  // Meta Cloud API handshake
-  if (mode === 'subscribe' && token === expectedToken) {
-    console.log('[WhatsApp Webhook] Meta Verification handshake successful!');
-    return new Response(challenge, { status: 200 });
+export async function GET(req: Request) {
+  const params = new URL(req.url).searchParams;
+  if (params.get("hub.mode")) {
+    if (
+      process.env.WHATSAPP_VERIFY_TOKEN &&
+      params.get("hub.mode") === "subscribe" &&
+      params.get("hub.verify_token") === process.env.WHATSAPP_VERIFY_TOKEN
+    )
+      return new Response(params.get("hub.challenge"), { status: 200 });
+    return Response.json({ error: "Verificación rechazada" }, { status: 403 });
   }
-
-  // Healthcheck for Whapi or browser verification
-  return NextResponse.json({
-    status: 'online',
-    service: 'El Arca Display Club - WhatsApp AI Bot',
-    gateway: 'Whapi.cloud & Meta Cloud API Ready',
-    timestamp: new Date().toISOString(),
-  });
+  return Response.json({ service: "WhatsApp", status: "accepting_events" });
 }
-
-/**
- * POST /api/whatsapp/webhook
- * Handles incoming WhatsApp messages from both Whapi.cloud and Meta Cloud API
- */
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
+  const raw = await req.text();
+  if (raw.length > 256000)
+    return Response.json({ error: "Evento demasiado grande" }, { status: 413 });
   try {
-    const body = await req.json();
-
-    // =========================================================================
-    // CASE 0: BAILEYS CLOUD BRIDGE (Custom microservice, 100% Free & Cuba-ready)
-    // =========================================================================
-    if (body.source === 'baileys_bridge') {
-      const expectedSecret = process.env.WHATSAPP_BRIDGE_SECRET || 'el_arca_bridge_secret_2026';
-      if (body.secret && body.secret !== expectedSecret) {
-        return NextResponse.json({ error: 'Unauthorized bridge request' }, { status: 401 });
-      }
-
-      if (body.botPhone) {
-        const cleanBot = normalizePhoneNumber(body.botPhone);
-        if (cleanBot) {
-          getWhatsAppConfig().then(async (cfg) => {
-            if (cfg && (cfg.botPhone !== cleanBot || cfg.botStatus !== 'online')) {
-              cfg.botPhone = cleanBot;
-              cfg.botStatus = 'online';
-              await cfg.save();
-            }
-          }).catch(() => {});
-        }
-      }
-
-      const senderPhone = resolveCanonicalPhone(body.senderPhone || body.chatId || '');
-      const userText = (body.userText || body.text || '').trim();
-      const messageId = body.messageId;
-
-      if (messageId && processedMessageIds.has(messageId)) {
-        return NextResponse.json({ status: 'already_processed', reply: null }, { status: 200 });
-      }
-      if (messageId) {
-        processedMessageIds.add(messageId);
-        if (processedMessageIds.size > 2000) processedMessageIds.clear();
-      }
-
-      if (userText && senderPhone) {
-        console.log(`[Baileys Bridge Inbound] From: ${senderPhone} | Text: "${userText}"`);
-        const replyText = await processWhatsAppAiMessage(userText, senderPhone);
-        return NextResponse.json(
-          {
-            status: 'success',
-            reply: replyText,
-            senderPhone,
-          },
-          { status: 200 }
+    const body = JSON.parse(raw);
+    const provider = process.env.WHATSAPP_PROVIDER || "bridge";
+    if (body.source === "baileys_bridge") {
+      if (provider !== "bridge" || !verifyBridge(req, raw))
+        return Response.json({ error: "No autorizado" }, { status: 401 });
+      if (
+        !(await allowRequest(
+          "inbound:" + String(body.senderPhone).slice(0, 30),
+          60,
+          60,
+        ))
+      )
+        return Response.json({ error: "Límite temporal" }, { status: 429 });
+      const id = await receiveMessage(
+        body.messageId,
+        body.senderPhone,
+        body.userText || "",
+      );
+      return Response.json({ status: "queued", id }, { status: 202 });
+    }
+    // Alternate providers must be explicitly selected; never infer trust from payload fields.
+    if (provider === "meta" && body.object === "whatsapp_business_account") {
+      if (!verifyMeta(req, raw))
+        return Response.json({ error: "Firma inválida" }, { status: 401 });
+      await connect();
+      for (const entry of body.entry || [])
+        for (const change of entry.changes || [])
+          for (const msg of change.value?.messages || []) {
+            await receiveMessage(
+              msg.id,
+              msg.from,
+              msg.text?.body || "[Mensaje no textual]",
+              "meta",
+            );
+          }
+      for (const entry of body.entry || [])
+        for (const change of entry.changes || [])
+          for (const status of change.value?.statuses || []) {
+            if (["delivered", "read", "failed"].includes(status.status))
+              await BotOutbound.updateOne(
+                { provider: "meta", providerId: status.id },
+                { $set: { status: status.status } },
+              );
+          }
+      after(async () => {
+        await processNextMessage();
+        await dispatchProviderMessages();
+      });
+      return Response.json({ status: "queued" });
+    }
+    if (provider === "whapi") {
+      const expected = Buffer.from(process.env.WHAPI_WEBHOOK_TOKEN || "");
+      const supplied = Buffer.from(
+        req.headers.get("authorization")?.replace(/^Bearer /, "") || "",
+      );
+      if (
+        !expected.length ||
+        expected.length !== supplied.length ||
+        !timingSafeEqual(expected, supplied)
+      )
+        return Response.json({ error: "No autorizado" }, { status: 401 });
+      for (const msg of body.messages || (body.message ? [body.message] : [])) {
+        if (
+          msg.from_me ||
+          /@(g\.us|newsletter|broadcast)/.test(msg.chat_id || "")
+        )
+          continue;
+        await receiveMessage(
+          msg.id,
+          msg.from || msg.chat_id,
+          msg.text?.body || msg.caption || "[Mensaje no textual]",
+          "whapi",
         );
       }
-
-      return NextResponse.json({ status: 'no_text_or_phone', reply: null }, { status: 200 });
+      after(async () => {
+        await processNextMessage();
+        await dispatchProviderMessages();
+      });
+      return Response.json({ status: "queued" });
     }
-
-    // =========================================================================
-    // CASE 1: WHAPI.CLOUD GATEWAY (Independent, QR-based, zero Meta ban)
-    // =========================================================================
-    const rawWhapiMessages: any[] = Array.isArray(body.messages)
-      ? body.messages
-      : body.message
-      ? [body.message]
-      : [];
-
-    if (rawWhapiMessages.length > 0) {
-      for (const msg of rawWhapiMessages) {
-        // CRITICAL: Ignore messages sent by the bot itself or from the connected phone
-        if (msg.from_me === true) {
-          continue;
-        }
-
-        const messageId = msg.id;
-        if (messageId && processedMessageIds.has(messageId)) {
-          continue;
-        }
-        if (messageId) {
-          processedMessageIds.add(messageId);
-          if (processedMessageIds.size > 2000) processedMessageIds.clear();
-        }
-
-        // Extract text body
-        const userText =
-          msg.text?.body ||
-          (typeof msg.body === 'string' ? msg.body : '') ||
-          msg.caption ||
-          '';
-
-        const chatId = msg.chat_id || msg.from || '';
-        const senderPhone = normalizePhoneNumber(chatId);
-
-        if (userText.trim() && senderPhone) {
-          console.log(`[Whapi Inbound] From: ${senderPhone} | Text: "${userText}"`);
-
-          // Process through Gemini with Admin/Client security isolation
-          const aiReply = await processWhatsAppAiMessage(userText, senderPhone);
-
-          // Reply back via Whapi Gateway
-          await sendWhatsAppMessage(chatId || senderPhone, aiReply);
-        }
-      }
-
-      return NextResponse.json({ status: 'whapi_processed' }, { status: 200 });
-    }
-
-    // =========================================================================
-    // CASE 2: META CLOUD API (Official WhatsApp Business Webhook)
-    // =========================================================================
-    if (body.object === 'whatsapp_business_account') {
-      const entry = body.entry?.[0];
-      const change = entry?.changes?.[0]?.value;
-      const message = change?.messages?.[0];
-
-      if (!message) {
-        return NextResponse.json({ status: 'no_message' }, { status: 200 });
-      }
-
-      const messageId = message.id;
-      if (messageId && processedMessageIds.has(messageId)) {
-        return NextResponse.json({ status: 'already_processed' }, { status: 200 });
-      }
-
-      if (messageId) {
-        processedMessageIds.add(messageId);
-        if (processedMessageIds.size > 2000) processedMessageIds.clear();
-      }
-
-      if (message.type === 'text') {
-        const senderPhone = normalizePhoneNumber(message.from);
-        const userText = message.text?.body || '';
-
-        if (userText.trim() && senderPhone) {
-          console.log(`[Meta Inbound] From: ${senderPhone} | Text: "${userText}"`);
-
-          const aiResponse = await processWhatsAppAiMessage(userText, senderPhone);
-          await sendWhatsAppMessage(senderPhone, aiResponse);
-        }
-      }
-
-      return NextResponse.json({ status: 'meta_processed' }, { status: 200 });
-    }
-
-    return NextResponse.json({ status: 'ignored_payload' }, { status: 200 });
-  } catch (err) {
-    console.error('[WhatsApp Webhook Error]', err);
-    return NextResponse.json({ status: 'error_logged' }, { status: 200 });
+    return Response.json({ error: "Proveedor no habilitado" }, { status: 403 });
+  } catch {
+    return Response.json(
+      { error: "No se pudo almacenar el evento. Puede reintentarse." },
+      { status: 503 },
+    );
   }
 }

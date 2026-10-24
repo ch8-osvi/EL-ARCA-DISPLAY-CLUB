@@ -1,4 +1,4 @@
-import { Product } from '@/lib/types';
+import { Product } from "@/lib/types";
 
 export interface DuplicatePair {
   pairId: string;
@@ -15,15 +15,81 @@ export interface DuplicatePair {
  * (por ejemplo, evitar que "REDMI 10C" coincida con "REDMI 9" solo por compartir "REDMI", "POWER", etc.).
  */
 const STOPWORDS = new Set([
-  'XIAOMI', 'REDMI', 'POCO', 'SAMSUNG', 'GALAXY', 'APPLE', 'IPHONE',
-  'MOTOROLA', 'MOTO', 'HUAWEI', 'HONOR', 'ALCATEL', 'ZTE', 'TECNO',
-  'INFINIX', 'VIVO', 'REALME', 'BLU', 'NOKIA', 'GOOGLE', 'SONY', 'LG',
-  'POWER', 'PLUS', 'PRO', 'MAX', 'ULTRA', 'LITE', 'PRIME', 'PLAY', 'MINI',
-  'SE', '4G', '5G', 'NEO', 'TURBO', 'FE', 'GT', 'YOUTH', 'COMPACT', 'ACTIVE',
-  'DUAL', 'SIM', 'EDITION', 'VERSION', 'GLOBAL', 'EUROPA', 'LATAM', 'INDIA',
-  'CHINA', 'NFC', 'NEW', 'DISPLAY', 'PANTALLA', 'TOUCH', 'LCD', 'OLED',
-  'INCELL', 'ORIGINAL', 'AMOLED', 'FRAME', 'MARCO', 'SIN', 'CON', 'UNIVERSAL',
-  'COMPATIBLE', 'AAA', 'OEM', 'RM', 'SAM', 'SM', 'IP', 'HW', 'C/M', 'S/M'
+  "XIAOMI",
+  "REDMI",
+  "POCO",
+  "SAMSUNG",
+  "GALAXY",
+  "APPLE",
+  "IPHONE",
+  "MOTOROLA",
+  "MOTO",
+  "HUAWEI",
+  "HONOR",
+  "ALCATEL",
+  "ZTE",
+  "TECNO",
+  "INFINIX",
+  "VIVO",
+  "REALME",
+  "BLU",
+  "NOKIA",
+  "GOOGLE",
+  "SONY",
+  "LG",
+  "POWER",
+  "PLUS",
+  "PRO",
+  "MAX",
+  "ULTRA",
+  "LITE",
+  "PRIME",
+  "PLAY",
+  "MINI",
+  "SE",
+  "4G",
+  "5G",
+  "NEO",
+  "TURBO",
+  "FE",
+  "GT",
+  "YOUTH",
+  "COMPACT",
+  "ACTIVE",
+  "DUAL",
+  "SIM",
+  "EDITION",
+  "VERSION",
+  "GLOBAL",
+  "EUROPA",
+  "LATAM",
+  "INDIA",
+  "CHINA",
+  "NFC",
+  "NEW",
+  "DISPLAY",
+  "PANTALLA",
+  "TOUCH",
+  "LCD",
+  "OLED",
+  "INCELL",
+  "ORIGINAL",
+  "AMOLED",
+  "FRAME",
+  "MARCO",
+  "SIN",
+  "CON",
+  "UNIVERSAL",
+  "COMPATIBLE",
+  "AAA",
+  "OEM",
+  "RM",
+  "SAM",
+  "SM",
+  "IP",
+  "HW",
+  "C/M",
+  "S/M",
 ]);
 
 /**
@@ -35,10 +101,13 @@ export function extractModelTokens(modelText: string): string[] {
 
   const upper = modelText
     .toUpperCase()
-    .replace(/[()[\]{}]/g, ' ')
-    .replace(/[/\\+&_,.-]/g, ' ');
+    .replace(/[()[\]{}]/g, " ")
+    .replace(/[/\\+&_,.-]/g, " ");
 
-  const rawTokens = upper.split(/\s+/).map((t) => t.trim()).filter((t) => t.length >= 2);
+  const rawTokens = upper
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 2);
   const tokens = new Set<string>();
 
   for (const token of rawTokens) {
@@ -67,7 +136,7 @@ export function extractModelTokens(modelText: string): string[] {
  * Normalización para comparar strings compactos
  */
 function cleanCompactString(str: string): string {
-  return (str || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return (str || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
 /**
@@ -75,10 +144,10 @@ function cleanCompactString(str: string): string {
  */
 export function calculateDuplicateScore(
   a: Product,
-  b: Product
+  b: Product,
 ): { score: number; matchingTokens: string[]; reasons: string[] } {
-  const marcaA = (a.marca || '').toUpperCase().trim();
-  const marcaB = (b.marca || '').toUpperCase().trim();
+  const marcaA = (a.marca || "").toUpperCase().trim();
+  const marcaB = (b.marca || "").toUpperCase().trim();
   if (marcaA !== marcaB) {
     return { score: 0, matchingTokens: [], reasons: [] };
   }
@@ -87,15 +156,32 @@ export function calculateDuplicateScore(
   const compactB = cleanCompactString(b.modelo);
   const reasons: string[] = [];
 
-  const calA = (a.calidad || '').toUpperCase().trim();
-  const calB = (b.calidad || '').toUpperCase().trim();
+  const calA = (a.calidad || "").toUpperCase().trim();
+  const calB = (b.calidad || "").toUpperCase().trim();
 
+  if (calA !== calB) return { score: 0, matchingTokens: [], reasons: [] };
+  const variant = (v: string) =>
+    v
+      .toUpperCase()
+      .match(/\b(PRO|PLUS|MAX|ULTRA|LITE|4G|5G|SE|FE)\b/g)
+      ?.sort()
+      .join("|") || "";
+  if (variant(a.modelo) !== variant(b.modelo))
+    return { score: 0, matchingTokens: [], reasons: [] };
   // 1. Coincidencia idéntica exacta
   if (compactA.length > 3 && compactA === compactB) {
     if (calA === calB) {
-      return { score: 100, matchingTokens: [a.modelo], reasons: ['Modelos y calidad idénticos'] };
+      return {
+        score: 100,
+        matchingTokens: [a.modelo],
+        reasons: ["Modelos y calidad idénticos"],
+      };
     }
-    return { score: 90, matchingTokens: [a.modelo], reasons: ['Mismo modelo exacto (distinta calidad)'] };
+    return {
+      score: 90,
+      matchingTokens: [a.modelo],
+      reasons: ["Mismo modelo exacto (distinta calidad)"],
+    };
   }
 
   const tokensA = extractModelTokens(a.modelo);
@@ -104,7 +190,9 @@ export function calculateDuplicateScore(
 
   // Filtrar tokens compartidos ignorando años solos (ej. 2021, 2022) a menos que haya otro modelo
   const rawMatching = tokensA.filter((t) => tokenSetB.has(t));
-  const nonYearMatching = rawMatching.filter((t) => !/^(19\d\d|20\d\d)$/.test(t));
+  const nonYearMatching = rawMatching.filter(
+    (t) => !/^(19\d\d|20\d\d)$/.test(t),
+  );
   const matchingTokens = nonYearMatching.length > 0 ? rawMatching : [];
 
   let score = 0;
@@ -117,10 +205,14 @@ export function calculateDuplicateScore(
 
   if (matchingTokens.length >= 3) {
     score = 90 + Math.min(8, matchingTokens.length * 2);
-    reasons.push(`Comparten ${matchingTokens.length} modelos compatibles (${matchingTokens.slice(0, 4).join(', ')})`);
+    reasons.push(
+      `Comparten ${matchingTokens.length} modelos compatibles (${matchingTokens.slice(0, 4).join(", ")})`,
+    );
   } else if (matchingTokens.length === 2) {
     score = 80;
-    reasons.push(`Comparten modelos compatibles (${matchingTokens.join(', ')})`);
+    reasons.push(
+      `Comparten modelos compatibles (${matchingTokens.join(", ")})`,
+    );
   } else if (matchingTokens.length === 1) {
     const minLen = Math.min(tokensA.length, tokensB.length);
     if (minLen === 1 && isContained) {
@@ -150,13 +242,16 @@ export function calculateDuplicateScore(
 /**
  * Escanea la lista de productos y devuelve solo duplicados reales
  */
-export function detectDuplicates(products: Product[], minScore = 75): DuplicatePair[] {
+export function detectDuplicates(
+  products: Product[],
+  minScore = 75,
+): DuplicatePair[] {
   const pairs: DuplicatePair[] = [];
   const seenPairKeys = new Set<string>();
 
   const byBrand = new Map<string, Product[]>();
   for (const p of products) {
-    const brand = (p.marca || 'VARIOS').toUpperCase().trim();
+    const brand = (p.marca || "VARIOS").toUpperCase().trim();
     if (!byBrand.has(brand)) byBrand.set(brand, []);
     byBrand.get(brand)!.push(p);
   }
@@ -171,10 +266,13 @@ export function detectDuplicates(products: Product[], minScore = 75): DuplicateP
 
         const idA = String(prodA.id || (prodA as any)._id || `idx-${i}`);
         const idB = String(prodB.id || (prodB as any)._id || `idx-${j}`);
-        const pairKey = [idA, idB].sort().join(':::');
+        const pairKey = [idA, idB].sort().join(":::");
         if (seenPairKeys.has(pairKey)) continue;
 
-        const { score, matchingTokens, reasons } = calculateDuplicateScore(prodA, prodB);
+        const { score, matchingTokens, reasons } = calculateDuplicateScore(
+          prodA,
+          prodB,
+        );
 
         if (score >= minScore) {
           seenPairKeys.add(pairKey);

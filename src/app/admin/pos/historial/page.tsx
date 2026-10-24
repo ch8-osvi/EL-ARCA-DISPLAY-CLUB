@@ -1,7 +1,8 @@
-'use client';
+"use client";
+import { checkAdminSession, loginAdmin } from "@/lib/auth-client";
 
-import React, { useState, useEffect, useMemo } from 'react';
-import Link from 'next/link';
+import React, { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import {
   ArrowLeft,
   History,
@@ -29,7 +30,7 @@ import {
   Filter,
   ArrowUpDown,
   Tag,
-} from 'lucide-react';
+} from "lucide-react";
 import {
   printTicket,
   printViaBluetooth,
@@ -38,97 +39,108 @@ import {
   printRefundViaBluetooth,
   printRefundViaUsb,
   RefundTicketData,
-} from '@/components/PrintTicket';
+} from "@/components/PrintTicket";
 import {
   getHavanaDateKey,
   getHavanaDaysAgoKey,
   formatHavanaDateTime,
-} from '@/lib/dateUtils';
-import { fuzzyMatchGeneric } from '@/lib/searchUtils';
+} from "@/lib/dateUtils";
+import { fuzzyMatchGeneric } from "@/lib/searchUtils";
 
 interface SaleItem {
-  productId:   string;
-  marca:       string;
-  modelo:      string;
-  calidad:     string;
-  qty:         number;
-  returnedQty?:number;
-  precioUSD:   number;
+  productId: string;
+  marca: string;
+  modelo: string;
+  calidad: string;
+  qty: number;
+  returnedQty?: number;
+  precioUSD: number;
   subtotalUSD: number;
 }
 
 interface SaleRefundLog {
-  productId:   string;
-  marca:       string;
-  modelo:      string;
-  calidad:     string;
-  qty:         number;
-  refundUSD:   number;
-  refundCUP:   number;
-  reason:      string;
-  destination: 'stock' | 'merma';
-  createdAt:   string;
+  productId: string;
+  marca: string;
+  modelo: string;
+  calidad: string;
+  qty: number;
+  refundUSD: number;
+  refundCUP: number;
+  reason: string;
+  destination: "stock" | "merma";
+  createdAt: string;
 }
 
 interface SaleRecord {
-  _id:              string;
-  orderNumber:      string;
-  clientName:       string;
-  items:            SaleItem[];
-  currency:         'USD' | 'CUP';
-  exchangeRate:     number;
-  subtotalUSD:      number;
-  totalUSD:         number;
-  totalCUP:         number;
-  paid:             boolean;
-  notes:            string;
-  status?:          'COMPLETED' | 'PARTIALLY_REFUNDED' | 'REFUNDED' | 'CANCELLED';
-  totalRefundedUSD?:number;
-  totalRefundedCUP?:number;
-  refunds?:         SaleRefundLog[];
-  createdAt:        string;
+  _id: string;
+  orderNumber: string;
+  clientName: string;
+  items: SaleItem[];
+  currency: "USD" | "CUP";
+  exchangeRate: number;
+  subtotalUSD: number;
+  totalUSD: number;
+  totalCUP: number;
+  paid: boolean;
+  notes: string;
+  status?: "COMPLETED" | "PARTIALLY_REFUNDED" | "REFUNDED" | "CANCELLED";
+  totalRefundedUSD?: number;
+  totalRefundedCUP?: number;
+  refunds?: SaleRefundLog[];
+  createdAt: string;
 }
 
 export default function SalesHistoryPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [sales, setSales] = useState<SaleRecord[]>([]);
   const [daily, setDaily] = useState<any>({
-    todayTotalUSD:   0,
-    todayTotalCUP:   0,
+    todayTotalUSD: 0,
+    todayTotalCUP: 0,
     todayRefundsUSD: 0,
     todayRefundsCUP: 0,
-    todayNetUSD:     0,
-    todayNetCUP:     0,
-    todayPaidUSD:    0,
-    todayPaidCUP:    0,
-    count:           0,
+    todayNetUSD: 0,
+    todayNetCUP: 0,
+    todayPaidUSD: 0,
+    todayPaidCUP: 0,
+    count: 0,
   });
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterPaid, setFilterPaid] = useState<'ALL' | 'PAID' | 'PENDING' | 'REFUNDED'>('ALL');
-  const [filterDate, setFilterDate] = useState<'ALL' | 'TODAY' | 'YESTERDAY' | 'WEEK' | 'MONTH'>('ALL');
-  const [filterCurrency, setFilterCurrency] = useState<'ALL' | 'USD' | 'CUP'>('ALL');
-  const [filterBrand, setFilterBrand] = useState('ALL');
-  const [sortBy, setSortBy] = useState<'RECENT' | 'OLDEST' | 'AMOUNT_DESC' | 'AMOUNT_ASC'>('RECENT');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterPaid, setFilterPaid] = useState<
+    "ALL" | "PAID" | "PENDING" | "REFUNDED"
+  >("ALL");
+  const [filterDate, setFilterDate] = useState<
+    "ALL" | "TODAY" | "YESTERDAY" | "WEEK" | "MONTH"
+  >("ALL");
+  const [filterCurrency, setFilterCurrency] = useState<"ALL" | "USD" | "CUP">(
+    "ALL",
+  );
+  const [filterBrand, setFilterBrand] = useState("ALL");
+  const [sortBy, setSortBy] = useState<
+    "RECENT" | "OLDEST" | "AMOUNT_DESC" | "AMOUNT_ASC"
+  >("RECENT");
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
-  const [toastMessage, setToastMessage] = useState<{ text: string; isError?: boolean } | null>(null);
+  const [toastMessage, setToastMessage] = useState<{
+    text: string;
+    isError?: boolean;
+  } | null>(null);
 
   // Refund Modal State
   const [refundModal, setRefundModal] = useState<{
     open: boolean;
     sale: SaleRecord | null;
     returnQuantities: { [productId: string]: number };
-    returnDestinations: { [productId: string]: 'stock' | 'merma' };
+    returnDestinations: { [productId: string]: "stock" | "merma" };
     reason: string;
-    printOption: 'bluetooth' | 'usb' | 'system' | 'none';
+    printOption: "bluetooth" | "usb" | "system" | "none";
     loading: boolean;
   }>({
     open: false,
     sale: null,
     returnQuantities: {},
     returnDestinations: {},
-    reason: '',
-    printOption: 'bluetooth',
+    reason: "",
+    printOption: "bluetooth",
     loading: false,
   });
 
@@ -138,24 +150,21 @@ export default function SalesHistoryPage() {
   };
 
   useEffect(() => {
-    const auth = sessionStorage.getItem('el_arca_admin_auth');
-    if (auth === 'true') {
-      setIsAuthenticated(true);
-    }
+    void checkAdminSession().then(setIsAuthenticated);
   }, []);
 
   const fetchSales = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/sales');
+      const res = await fetch("/api/sales");
       if (res.ok) {
         const data = await res.json();
         setSales(data.sales || []);
         if (data.daily) setDaily(data.daily);
       }
     } catch (err) {
-      console.error('Error loading sales:', err);
-      triggerToast('Error cargando historial', true);
+      console.error("Error loading sales:", err);
+      triggerToast("Error cargando historial", true);
     } finally {
       setLoading(false);
     }
@@ -169,57 +178,68 @@ export default function SalesHistoryPage() {
 
   const handleTogglePaid = async (saleId: string) => {
     try {
-      const res = await fetch('/api/sales', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'toggle-paid', saleId }),
+      const res = await fetch("/api/sales", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "toggle-paid", saleId }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
         setSales((prev) =>
-          prev.map((s) => (s._id === saleId ? { ...s, paid: !s.paid } : s))
+          prev.map((s) => (s._id === saleId ? { ...s, paid: !s.paid } : s)),
         );
         fetchSales();
         triggerToast(
-          data.sale.paid ? '¡Orden marcada como PAGADA con éxito!' : 'Orden marcada como PENDIENTE'
+          data.sale.paid
+            ? "¡Orden marcada como PAGADA con éxito!"
+            : "Orden marcada como PENDIENTE",
         );
       }
     } catch {
-      triggerToast('Error al actualizar pago', true);
+      triggerToast("Error al actualizar pago", true);
     }
   };
 
-  const handleReprint = async (sale: SaleRecord, mode: 'bluetooth' | 'usb' | 'system' = 'bluetooth') => {
+  const handleReprint = async (
+    sale: SaleRecord,
+    mode: "bluetooth" | "usb" | "system" = "bluetooth",
+  ) => {
     const ticketData = {
-      orderNumber:  sale.orderNumber,
-      clientName:   sale.clientName,
-      items:        sale.items,
-      currency:     sale.currency,
+      orderNumber: sale.orderNumber,
+      clientName: sale.clientName,
+      items: sale.items,
+      currency: sale.currency,
       exchangeRate: sale.exchangeRate,
-      subtotalUSD:  sale.subtotalUSD,
-      totalUSD:     sale.totalUSD,
-      totalCUP:     sale.totalCUP,
-      paid:         sale.paid,
-      notes:        sale.notes,
-      createdAt:    sale.createdAt,
+      subtotalUSD: sale.subtotalUSD,
+      totalUSD: sale.totalUSD,
+      totalCUP: sale.totalCUP,
+      paid: sale.paid,
+      notes: sale.notes,
+      createdAt: sale.createdAt,
     };
 
-    if (mode === 'bluetooth') {
-      triggerToast('Buscando impresora Bluetooth...');
+    if (mode === "bluetooth") {
+      triggerToast("Buscando impresora Bluetooth...");
       const res = await printViaBluetooth(ticketData, 1);
       if (res.success) {
-        triggerToast('¡Ticket reimpreso por Bluetooth!');
+        triggerToast("¡Ticket reimpreso por Bluetooth!");
       } else {
-        triggerToast(res.error || 'Error Bluetooth, usando ventana de impresión', true);
+        triggerToast(
+          res.error || "Error Bluetooth, usando ventana de impresión",
+          true,
+        );
         printTicket(ticketData, 1);
       }
-    } else if (mode === 'usb') {
-      triggerToast('Conectando a puerto USB...');
+    } else if (mode === "usb") {
+      triggerToast("Conectando a puerto USB...");
       const res = await printViaUsb(ticketData, 1);
       if (res.success) {
-        triggerToast('¡Ticket reimpreso por USB!');
+        triggerToast("¡Ticket reimpreso por USB!");
       } else {
-        triggerToast(res.error || 'Error USB, usando ventana de impresión', true);
+        triggerToast(
+          res.error || "Error USB, usando ventana de impresión",
+          true,
+        );
         printTicket(ticketData, 1);
       }
     } else {
@@ -230,11 +250,11 @@ export default function SalesHistoryPage() {
   // Open Refund Modal
   const handleOpenRefundModal = (sale: SaleRecord) => {
     const initialQuantities: { [productId: string]: number } = {};
-    const initialDestinations: { [productId: string]: 'stock' | 'merma' } = {};
+    const initialDestinations: { [productId: string]: "stock" | "merma" } = {};
 
     sale.items.forEach((item) => {
       initialQuantities[item.productId] = 0;
-      initialDestinations[item.productId] = 'stock';
+      initialDestinations[item.productId] = "stock";
     });
 
     setRefundModal({
@@ -242,14 +262,18 @@ export default function SalesHistoryPage() {
       sale,
       returnQuantities: initialQuantities,
       returnDestinations: initialDestinations,
-      reason: '',
-      printOption: 'bluetooth',
+      reason: "",
+      printOption: "bluetooth",
       loading: false,
     });
   };
 
   // Adjust return quantity in modal
-  const handleSetReturnQty = (productId: string, delta: number, maxAllowed: number) => {
+  const handleSetReturnQty = (
+    productId: string,
+    delta: number,
+    maxAllowed: number,
+  ) => {
     setRefundModal((prev) => {
       const current = prev.returnQuantities[productId] || 0;
       const next = Math.max(0, Math.min(maxAllowed, current + delta));
@@ -261,7 +285,7 @@ export default function SalesHistoryPage() {
   };
 
   // Set destination for item
-  const handleSetItemDest = (productId: string, dest: 'stock' | 'merma') => {
+  const handleSetItemDest = (productId: string, dest: "stock" | "merma") => {
     setRefundModal((prev) => ({
       ...prev,
       returnDestinations: { ...prev.returnDestinations, [productId]: dest },
@@ -274,7 +298,7 @@ export default function SalesHistoryPage() {
     if (!refundModal.sale) return;
 
     if (!refundModal.reason.trim()) {
-      triggerToast('Debes ingresar el motivo de la devolución', true);
+      triggerToast("Debes ingresar el motivo de la devolución", true);
       return;
     }
 
@@ -283,21 +307,21 @@ export default function SalesHistoryPage() {
       .map(([productId, qty]) => ({
         productId,
         qty,
-        destination: refundModal.returnDestinations[productId] || 'stock',
+        destination: refundModal.returnDestinations[productId] || "stock",
       }));
 
     if (returnsToSubmit.length === 0) {
-      triggerToast('Selecciona al menos 1 unidad para devolver', true);
+      triggerToast("Selecciona al menos 1 unidad para devolver", true);
       return;
     }
 
     setRefundModal((prev) => ({ ...prev, loading: true }));
     try {
-      const res = await fetch('/api/sales', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/sales", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: 'refund',
+          action: "refund",
           saleId: refundModal.sale._id,
           returns: returnsToSubmit,
           reason: refundModal.reason,
@@ -306,15 +330,15 @@ export default function SalesHistoryPage() {
 
       const data = await res.json();
       if (!res.ok || !data.success) {
-        triggerToast(data.error || 'Error procesando devolución', true);
+        triggerToast(data.error || "Error procesando devolución", true);
         setRefundModal((prev) => ({ ...prev, loading: false }));
         return;
       }
 
-      triggerToast('¡Devolución procesada con éxito!');
+      triggerToast("¡Devolución procesada con éxito!");
 
       // Print Refund Receipt if requested
-      if (refundModal.printOption !== 'none') {
+      if (refundModal.printOption !== "none") {
         const refundTicketData: RefundTicketData = {
           orderNumber: refundModal.sale.orderNumber,
           clientName: refundModal.sale.clientName,
@@ -334,9 +358,9 @@ export default function SalesHistoryPage() {
           createdAt: new Date(),
         };
 
-        if (refundModal.printOption === 'bluetooth') {
+        if (refundModal.printOption === "bluetooth") {
           printRefundViaBluetooth(refundTicketData);
-        } else if (refundModal.printOption === 'usb') {
+        } else if (refundModal.printOption === "usb") {
           printRefundViaUsb(refundTicketData);
         } else {
           printRefundTicket(refundTicketData);
@@ -348,15 +372,15 @@ export default function SalesHistoryPage() {
         sale: null,
         returnQuantities: {},
         returnDestinations: {},
-        reason: '',
-        printOption: 'bluetooth',
+        reason: "",
+        printOption: "bluetooth",
         loading: false,
       });
 
       fetchSales();
     } catch (err) {
-      console.error('Error submitting refund:', err);
-      triggerToast('Error de conexión al procesar devolución', true);
+      console.error("Error submitting refund:", err);
+      triggerToast("Error de conexión al procesar devolución", true);
       setRefundModal((prev) => ({ ...prev, loading: false }));
     }
   };
@@ -371,7 +395,7 @@ export default function SalesHistoryPage() {
         }
       });
     });
-    return ['ALL', ...Array.from(brandSet).sort()];
+    return ["ALL", ...Array.from(brandSet).sort()];
   }, [sales]);
 
   // Filtered & Sorted Sales
@@ -383,33 +407,48 @@ export default function SalesHistoryPage() {
 
     const filtered = sales.filter((s) => {
       // Status filter
-      if (filterPaid === 'PAID' && !s.paid) return false;
-      if (filterPaid === 'PENDING' && s.paid) return false;
-      if (filterPaid === 'REFUNDED' && s.status !== 'REFUNDED' && s.status !== 'PARTIALLY_REFUNDED') return false;
+      if (filterPaid === "PAID" && !s.paid) return false;
+      if (filterPaid === "PENDING" && s.paid) return false;
+      if (
+        filterPaid === "REFUNDED" &&
+        s.status !== "REFUNDED" &&
+        s.status !== "PARTIALLY_REFUNDED"
+      )
+        return false;
 
       // Currency filter
-      if (filterCurrency !== 'ALL' && s.currency !== filterCurrency) return false;
+      if (filterCurrency !== "ALL" && s.currency !== filterCurrency)
+        return false;
 
       // Date filter (Synchronized with Cuba local date)
-      if (filterDate !== 'ALL') {
+      if (filterDate !== "ALL") {
         const saleDateKey = getHavanaDateKey(s.createdAt);
-        if (filterDate === 'TODAY' && saleDateKey !== todayKey) return false;
-        if (filterDate === 'YESTERDAY' && saleDateKey !== yesterdayKey) return false;
-        if (filterDate === 'WEEK' && saleDateKey < weekKey) return false;
-        if (filterDate === 'MONTH' && !saleDateKey.startsWith(havanaMonthPrefix)) return false;
+        if (filterDate === "TODAY" && saleDateKey !== todayKey) return false;
+        if (filterDate === "YESTERDAY" && saleDateKey !== yesterdayKey)
+          return false;
+        if (filterDate === "WEEK" && saleDateKey < weekKey) return false;
+        if (
+          filterDate === "MONTH" &&
+          !saleDateKey.startsWith(havanaMonthPrefix)
+        )
+          return false;
       }
 
       // Brand filter
-      if (filterBrand !== 'ALL') {
+      if (filterBrand !== "ALL") {
         const hasBrand = s.items.some(
-          (i) => (i.marca || '').toUpperCase().trim() === filterBrand
+          (i) => (i.marca || "").toUpperCase().trim() === filterBrand,
         );
         if (!hasBrand) return false;
       }
 
       // Search term with Intelligent Fuzzy Matching
-      if (searchTerm.trim() !== '') {
-        const itemFields = s.items.flatMap((i) => [i.modelo, i.marca, i.calidad]);
+      if (searchTerm.trim() !== "") {
+        const itemFields = s.items.flatMap((i) => [
+          i.modelo,
+          i.marca,
+          i.calidad,
+        ]);
         const refundReasons = (s.refunds || []).map((r) => r.reason);
         const allFields = [
           s.orderNumber,
@@ -424,19 +463,29 @@ export default function SalesHistoryPage() {
 
     // Sorting
     return [...filtered].sort((a, b) => {
-      if (sortBy === 'OLDEST') {
-        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      if (sortBy === "OLDEST") {
+        return (
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
       }
-      if (sortBy === 'AMOUNT_DESC') {
+      if (sortBy === "AMOUNT_DESC") {
         return b.totalUSD - a.totalUSD;
       }
-      if (sortBy === 'AMOUNT_ASC') {
+      if (sortBy === "AMOUNT_ASC") {
         return a.totalUSD - b.totalUSD;
       }
       // RECENT (default)
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
-  }, [sales, filterPaid, filterCurrency, filterDate, filterBrand, searchTerm, sortBy]);
+  }, [
+    sales,
+    filterPaid,
+    filterCurrency,
+    filterDate,
+    filterBrand,
+    searchTerm,
+    sortBy,
+  ]);
 
   // Sum of filtered sales for the summary banner
   const filteredSummary = useMemo(() => {
@@ -448,8 +497,8 @@ export default function SalesHistoryPage() {
     let pendingCUP = 0;
 
     filteredSales.forEach((s) => {
-      if (s.status === 'CANCELLED') return;
-      if (s.currency === 'CUP') {
+      if (s.status === "CANCELLED") return;
+      if (s.currency === "CUP") {
         totalCUP += s.totalCUP;
         if (s.paid) paidCUP += s.totalCUP;
         else pendingCUP += s.totalCUP;
@@ -465,7 +514,14 @@ export default function SalesHistoryPage() {
 
   // Total refund calculation in modal
   const modalRefundTotals = useMemo(() => {
-    if (!refundModal.sale) return { totalUSD: 0, totalCUP: 0, itemsCount: 0, stockCount: 0, mermaCount: 0 };
+    if (!refundModal.sale)
+      return {
+        totalUSD: 0,
+        totalCUP: 0,
+        itemsCount: 0,
+        stockCount: 0,
+        mermaCount: 0,
+      };
     let totalUSD = 0;
     let itemsCount = 0;
     let stockCount = 0;
@@ -476,7 +532,10 @@ export default function SalesHistoryPage() {
       if (qty > 0) {
         totalUSD += item.precioUSD * qty;
         itemsCount += qty;
-        if ((refundModal.returnDestinations[item.productId] || 'stock') === 'stock') {
+        if (
+          (refundModal.returnDestinations[item.productId] || "stock") ===
+          "stock"
+        ) {
           stockCount += qty;
         } else {
           mermaCount += qty;
@@ -515,8 +574,8 @@ export default function SalesHistoryPage() {
         <div
           className={`fixed bottom-6 right-6 z-[100] glass-panel px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-bounce border ${
             toastMessage.isError
-              ? 'border-rose-500/60 bg-[#1A1118] text-rose-300 shadow-rose-950/50'
-              : 'border-[#D4AF37]/40 bg-[#121522] text-white shadow-gold-glow'
+              ? "border-rose-500/60 bg-[#1A1118] text-rose-300 shadow-rose-950/50"
+              : "border-[#D4AF37]/40 bg-[#121522] text-white shadow-gold-glow"
           }`}
         >
           {toastMessage.isError ? (
@@ -533,7 +592,17 @@ export default function SalesHistoryPage() {
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-xl glass-panel rounded-3xl p-6 sm:p-7 border border-rose-500/40 shadow-2xl space-y-5 relative max-h-[90vh] flex flex-col">
             <button
-              onClick={() => setRefundModal({ open: false, sale: null, returnQuantities: {}, returnDestinations: {}, reason: '', printOption: 'bluetooth', loading: false })}
+              onClick={() =>
+                setRefundModal({
+                  open: false,
+                  sale: null,
+                  returnQuantities: {},
+                  returnDestinations: {},
+                  reason: "",
+                  printOption: "bluetooth",
+                  loading: false,
+                })
+              }
               className="absolute top-5 right-5 text-gray-400 hover:text-white"
             >
               <X className="w-5 h-5" />
@@ -543,13 +612,22 @@ export default function SalesHistoryPage() {
               <div className="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center border border-rose-500/30">
                 <RotateCcw className="w-5 h-5" />
               </div>
-              <h3 className="text-lg font-bold text-white">Devolución / Reembolso de Productos</h3>
+              <h3 className="text-lg font-bold text-white">
+                Devolución / Reembolso de Productos
+              </h3>
               <p className="text-xs text-gray-400">
-                Orden <strong className="text-[#E5C158]">#{refundModal.sale.orderNumber}</strong> — Cliente: {refundModal.sale.clientName || 'Consumidor Final'}
+                Orden{" "}
+                <strong className="text-[#E5C158]">
+                  #{refundModal.sale.orderNumber}
+                </strong>{" "}
+                — Cliente: {refundModal.sale.clientName || "Consumidor Final"}
               </p>
             </div>
 
-            <form onSubmit={handleConfirmRefund} className="flex-1 overflow-y-auto space-y-4 pr-1">
+            <form
+              onSubmit={handleConfirmRefund}
+              className="flex-1 overflow-y-auto space-y-4 pr-1"
+            >
               <div className="space-y-2">
                 <label className="text-xs font-semibold text-gray-300 block">
                   Selecciona la cantidad y el destino de cada repuesto:
@@ -558,18 +636,20 @@ export default function SalesHistoryPage() {
                 {refundModal.sale.items.map((item) => {
                   const alreadyReturned = item.returnedQty || 0;
                   const maxAvailable = item.qty - alreadyReturned;
-                  const selectedQty = refundModal.returnQuantities[item.productId] || 0;
-                  const currentDest = refundModal.returnDestinations[item.productId] || 'stock';
+                  const selectedQty =
+                    refundModal.returnQuantities[item.productId] || 0;
+                  const currentDest =
+                    refundModal.returnDestinations[item.productId] || "stock";
 
                   return (
                     <div
                       key={item.productId}
                       className={`p-3.5 rounded-2xl border transition-all space-y-2.5 ${
                         selectedQty > 0
-                          ? currentDest === 'merma'
-                            ? 'bg-rose-950/30 border-rose-500/60'
-                            : 'bg-emerald-950/20 border-emerald-500/50'
-                          : 'bg-[#10131E] border-white/5'
+                          ? currentDest === "merma"
+                            ? "bg-rose-950/30 border-rose-500/60"
+                            : "bg-emerald-950/20 border-emerald-500/50"
+                          : "bg-[#10131E] border-white/5"
                       }`}
                     >
                       <div className="flex items-center justify-between gap-3">
@@ -577,13 +657,19 @@ export default function SalesHistoryPage() {
                           <span className="text-[10px] text-[#D4AF37] font-bold uppercase block">
                             {item.marca}
                           </span>
-                          <h4 className="text-xs font-bold text-white truncate">{item.modelo}</h4>
+                          <h4 className="text-xs font-bold text-white truncate">
+                            {item.modelo}
+                          </h4>
                           <div className="flex items-center gap-2 text-[11px] text-gray-400 mt-0.5">
                             <span>{item.calidad}</span>
                             <span>•</span>
-                            <span>Compradas: <strong>{item.qty}</strong></span>
+                            <span>
+                              Compradas: <strong>{item.qty}</strong>
+                            </span>
                             {alreadyReturned > 0 && (
-                              <span className="text-rose-400">(Devueltas: {alreadyReturned})</span>
+                              <span className="text-rose-400">
+                                (Devueltas: {alreadyReturned})
+                              </span>
                             )}
                           </div>
                         </div>
@@ -597,7 +683,13 @@ export default function SalesHistoryPage() {
                           <div className="flex items-center gap-1 bg-black/40 border border-white/10 rounded-xl p-1 shrink-0">
                             <button
                               type="button"
-                              onClick={() => handleSetReturnQty(item.productId, -1, maxAvailable)}
+                              onClick={() =>
+                                handleSetReturnQty(
+                                  item.productId,
+                                  -1,
+                                  maxAvailable,
+                                )
+                              }
                               className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
                             >
                               <Minus className="w-3.5 h-3.5" />
@@ -607,7 +699,13 @@ export default function SalesHistoryPage() {
                             </span>
                             <button
                               type="button"
-                              onClick={() => handleSetReturnQty(item.productId, 1, maxAvailable)}
+                              onClick={() =>
+                                handleSetReturnQty(
+                                  item.productId,
+                                  1,
+                                  maxAvailable,
+                                )
+                              }
                               className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
                             >
                               <Plus className="w-3.5 h-3.5" />
@@ -625,22 +723,26 @@ export default function SalesHistoryPage() {
                           <div className="grid grid-cols-2 gap-1.5 shrink-0">
                             <button
                               type="button"
-                              onClick={() => handleSetItemDest(item.productId, 'stock')}
+                              onClick={() =>
+                                handleSetItemDest(item.productId, "stock")
+                              }
                               className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1.5 transition-all ${
-                                currentDest === 'stock'
-                                  ? 'bg-emerald-600 text-white shadow-lg'
-                                  : 'bg-white/5 text-gray-400 hover:text-white border border-white/10'
+                                currentDest === "stock"
+                                  ? "bg-emerald-600 text-white shadow-lg"
+                                  : "bg-white/5 text-gray-400 hover:text-white border border-white/10"
                               }`}
                             >
                               <span>🟢 Reintegrar a Stock</span>
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleSetItemDest(item.productId, 'merma')}
+                              onClick={() =>
+                                handleSetItemDest(item.productId, "merma")
+                              }
                               className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1.5 transition-all ${
-                                currentDest === 'merma'
-                                  ? 'bg-rose-600 text-white shadow-lg'
-                                  : 'bg-white/5 text-gray-400 hover:text-white border border-white/10'
+                                currentDest === "merma"
+                                  ? "bg-rose-600 text-white shadow-lg"
+                                  : "bg-white/5 text-gray-400 hover:text-white border border-white/10"
                               }`}
                             >
                               <span>🔴 Baja / Merma (Roto)</span>
@@ -656,13 +758,19 @@ export default function SalesHistoryPage() {
               {/* Reason for Refund (Mandatory) */}
               <div>
                 <label className="text-xs font-semibold text-gray-300 block mb-1">
-                  Motivo de la Devolución / Reembolso <span className="text-rose-400">*</span>
+                  Motivo de la Devolución / Reembolso{" "}
+                  <span className="text-rose-400">*</span>
                 </label>
                 <textarea
                   rows={2}
                   required
                   value={refundModal.reason}
-                  onChange={(e) => setRefundModal((prev) => ({ ...prev, reason: e.target.value }))}
+                  onChange={(e) =>
+                    setRefundModal((prev) => ({
+                      ...prev,
+                      reason: e.target.value,
+                    }))
+                  }
                   placeholder="Ej. Pantalla con flex dañado / Modelo incompatible traído por cliente..."
                   className="w-full px-3 py-2 bg-[#10131E] border border-white/10 rounded-xl text-white placeholder-gray-600 text-xs focus:outline-none focus:border-rose-400 transition-all resize-none"
                 />
@@ -676,9 +784,16 @@ export default function SalesHistoryPage() {
                 <div className="grid grid-cols-4 gap-1 bg-[#10131E] p-1 rounded-xl border border-white/10 text-[11px]">
                   <button
                     type="button"
-                    onClick={() => setRefundModal((prev) => ({ ...prev, printOption: 'bluetooth' }))}
+                    onClick={() =>
+                      setRefundModal((prev) => ({
+                        ...prev,
+                        printOption: "bluetooth",
+                      }))
+                    }
                     className={`py-1 px-1 rounded-lg font-bold flex items-center justify-center gap-1 transition-all ${
-                      refundModal.printOption === 'bluetooth' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
+                      refundModal.printOption === "bluetooth"
+                        ? "bg-blue-600 text-white"
+                        : "text-gray-400 hover:text-white"
                     }`}
                   >
                     <Bluetooth className="w-3 h-3" />
@@ -686,9 +801,16 @@ export default function SalesHistoryPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setRefundModal((prev) => ({ ...prev, printOption: 'usb' }))}
+                    onClick={() =>
+                      setRefundModal((prev) => ({
+                        ...prev,
+                        printOption: "usb",
+                      }))
+                    }
                     className={`py-1 px-1 rounded-lg font-bold flex items-center justify-center gap-1 transition-all ${
-                      refundModal.printOption === 'usb' ? 'bg-emerald-600 text-white' : 'text-gray-400 hover:text-white'
+                      refundModal.printOption === "usb"
+                        ? "bg-emerald-600 text-white"
+                        : "text-gray-400 hover:text-white"
                     }`}
                   >
                     <Usb className="w-3 h-3" />
@@ -696,9 +818,16 @@ export default function SalesHistoryPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setRefundModal((prev) => ({ ...prev, printOption: 'system' }))}
+                    onClick={() =>
+                      setRefundModal((prev) => ({
+                        ...prev,
+                        printOption: "system",
+                      }))
+                    }
                     className={`py-1 px-1 rounded-lg font-bold flex items-center justify-center gap-1 transition-all ${
-                      refundModal.printOption === 'system' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'
+                      refundModal.printOption === "system"
+                        ? "bg-purple-600 text-white"
+                        : "text-gray-400 hover:text-white"
                     }`}
                   >
                     <Printer className="w-3 h-3" />
@@ -706,9 +835,16 @@ export default function SalesHistoryPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setRefundModal((prev) => ({ ...prev, printOption: 'none' }))}
+                    onClick={() =>
+                      setRefundModal((prev) => ({
+                        ...prev,
+                        printOption: "none",
+                      }))
+                    }
                     className={`py-1 px-1 rounded-lg font-bold flex items-center justify-center gap-1 transition-all ${
-                      refundModal.printOption === 'none' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
+                      refundModal.printOption === "none"
+                        ? "bg-gray-700 text-white"
+                        : "text-gray-400 hover:text-white"
                     }`}
                   >
                     <span>Sin Ticket</span>
@@ -721,20 +857,28 @@ export default function SalesHistoryPage() {
                 <div className="flex justify-between text-gray-300">
                   <span>Productos a devolver:</span>
                   <strong className="text-white">
-                    {modalRefundTotals.itemsCount} uds{' '}
+                    {modalRefundTotals.itemsCount} uds{" "}
                     <span className="text-[10px] text-gray-400 font-normal">
-                      ({modalRefundTotals.stockCount} a Stock / {modalRefundTotals.mermaCount} a Merma)
+                      ({modalRefundTotals.stockCount} a Stock /{" "}
+                      {modalRefundTotals.mermaCount} a Merma)
                     </span>
                   </strong>
                 </div>
                 <div className="flex justify-between text-gray-300">
                   <span>Reembolso Total USD:</span>
-                  <strong className="text-rose-400 text-sm font-extrabold">-${modalRefundTotals.totalUSD.toFixed(2)} USD</strong>
+                  <strong className="text-rose-400 text-sm font-extrabold">
+                    -${modalRefundTotals.totalUSD.toFixed(2)} USD
+                  </strong>
                 </div>
                 <div className="flex justify-between text-gray-400 text-[11px]">
                   <span>Equivalente en CUP:</span>
                   <span className="font-semibold text-rose-300">
-                    -{modalRefundTotals.totalCUP.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CUP
+                    -
+                    {modalRefundTotals.totalCUP.toLocaleString("en-US", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}{" "}
+                    CUP
                   </span>
                 </div>
               </div>
@@ -742,17 +886,31 @@ export default function SalesHistoryPage() {
               <div className="pt-2 flex gap-3">
                 <button
                   type="button"
-                  onClick={() => setRefundModal({ open: false, sale: null, returnQuantities: {}, returnDestinations: {}, reason: '', printOption: 'bluetooth', loading: false })}
+                  onClick={() =>
+                    setRefundModal({
+                      open: false,
+                      sale: null,
+                      returnQuantities: {},
+                      returnDestinations: {},
+                      reason: "",
+                      printOption: "bluetooth",
+                      loading: false,
+                    })
+                  }
                   className="flex-1 py-2.5 rounded-xl bg-gray-800 text-gray-300 text-xs font-bold hover:bg-gray-700"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  disabled={refundModal.loading || modalRefundTotals.itemsCount === 0}
+                  disabled={
+                    refundModal.loading || modalRefundTotals.itemsCount === 0
+                  }
                   className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-extrabold shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
                 >
-                  {refundModal.loading ? 'Procesando...' : 'Confirmar Devolución'}
+                  {refundModal.loading
+                    ? "Procesando..."
+                    : "Confirmar Devolución"}
                 </button>
               </div>
             </form>
@@ -791,12 +949,19 @@ export default function SalesHistoryPage() {
               <DollarSign className="w-4 h-4 text-emerald-400" />
             </div>
             <div className="text-2xl font-extrabold text-white mt-2">
-              ${(daily.todayNetUSD !== undefined ? daily.todayNetUSD : 0).toFixed(2)} USD
+              $
+              {(daily.todayNetUSD !== undefined
+                ? daily.todayNetUSD
+                : 0
+              ).toFixed(2)}{" "}
+              USD
             </div>
             <div className="text-[11px] text-gray-400 mt-1 space-y-0.5">
               <div className="flex justify-between">
                 <span>Ventas cobradas:</span>
-                <strong className="text-emerald-300">${(daily.todayGrossUSD || 0).toFixed(2)}</strong>
+                <strong className="text-emerald-300">
+                  ${(daily.todayGrossUSD || 0).toFixed(2)}
+                </strong>
               </div>
               {daily.todayRefundsUSD > 0 && (
                 <div className="flex justify-between text-rose-400 font-semibold">
@@ -807,7 +972,9 @@ export default function SalesHistoryPage() {
               <div className="flex justify-between text-gray-500 text-[10px] pt-1 border-t border-white/5">
                 <span>{daily.usdCount || 0} órdenes en USD</span>
                 {daily.todayPendingUSD > 0 && (
-                  <span className="text-amber-400 font-semibold">Pendiente: ${daily.todayPendingUSD.toFixed(2)}</span>
+                  <span className="text-amber-400 font-semibold">
+                    Pendiente: ${daily.todayPendingUSD.toFixed(2)}
+                  </span>
                 )}
               </div>
             </div>
@@ -822,23 +989,37 @@ export default function SalesHistoryPage() {
               <Banknote className="w-4 h-4 text-[#D4AF37]" />
             </div>
             <div className="text-2xl font-extrabold text-white mt-2">
-              {(daily.todayNetCUP !== undefined ? daily.todayNetCUP : 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} CUP
+              {(daily.todayNetCUP !== undefined
+                ? daily.todayNetCUP
+                : 0
+              ).toLocaleString("en-US", {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0,
+              })}{" "}
+              CUP
             </div>
             <div className="text-[11px] text-gray-400 mt-1 space-y-0.5">
               <div className="flex justify-between">
                 <span>Ventas cobradas:</span>
-                <strong className="text-[#F3E0A9]">{(daily.todayGrossCUP || 0).toLocaleString()} CUP</strong>
+                <strong className="text-[#F3E0A9]">
+                  {(daily.todayGrossCUP || 0).toLocaleString()} CUP
+                </strong>
               </div>
               {daily.todayRefundsCUP > 0 && (
                 <div className="flex justify-between text-rose-400 font-semibold">
                   <span>Devoluciones:</span>
-                  <span>-{(daily.todayRefundsCUP || 0).toLocaleString()} CUP</span>
+                  <span>
+                    -{(daily.todayRefundsCUP || 0).toLocaleString()} CUP
+                  </span>
                 </div>
               )}
               <div className="flex justify-between text-gray-500 text-[10px] pt-1 border-t border-white/5">
                 <span>{daily.cupCount || 0} órdenes en CUP</span>
                 {daily.todayPendingCUP > 0 && (
-                  <span className="text-amber-400 font-semibold">Pendiente: {(daily.todayPendingCUP || 0).toLocaleString()} CUP</span>
+                  <span className="text-amber-400 font-semibold">
+                    Pendiente: {(daily.todayPendingCUP || 0).toLocaleString()}{" "}
+                    CUP
+                  </span>
                 )}
               </div>
             </div>
@@ -852,7 +1033,9 @@ export default function SalesHistoryPage() {
               </span>
               <Calendar className="w-4 h-4 text-blue-400" />
             </div>
-            <div className="text-2xl font-extrabold text-white mt-2">{daily.count || 0}</div>
+            <div className="text-2xl font-extrabold text-white mt-2">
+              {daily.count || 0}
+            </div>
             <div className="text-[11px] text-gray-400 mt-1 flex justify-between">
               <span>{daily.usdCount || 0} en USD</span>
               <span>•</span>
@@ -868,8 +1051,12 @@ export default function SalesHistoryPage() {
               </span>
               <History className="w-4 h-4 text-gray-400" />
             </div>
-            <div className="text-2xl font-extrabold text-white mt-2">{sales.length}</div>
-            <span className="text-[11px] text-gray-400">Órdenes totales en base de datos</span>
+            <div className="text-2xl font-extrabold text-white mt-2">
+              {sales.length}
+            </div>
+            <span className="text-[11px] text-gray-400">
+              Órdenes totales en base de datos
+            </span>
           </div>
         </section>
 
@@ -891,41 +1078,41 @@ export default function SalesHistoryPage() {
             {/* Status Pills */}
             <div className="flex items-center gap-1.5 w-full lg:w-auto overflow-x-auto pb-1 scrollbar-none">
               <button
-                onClick={() => setFilterPaid('ALL')}
+                onClick={() => setFilterPaid("ALL")}
                 className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-                  filterPaid === 'ALL'
-                    ? 'gold-gradient-bg text-black shadow-gold-glow'
-                    : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
+                  filterPaid === "ALL"
+                    ? "gold-gradient-bg text-black shadow-gold-glow"
+                    : "bg-[#10131E] text-gray-400 hover:text-white border border-white/10"
                 }`}
               >
                 Todos
               </button>
               <button
-                onClick={() => setFilterPaid('PAID')}
+                onClick={() => setFilterPaid("PAID")}
                 className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-                  filterPaid === 'PAID'
-                    ? 'bg-emerald-600 text-white shadow-lg'
-                    : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
+                  filterPaid === "PAID"
+                    ? "bg-emerald-600 text-white shadow-lg"
+                    : "bg-[#10131E] text-gray-400 hover:text-white border border-white/10"
                 }`}
               >
                 Pagados
               </button>
               <button
-                onClick={() => setFilterPaid('PENDING')}
+                onClick={() => setFilterPaid("PENDING")}
                 className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-                  filterPaid === 'PENDING'
-                    ? 'bg-amber-600 text-white shadow-lg'
-                    : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
+                  filterPaid === "PENDING"
+                    ? "bg-amber-600 text-white shadow-lg"
+                    : "bg-[#10131E] text-gray-400 hover:text-white border border-white/10"
                 }`}
               >
                 Pendientes
               </button>
               <button
-                onClick={() => setFilterPaid('REFUNDED')}
+                onClick={() => setFilterPaid("REFUNDED")}
                 className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-                  filterPaid === 'REFUNDED'
-                    ? 'bg-rose-600 text-white shadow-lg'
-                    : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
+                  filterPaid === "REFUNDED"
+                    ? "bg-rose-600 text-white shadow-lg"
+                    : "bg-[#10131E] text-gray-400 hover:text-white border border-white/10"
                 }`}
               >
                 Con Devolución
@@ -942,51 +1129,51 @@ export default function SalesHistoryPage() {
                 Período:
               </span>
               <button
-                onClick={() => setFilterDate('ALL')}
+                onClick={() => setFilterDate("ALL")}
                 className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-                  filterDate === 'ALL'
-                    ? 'bg-[#E5C158]/20 text-[#F3E0A9] border border-[#D4AF37]/40 font-bold'
-                    : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
+                  filterDate === "ALL"
+                    ? "bg-[#E5C158]/20 text-[#F3E0A9] border border-[#D4AF37]/40 font-bold"
+                    : "bg-[#10131E] text-gray-400 hover:text-white border border-white/10"
                 }`}
               >
                 Todo
               </button>
               <button
-                onClick={() => setFilterDate('TODAY')}
+                onClick={() => setFilterDate("TODAY")}
                 className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-                  filterDate === 'TODAY'
-                    ? 'bg-[#E5C158]/20 text-[#F3E0A9] border border-[#D4AF37]/40 font-bold'
-                    : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
+                  filterDate === "TODAY"
+                    ? "bg-[#E5C158]/20 text-[#F3E0A9] border border-[#D4AF37]/40 font-bold"
+                    : "bg-[#10131E] text-gray-400 hover:text-white border border-white/10"
                 }`}
               >
                 Hoy
               </button>
               <button
-                onClick={() => setFilterDate('YESTERDAY')}
+                onClick={() => setFilterDate("YESTERDAY")}
                 className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-                  filterDate === 'YESTERDAY'
-                    ? 'bg-[#E5C158]/20 text-[#F3E0A9] border border-[#D4AF37]/40 font-bold'
-                    : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
+                  filterDate === "YESTERDAY"
+                    ? "bg-[#E5C158]/20 text-[#F3E0A9] border border-[#D4AF37]/40 font-bold"
+                    : "bg-[#10131E] text-gray-400 hover:text-white border border-white/10"
                 }`}
               >
                 Ayer
               </button>
               <button
-                onClick={() => setFilterDate('WEEK')}
+                onClick={() => setFilterDate("WEEK")}
                 className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-                  filterDate === 'WEEK'
-                    ? 'bg-[#E5C158]/20 text-[#F3E0A9] border border-[#D4AF37]/40 font-bold'
-                    : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
+                  filterDate === "WEEK"
+                    ? "bg-[#E5C158]/20 text-[#F3E0A9] border border-[#D4AF37]/40 font-bold"
+                    : "bg-[#10131E] text-gray-400 hover:text-white border border-white/10"
                 }`}
               >
                 7 Días
               </button>
               <button
-                onClick={() => setFilterDate('MONTH')}
+                onClick={() => setFilterDate("MONTH")}
                 className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-                  filterDate === 'MONTH'
-                    ? 'bg-[#E5C158]/20 text-[#F3E0A9] border border-[#D4AF37]/40 font-bold'
-                    : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
+                  filterDate === "MONTH"
+                    ? "bg-[#E5C158]/20 text-[#F3E0A9] border border-[#D4AF37]/40 font-bold"
+                    : "bg-[#10131E] text-gray-400 hover:text-white border border-white/10"
                 }`}
               >
                 Este Mes
@@ -997,33 +1184,35 @@ export default function SalesHistoryPage() {
             <div className="flex items-center gap-3 ml-auto flex-wrap">
               {/* Currency Selector */}
               <div className="flex items-center gap-1 bg-[#10131E] border border-white/10 rounded-xl p-1">
-                <span className="text-[11px] font-bold text-gray-400 px-1.5">Moneda:</span>
+                <span className="text-[11px] font-bold text-gray-400 px-1.5">
+                  Moneda:
+                </span>
                 <button
-                  onClick={() => setFilterCurrency('ALL')}
+                  onClick={() => setFilterCurrency("ALL")}
                   className={`px-2 py-1 rounded-lg text-xs font-bold transition-all ${
-                    filterCurrency === 'ALL'
-                      ? 'gold-gradient-bg text-black'
-                      : 'text-gray-400 hover:text-white'
+                    filterCurrency === "ALL"
+                      ? "gold-gradient-bg text-black"
+                      : "text-gray-400 hover:text-white"
                   }`}
                 >
                   Todas
                 </button>
                 <button
-                  onClick={() => setFilterCurrency('USD')}
+                  onClick={() => setFilterCurrency("USD")}
                   className={`px-2 py-1 rounded-lg text-xs font-bold transition-all ${
-                    filterCurrency === 'USD'
-                      ? 'bg-emerald-600 text-white'
-                      : 'text-gray-400 hover:text-white'
+                    filterCurrency === "USD"
+                      ? "bg-emerald-600 text-white"
+                      : "text-gray-400 hover:text-white"
                   }`}
                 >
                   USD ($)
                 </button>
                 <button
-                  onClick={() => setFilterCurrency('CUP')}
+                  onClick={() => setFilterCurrency("CUP")}
                   className={`px-2 py-1 rounded-lg text-xs font-bold transition-all ${
-                    filterCurrency === 'CUP'
-                      ? 'bg-[#D4AF37] text-black'
-                      : 'text-gray-400 hover:text-white'
+                    filterCurrency === "CUP"
+                      ? "bg-[#D4AF37] text-black"
+                      : "text-gray-400 hover:text-white"
                   }`}
                 >
                   CUP
@@ -1038,10 +1227,18 @@ export default function SalesHistoryPage() {
                   onChange={(e) => setSortBy(e.target.value as any)}
                   className="bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer"
                 >
-                  <option value="RECENT" className="bg-[#10131E]">Más recientes</option>
-                  <option value="OLDEST" className="bg-[#10131E]">Más antiguas</option>
-                  <option value="AMOUNT_DESC" className="bg-[#10131E]">Mayor monto</option>
-                  <option value="AMOUNT_ASC" className="bg-[#10131E]">Menor monto</option>
+                  <option value="RECENT" className="bg-[#10131E]">
+                    Más recientes
+                  </option>
+                  <option value="OLDEST" className="bg-[#10131E]">
+                    Más antiguas
+                  </option>
+                  <option value="AMOUNT_DESC" className="bg-[#10131E]">
+                    Mayor monto
+                  </option>
+                  <option value="AMOUNT_ASC" className="bg-[#10131E]">
+                    Menor monto
+                  </option>
                 </select>
               </div>
             </div>
@@ -1060,11 +1257,11 @@ export default function SalesHistoryPage() {
                   onClick={() => setFilterBrand(brand)}
                   className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition-all ${
                     filterBrand === brand
-                      ? 'bg-blue-600 text-white shadow-md'
-                      : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
+                      ? "bg-blue-600 text-white shadow-md"
+                      : "bg-[#10131E] text-gray-400 hover:text-white border border-white/10"
                   }`}
                 >
-                  {brand === 'ALL' ? 'Todas las Marcas' : brand}
+                  {brand === "ALL" ? "Todas las Marcas" : brand}
                 </button>
               ))}
             </div>
@@ -1073,13 +1270,15 @@ export default function SalesHistoryPage() {
           {/* Row 4: Summary Bar of Filtered Results */}
           <div className="pt-2 flex flex-wrap items-center justify-between gap-2 text-xs border-t border-white/5 text-gray-400">
             <div>
-              Mostrando <strong className="text-white">{filteredSales.length}</strong> de{' '}
-              <strong className="text-gray-300">{sales.length}</strong> ventas registradas
+              Mostrando{" "}
+              <strong className="text-white">{filteredSales.length}</strong> de{" "}
+              <strong className="text-gray-300">{sales.length}</strong> ventas
+              registradas
             </div>
             <div className="flex items-center gap-3">
               {filteredSummary.totalUSD > 0 && (
                 <span>
-                  Total USD:{' '}
+                  Total USD:{" "}
                   <strong className="text-emerald-400 font-extrabold">
                     ${filteredSummary.totalUSD.toFixed(2)}
                   </strong>
@@ -1092,9 +1291,12 @@ export default function SalesHistoryPage() {
               )}
               {filteredSummary.totalCUP > 0 && (
                 <span>
-                  Total CUP:{' '}
+                  Total CUP:{" "}
                   <strong className="text-[#E5C158] font-extrabold">
-                    {filteredSummary.totalCUP.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {filteredSummary.totalCUP.toLocaleString("en-US", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
                   </strong>
                 </span>
               )}
@@ -1111,9 +1313,12 @@ export default function SalesHistoryPage() {
         ) : filteredSales.length === 0 ? (
           <div className="glass-panel rounded-3xl p-16 text-center space-y-3 border border-white/10">
             <History className="w-10 h-10 text-gray-600 mx-auto" />
-            <h3 className="text-base font-bold text-white">No se encontraron ventas</h3>
+            <h3 className="text-base font-bold text-white">
+              No se encontraron ventas
+            </h3>
             <p className="text-xs text-gray-400">
-              Registra una nueva orden desde el terminal POS para verla reflejada aquí.
+              Registra una nueva orden desde el terminal POS para verla
+              reflejada aquí.
             </p>
           </div>
         ) : (
@@ -1122,19 +1327,25 @@ export default function SalesHistoryPage() {
               const isExpanded = expandedOrder === sale._id;
               const dateFormatted = formatHavanaDateTime(sale.createdAt);
 
-              const totalItemsPurchased = sale.items.reduce((acc, i) => acc + i.qty, 0);
-              const totalItemsReturned = sale.items.reduce((acc, i) => acc + (i.returnedQty || 0), 0);
+              const totalItemsPurchased = sale.items.reduce(
+                (acc, i) => acc + i.qty,
+                0,
+              );
+              const totalItemsReturned = sale.items.reduce(
+                (acc, i) => acc + (i.returnedQty || 0),
+                0,
+              );
               const canRefund = totalItemsReturned < totalItemsPurchased;
 
               return (
                 <div
                   key={sale._id}
                   className={`glass-card rounded-2xl p-4 sm:p-5 border transition-all space-y-4 ${
-                    sale.status === 'REFUNDED'
-                      ? 'border-rose-500/40 bg-rose-950/10'
-                      : sale.status === 'PARTIALLY_REFUNDED'
-                      ? 'border-amber-500/30'
-                      : 'border-white/10 hover:border-white/20'
+                    sale.status === "REFUNDED"
+                      ? "border-rose-500/40 bg-rose-950/10"
+                      : sale.status === "PARTIALLY_REFUNDED"
+                        ? "border-amber-500/30"
+                        : "border-white/10 hover:border-white/20"
                   }`}
                 >
                   {/* Summary Bar */}
@@ -1151,41 +1362,48 @@ export default function SalesHistoryPage() {
                           {/* Currency Badge */}
                           <span
                             className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
-                              (sale.currency || 'USD') === 'USD'
-                                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                                : 'bg-[#E5C158]/15 text-[#E5C158] border-[#D4AF37]/30'
+                              (sale.currency || "USD") === "USD"
+                                ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                                : "bg-[#E5C158]/15 text-[#E5C158] border-[#D4AF37]/30"
                             }`}
                           >
-                            {(sale.currency || 'USD') === 'USD' ? '💵 Pago USD' : '🇨🇺 Pago CUP'}
+                            {(sale.currency || "USD") === "USD"
+                              ? "💵 Pago USD"
+                              : "🇨🇺 Pago CUP"}
                           </span>
 
                           <button
                             onClick={() => handleTogglePaid(sale._id)}
                             className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full border transition-all cursor-pointer flex items-center gap-1 hover:scale-105 active:scale-95 ${
                               sale.paid
-                                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25'
-                                : 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30 animate-pulse'
+                                ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25"
+                                : "bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30 animate-pulse"
                             }`}
                             title="Haz clic para cambiar entre Pagado / Pendiente"
                           >
-                            <span>{sale.paid ? '✓ Pagado' : '⏳ Pendiente (Clic para Cobrar)'}</span>
+                            <span>
+                              {sale.paid
+                                ? "✓ Pagado"
+                                : "⏳ Pendiente (Clic para Cobrar)"}
+                            </span>
                           </button>
 
-                          {sale.status === 'CANCELLED' && (
+                          {sale.status === "CANCELLED" && (
                             <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40">
                               Anulada / Cancelada 🚫
                             </span>
                           )}
 
-                          {sale.status === 'REFUNDED' && (
+                          {sale.status === "REFUNDED" && (
                             <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40">
                               Reembolsado Total
                             </span>
                           )}
 
-                          {sale.status === 'PARTIALLY_REFUNDED' && (
+                          {sale.status === "PARTIALLY_REFUNDED" && (
                             <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                              Devolución Parcial ({totalItemsReturned}/{totalItemsPurchased})
+                              Devolución Parcial ({totalItemsReturned}/
+                              {totalItemsPurchased})
                             </span>
                           )}
                         </div>
@@ -1206,17 +1424,19 @@ export default function SalesHistoryPage() {
                     {/* Right summary and actions */}
                     <div className="flex items-center justify-between sm:justify-end gap-3 border-t sm:border-t-0 pt-2 sm:pt-0 border-white/5 flex-wrap">
                       <div className="text-left sm:text-right">
-                        {(sale.currency || 'USD') === 'USD' ? (
+                        {(sale.currency || "USD") === "USD" ? (
                           <>
                             <span className="text-base font-extrabold text-[#F3E0A9] block">
                               ${sale.totalUSD.toFixed(2)} USD
                             </span>
                             <span className="text-[11px] font-semibold text-gray-400 block">
-                              ≈ {sale.totalCUP.toLocaleString()} CUP (Tasa {sale.exchangeRate})
+                              ≈ {sale.totalCUP.toLocaleString()} CUP (Tasa{" "}
+                              {sale.exchangeRate})
                             </span>
                             {(sale.totalRefundedUSD || 0) > 0 && (
                               <span className="text-[10px] font-bold text-rose-400 block">
-                                Reembolsado: -${sale.totalRefundedUSD?.toFixed(2)} USD
+                                Reembolsado: -$
+                                {sale.totalRefundedUSD?.toFixed(2)} USD
                               </span>
                             )}
                           </>
@@ -1226,11 +1446,13 @@ export default function SalesHistoryPage() {
                               {sale.totalCUP.toLocaleString()} CUP
                             </span>
                             <span className="text-[11px] font-semibold text-gray-400 block">
-                              ≈ ${sale.totalUSD.toFixed(2)} USD (Tasa {sale.exchangeRate})
+                              ≈ ${sale.totalUSD.toFixed(2)} USD (Tasa{" "}
+                              {sale.exchangeRate})
                             </span>
                             {(sale.totalRefundedCUP || 0) > 0 && (
                               <span className="text-[10px] font-bold text-rose-400 block">
-                                Reembolsado: -{sale.totalRefundedCUP?.toLocaleString()} CUP
+                                Reembolsado: -
+                                {sale.totalRefundedCUP?.toLocaleString()} CUP
                               </span>
                             )}
                           </>
@@ -1252,7 +1474,7 @@ export default function SalesHistoryPage() {
 
                         {/* Print Ticket Buttons */}
                         <button
-                          onClick={() => handleReprint(sale, 'bluetooth')}
+                          onClick={() => handleReprint(sale, "bluetooth")}
                           className="px-2.5 py-2 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 text-xs font-bold flex items-center gap-1 transition-all"
                           title="Imprimir directo por Bluetooth"
                         >
@@ -1261,7 +1483,7 @@ export default function SalesHistoryPage() {
                         </button>
 
                         <button
-                          onClick={() => handleReprint(sale, 'system')}
+                          onClick={() => handleReprint(sale, "system")}
                           className="px-2.5 py-2 rounded-xl bg-[#10131E] hover:bg-white/10 text-gray-300 hover:text-white border border-white/10 text-xs font-bold flex items-center gap-1 transition-all"
                           title="Imprimir vía navegador / PDF"
                         >
@@ -1270,7 +1492,9 @@ export default function SalesHistoryPage() {
                         </button>
 
                         <button
-                          onClick={() => setExpandedOrder(isExpanded ? null : sale._id)}
+                          onClick={() =>
+                            setExpandedOrder(isExpanded ? null : sale._id)
+                          }
                           className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-all"
                         >
                           {isExpanded ? (
@@ -1298,16 +1522,20 @@ export default function SalesHistoryPage() {
                                 key={idx}
                                 className={`p-2.5 rounded-xl border flex items-center justify-between text-xs ${
                                   returned > 0
-                                    ? 'bg-rose-950/20 border-rose-500/30'
-                                    : 'bg-[#10131E] border-white/5'
+                                    ? "bg-rose-950/20 border-rose-500/30"
+                                    : "bg-[#10131E] border-white/5"
                                 }`}
                               >
                                 <div>
                                   <span className="text-[10px] text-[#D4AF37] font-bold uppercase block">
                                     {item.marca}
                                   </span>
-                                  <span className="font-bold text-white block">{item.modelo}</span>
-                                  <span className="text-[10px] text-gray-400">{item.calidad}</span>
+                                  <span className="font-bold text-white block">
+                                    {item.modelo}
+                                  </span>
+                                  <span className="text-[10px] text-gray-400">
+                                    {item.calidad}
+                                  </span>
                                 </div>
                                 <div className="text-right">
                                   <span className="text-[11px] font-bold text-gray-300 block">
@@ -1344,16 +1572,19 @@ export default function SalesHistoryPage() {
                                 <div>
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span className="font-bold text-white">
-                                      {refLog.marca} {refLog.modelo} ({refLog.calidad}) — {refLog.qty} ud(s)
+                                      {refLog.marca} {refLog.modelo} (
+                                      {refLog.calidad}) — {refLog.qty} ud(s)
                                     </span>
                                     <span
                                       className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded ${
-                                        refLog.destination === 'merma'
-                                          ? 'bg-rose-500/30 text-rose-300 border border-rose-500/40'
-                                          : 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/40'
+                                        refLog.destination === "merma"
+                                          ? "bg-rose-500/30 text-rose-300 border border-rose-500/40"
+                                          : "bg-emerald-500/30 text-emerald-300 border border-emerald-500/40"
                                       }`}
                                     >
-                                      {refLog.destination === 'merma' ? '🔴 ENVIADO A MERMA' : '🟢 REINTEGRADO A STOCK'}
+                                      {refLog.destination === "merma"
+                                        ? "🔴 ENVIADO A MERMA"
+                                        : "🟢 REINTEGRADO A STOCK"}
                                     </span>
                                   </div>
                                   <span className="text-gray-400 block text-[11px] mt-0.5">
@@ -1362,7 +1593,8 @@ export default function SalesHistoryPage() {
                                 </div>
                                 <div className="text-left sm:text-right shrink-0">
                                   <span className="text-rose-400 font-extrabold block">
-                                    -${refLog.refundUSD.toFixed(2)} USD (-{refLog.refundCUP.toLocaleString()} CUP)
+                                    -${refLog.refundUSD.toFixed(2)} USD (-
+                                    {refLog.refundCUP.toLocaleString()} CUP)
                                   </span>
                                   <span className="text-[10px] text-gray-500">
                                     {formatHavanaDateTime(refLog.createdAt)}
@@ -1376,7 +1608,9 @@ export default function SalesHistoryPage() {
 
                       {sale.notes && (
                         <div className="p-2.5 rounded-xl bg-white/5 border border-white/5 text-xs text-gray-300">
-                          <strong className="text-gray-400">Notas Iniciales: </strong>
+                          <strong className="text-gray-400">
+                            Notas Iniciales:{" "}
+                          </strong>
                           {sale.notes}
                         </div>
                       )}

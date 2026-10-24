@@ -1,4 +1,9 @@
-import { getActiveExchangeRate, saveActiveExchangeRate, validExchangeRate } from '@/lib/exchangeRate';
+import { escapeRegex } from "@/lib/security/validation";
+import {
+  getActiveExchangeRate,
+  saveActiveExchangeRate,
+  validExchangeRate,
+} from "@/lib/exchangeRate";
 /**
  * src/lib/ai/adminTools.ts
  * ─────────────────────────────────────────────────────────────────────────────
@@ -6,13 +11,13 @@ import { getActiveExchangeRate, saveActiveExchangeRate, validExchangeRate } from
  * Re-usa las funciones ya probadas de whatsapp/tools.ts y agrega nuevas.
  */
 
-import connectToDatabase from '@/lib/mongoose';
-import { Product } from '@/lib/models/Product';
-import { Sale } from '@/lib/models/Sale';
-import { StockHistory } from '@/lib/models/StockHistory';
-import { getHavanaMonthDay } from '@/lib/dateUtils';
-import mongoose from 'mongoose';
-import { cleanModelAndQuality } from '@/lib/ai/batchParser';
+import connectToDatabase from "@/lib/mongoose";
+import { Product } from "@/lib/models/Product";
+import { Sale } from "@/lib/models/Sale";
+import { StockHistory } from "@/lib/models/StockHistory";
+import { getHavanaMonthDay } from "@/lib/dateUtils";
+import mongoose from "mongoose";
+import { cleanModelAndQuality } from "@/lib/ai/batchParser";
 
 // Re-export whatsapp tools that work with the same DB schema
 export {
@@ -22,16 +27,16 @@ export {
   executeActualizarPrecioProducto,
   executeAjustarStockProducto,
   executeRegistrarVentaRapida,
-} from '@/lib/whatsapp/tools';
+} from "@/lib/whatsapp/tools";
 
 // ─── Generate Order Number ────────────────────────────────────────────────────
 
 function generateOrderNumber(totalItems: number): string {
   const { mm, dd } = getHavanaMonthDay();
   const letters = Array.from({ length: 3 }, () =>
-    String.fromCharCode(65 + Math.floor(Math.random() * 26))
-  ).join('');
-  const count = String(totalItems).padStart(2, '0');
+    String.fromCharCode(65 + Math.floor(Math.random() * 26)),
+  ).join("");
+  const count = String(totalItems).padStart(2, "0");
   return `${mm}${dd}${letters}${count}`;
 }
 
@@ -47,17 +52,33 @@ export async function executeAgregarProducto(input: {
   try {
     await connectToDatabase();
 
-    const marcaUp   = input.marca.toUpperCase().trim();
-    const { modelo: modeloClean, calidad: calidadClean } = cleanModelAndQuality(input.modelo, input.calidad);
-    const modeloUp  = modeloClean;
+    const marcaUp = input.marca.toUpperCase().trim();
+    const { modelo: modeloClean, calidad: calidadClean } = cleanModelAndQuality(
+      input.modelo,
+      input.calidad,
+    );
+    const modeloUp = modeloClean;
     const calidadUp = calidadClean;
-    const stock     = Math.max(0, input.stock ?? 1);
-    const precio    = Math.max(0, input.precio || 0);
+    const stock = input.stock ?? 1;
+    if (
+      !Number.isSafeInteger(stock) ||
+      stock < 0 ||
+      stock > 10000 ||
+      !Number.isFinite(input.precio) ||
+      input.precio < 0
+    )
+      return { success: false, message: "Stock o precio inválido" };
+    const precio = Math.max(0, input.precio || 0);
 
     // ━ Check if product already exists (including hidden / agotados)
     const existing = await Product.findOne({
       marca: marcaUp,
-      modelo: { $regex: new RegExp(`^${modeloUp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+      modelo: {
+        $regex: new RegExp(
+          `^${modeloUp.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+          "i",
+        ),
+      },
       calidad: calidadUp,
     });
 
@@ -70,20 +91,18 @@ export async function executeAgregarProducto(input: {
       if (precio > 0) {
         existing.precio = precio;
       }
-      if (stockAfter > 0) {
-        existing.isHidden = false; // Auto-unhide from agotados / ocultos!
-      }
+
       await existing.save();
 
       if (stock > 0) {
         await StockHistory.create({
           productId: existing.id,
           productName: `${existing.marca} ${existing.modelo} (${existing.calidad})`,
-          type: 'entrada',
+          type: "entrada",
           qty: stock,
           stockBefore,
           stockAfter,
-          reason: 'Suma automática de stock por Asistente IA (Reingreso/Alta)',
+          reason: "Suma automática de stock por Asistente IA (Reingreso/Alta)",
         });
       }
 
@@ -95,7 +114,7 @@ export async function executeAgregarProducto(input: {
           `📱 **${existing.marca} ${existing.modelo} ${existing.calidad}**\n` +
           `📦 Stock anterior: ${stockBefore} uds\n` +
           `➕ Unidades sumadas: +${stock} uds\n` +
-          `📦 **Nuevo stock total: ${stockAfter} unidades** ${wasHidden && stockAfter > 0 ? '✨ *(Reactivado de agotados)*' : ''}\n` +
+          `📦 **Nuevo stock total: ${stockAfter} unidades** ${wasHidden && stockAfter > 0 ? "✨ *(Reactivado de agotados)*" : ""}\n` +
           `💰 Precio: $${existing.precio.toFixed(2)} USD\n` +
           `🆔 ID: ${existing.id}`,
       };
@@ -113,18 +132,18 @@ export async function executeAgregarProducto(input: {
       calidad: calidadUp,
       precio: precio,
       stock,
-      isHidden: stock === 0,
+      isHidden: false,
     });
 
     if (stock > 0) {
       await StockHistory.create({
         productId: customId,
         productName: `${product.marca} ${product.modelo} (${product.calidad})`,
-        type: 'entrada',
+        type: "entrada",
         qty: stock,
         stockBefore: 0,
         stockAfter: stock,
-        reason: 'Alta inicial por Asistente IA',
+        reason: "Alta inicial por Asistente IA",
       });
     }
 
@@ -146,422 +165,80 @@ export async function executeAgregarProducto(input: {
 // ─── Alta en Lote (hasta ~50 productos) — con acumulación de stock y reactivación ───
 
 export async function executeAgregarProductosLote(
-  items: Array<{ marca: string; modelo: string; calidad: string; precio: number; stock?: number }>
+  items: Array<{
+    marca: string;
+    modelo: string;
+    calidad: string;
+    precio: number;
+    stock?: number;
+  }>,
 ) {
-  try {
-    await connectToDatabase();
-
-    if (items.length === 0) {
-      return { success: false, message: '❌ La lista de productos está vacía.' };
-    }
-
-    const { mm, dd } = getHavanaMonthDay();
-
-    // ━ Scan ALL existing products (including hidden ones to reactivate them)
-    const existingProducts = await Product.find({})
-      .select('_id id marca modelo calidad stock precio isHidden')
-      .lean() as Array<{
-        _id: any;
-        id: string;
-        marca: string;
-        modelo: string;
-        calidad: string;
-        stock: number;
-        precio: number;
-        isHidden: boolean;
-      }>;
-
-    const existingMap = new Map<string, {
-      _id: any;
-      id: string;
-      marca: string;
-      modelo: string;
-      calidad: string;
-      stock: number;
-      precio: number;
-      isHidden: boolean;
-    }>();
-
-    existingProducts.forEach((p) => {
-      const k = `${(p.marca || '').toUpperCase().trim()}|${(p.modelo || '').toUpperCase().trim()}|${(p.calidad || '').toUpperCase().trim()}`;
-      existingMap.set(k, p);
-    });
-
-    const toInsert: typeof items = [];
-    const toIncrement: Array<{
-      existingId: string;
-      productMongoId: any;
-      marca: string;
-      modelo: string;
-      calidad: string;
-      stockBefore: number;
-      qtyToAdd: number;
-      stockAfter: number;
-      newPrecio?: number;
-    }> = [];
-
-    for (const item of items) {
-      const marcaUp   = (item.marca   || '').toUpperCase().trim();
-      const { modelo: modeloClean, calidad: calidadClean } = cleanModelAndQuality(item.modelo, item.calidad);
-      const modeloUp  = modeloClean;
-      const calidadUp = calidadClean;
-      const qty       = Math.max(0, item.stock !== undefined ? Number(item.stock) : 1);
-      const precio    = Math.max(0, Number(item.precio) || 0);
-
-      if (!marcaUp || !modeloUp || !calidadUp) continue;
-
-      const key = `${marcaUp}|${modeloUp}|${calidadUp}`;
-
-      if (existingMap.has(key)) {
-        const existing = existingMap.get(key)!;
-        const stockBefore = existing.stock || 0;
-        const stockAfter = stockBefore + qty;
-
-        toIncrement.push({
-          existingId: existing.id,
-          productMongoId: existing._id,
-          marca: marcaUp,
-          modelo: modeloUp,
-          calidad: calidadUp,
-          stockBefore,
-          qtyToAdd: qty,
-          stockAfter,
-          newPrecio: precio > 0 ? precio : undefined,
-        });
-
-        existing.stock = stockAfter;
-        existing.isHidden = false;
-      } else {
-        toInsert.push({ ...item, marca: marcaUp, modelo: modeloUp, calidad: calidadUp, stock: qty, precio });
-        existingMap.set(key, {
-          _id: null,
-          id: '',
-          marca: marcaUp,
-          modelo: modeloUp,
-          calidad: calidadUp,
-          stock: qty,
-          precio,
-          isHidden: false,
-        });
-      }
-    }
-
-    // ━ Execute updates for existing products (sum stock & reactivate if hidden)
-    for (const inc of toIncrement) {
-      const updateFields: any = {
-        $inc: { stock: inc.qtyToAdd },
-        $set: { isHidden: false },
-      };
-      if (inc.newPrecio) {
-        updateFields.$set.precio = inc.newPrecio;
-      }
-      await Product.updateOne({ _id: inc.productMongoId }, updateFields);
-    }
-
-    if (toIncrement.length > 0) {
-      const stockEntries = toIncrement
-        .filter((inc) => inc.qtyToAdd > 0)
-        .map((inc) => ({
-          productId:   inc.existingId,
-          productName: `${inc.marca} ${inc.modelo} (${inc.calidad})`,
-          type:        'entrada' as const,
-          qty:         inc.qtyToAdd,
-          stockBefore: inc.stockBefore,
-          stockAfter:  inc.stockAfter,
-          reason:      inc.newPrecio
-            ? `Suma de stock (+${inc.qtyToAdd} uds) y precio actualizado a $${inc.newPrecio} USD por Asistente IA`
-            : 'Suma de stock en lote por Asistente IA',
-        }));
-
-      if (stockEntries.length > 0) {
-        await StockHistory.insertMany(stockEntries, { ordered: false });
-      }
-    }
-
-    // ━ Insert new documents
-    const insertDocs = toInsert.map((item) => {
-      const rnd      = Math.random().toString(36).slice(2, 6).toUpperCase();
-      const customId = `${mm}${dd}-${rnd}`;
-      const stock    = item.stock ?? 1;
-      return {
-        customId,
-        productName: `${item.marca} ${item.modelo} (${item.calidad})`,
-        stock,
-        doc: {
-          id: customId,
-          marca:    item.marca,
-          modelo:   item.modelo,
-          calidad:  item.calidad,
-          precio:   Number(item.precio) || 0,
-          stock,
-          isHidden: stock === 0,
-        },
-      };
-    });
-
-    if (insertDocs.length > 0) {
-      await Product.insertMany(insertDocs.map((d) => d.doc), { ordered: false });
-
-      const stockEntries = insertDocs
-        .filter((d) => d.stock > 0)
-        .map((d) => ({
-          productId:   d.customId,
-          productName: d.productName,
-          type:        'entrada' as const,
-          qty:         d.stock,
-          stockBefore: 0,
-          stockAfter:  d.stock,
-          reason:      'Alta en lote por Asistente IA',
-        }));
-
-      if (stockEntries.length > 0) {
-        await StockHistory.insertMany(stockEntries, { ordered: false });
-      }
-    }
-
-    const insertedPreview = insertDocs
-      .slice(0, 8)
-      .map((d) => `• ${d.doc.marca} ${d.doc.modelo} ${d.doc.calidad} — $${d.doc.precio.toFixed(2)} USD — Stock: ${d.stock} uds`)
-      .join('\n');
-    const insertedMore = insertDocs.length > 8 ? `\n... y ${insertDocs.length - 8} más` : '';
-
-    const incrementedPreview = toIncrement
-      .slice(0, 8)
-      .map((d) => `• ${d.marca} ${d.modelo} ${d.calidad} ➔ +${d.qtyToAdd} uds (Total: ${d.stockAfter} uds)${d.newPrecio ? ` — Precio: $${d.newPrecio} USD` : ''}`)
-      .join('\n');
-    const incrementedMore = toIncrement.length > 8 ? `\n... y ${toIncrement.length - 8} más` : '';
-
-    let summary = `📦 **Operación en Lote Completada**\n\n`;
-    if (insertDocs.length > 0) {
-      summary += `✅ **${insertDocs.length} producto(s) nuevo(s) agregado(s):**\n${insertedPreview}${insertedMore}\n\n`;
-    }
-    if (toIncrement.length > 0) {
-      summary += `🔄 **${toIncrement.length} producto(s) existente(s) actualizados (stock sumado y precio actualizado al de la lista):**\n${incrementedPreview}${incrementedMore}\n\n`;
-    }
-
+  if (!items.length || items.length > 500)
     return {
-      success: true,
-      message: summary.trim(),
+      success: false,
+      message: "El lote debe contener entre 1 y 500 productos.",
     };
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { success: false, message: `❌ Error en alta en lote: ${msg}` };
-  }
-}
-
-// ─── Alta Masiva Grande (50–500 productos) — batches de 50 con acumulación ─────
-
-export async function executeAgregarLoteBulk(
-  items: Array<{ marca: string; modelo: string; calidad: string; precio: number; stock?: number }>
-) {
-  try {
-    await connectToDatabase();
-
-    if (items.length === 0) {
-      return { success: false, message: '❌ La lista está vacía.' };
-    }
-    if (items.length > 500) {
-      return { success: false, message: '❌ El máximo por operación es 500 productos. Divide el lote en grupos.' };
-    }
-
-    const { mm, dd } = getHavanaMonthDay();
-
-    // ━ Scan ALL existing products (including hidden ones)
-    const existingProducts = await Product.find({})
-      .select('_id id marca modelo calidad stock precio isHidden')
-      .lean() as Array<{
-        _id: any;
-        id: string;
-        marca: string;
-        modelo: string;
-        calidad: string;
-        stock: number;
-        precio: number;
-        isHidden: boolean;
-      }>;
-
-    const existingMap = new Map<string, {
-      _id: any;
-      id: string;
-      marca: string;
-      modelo: string;
-      calidad: string;
-      stock: number;
-      precio: number;
-      isHidden: boolean;
-    }>();
-
-    existingProducts.forEach((p) => {
-      const k = `${(p.marca || '').toUpperCase().trim()}|${(p.modelo || '').toUpperCase().trim()}|${(p.calidad || '').toUpperCase().trim()}`;
-      existingMap.set(k, p);
-    });
-
-    const toInsert: typeof items = [];
-    const toIncrement: Array<{
-      existingId: string;
-      productMongoId: any;
-      marca: string;
-      modelo: string;
-      calidad: string;
-      stockBefore: number;
-      qtyToAdd: number;
-      stockAfter: number;
-      newPrecio?: number;
-    }> = [];
-
-    for (const item of items) {
-      const marcaUp   = (item.marca   || '').toUpperCase().trim();
-      const { modelo: modeloClean, calidad: calidadClean } = cleanModelAndQuality(item.modelo, item.calidad);
-      const modeloUp  = modeloClean;
-      const calidadUp = calidadClean;
-      const qty       = Math.max(0, item.stock !== undefined ? Number(item.stock) : 1);
-      const precio    = Math.max(0, Number(item.precio) || 0);
-
-      if (!marcaUp || !modeloUp || !calidadUp) continue;
-
-      const key = `${marcaUp}|${modeloUp}|${calidadUp}`;
-
-      if (existingMap.has(key)) {
-        const existing = existingMap.get(key)!;
-        const stockBefore = existing.stock || 0;
-        const stockAfter = stockBefore + qty;
-
-        toIncrement.push({
-          existingId: existing.id,
-          productMongoId: existing._id,
-          marca: marcaUp,
-          modelo: modeloUp,
-          calidad: calidadUp,
-          stockBefore,
-          qtyToAdd: qty,
-          stockAfter,
-          newPrecio: precio > 0 ? precio : undefined,
-        });
-
-        existing.stock = stockAfter;
-        existing.isHidden = false;
-      } else {
-        toInsert.push({ ...item, marca: marcaUp, modelo: modeloUp, calidad: calidadUp, stock: qty, precio });
-        existingMap.set(key, {
-          _id: null,
-          id: '',
-          marca: marcaUp,
-          modelo: modeloUp,
-          calidad: calidadUp,
-          stock: qty,
-          precio,
-          isHidden: false,
-        });
-      }
-    }
-
-    // ━ Process increments on existing items
-    for (const inc of toIncrement) {
-      const updateFields: any = {
-        $inc: { stock: inc.qtyToAdd },
-        $set: { isHidden: false },
-      };
-      if (inc.newPrecio) {
-        updateFields.$set.precio = inc.newPrecio;
-      }
-      await Product.updateOne({ _id: inc.productMongoId }, updateFields);
-    }
-
-    if (toIncrement.length > 0) {
-      const stockEntries = toIncrement
-        .filter((inc) => inc.qtyToAdd > 0)
-        .map((inc) => ({
-          productId:   inc.existingId,
-          productName: `${inc.marca} ${inc.modelo} (${inc.calidad})`,
-          type:        'entrada' as const,
-          qty:         inc.qtyToAdd,
-          stockBefore: inc.stockBefore,
-          stockAfter:  inc.stockAfter,
-          reason:      inc.newPrecio
-            ? `Suma de stock (+${inc.qtyToAdd} uds) y precio actualizado a $${inc.newPrecio} USD (lote grande) por Asistente IA`
-            : 'Suma de stock (lote grande) por Asistente IA',
-        }));
-
-      if (stockEntries.length > 0) {
-        await StockHistory.insertMany(stockEntries, { ordered: false });
-      }
-    }
-
-    // ━ Build and insert new items in batches of 50
-    const insertDocs = toInsert.map((item) => {
-      const rnd      = Math.random().toString(36).slice(2, 6).toUpperCase();
-      const customId = `${mm}${dd}-${rnd}`;
-      const stock    = item.stock ?? 1;
+  const consolidated = new Map<string, (typeof items)[number]>();
+  for (const item of items) {
+    const clean = cleanModelAndQuality(item.modelo, item.calidad);
+    const normalized = {
+      ...item,
+      marca: item.marca.toUpperCase().trim(),
+      ...clean,
+      stock: item.stock ?? 1,
+    };
+    if (
+      !Number.isSafeInteger(normalized.stock) ||
+      normalized.stock < 0 ||
+      normalized.stock > 10000 ||
+      !Number.isFinite(item.precio) ||
+      item.precio < 0
+    )
       return {
-        customId,
-        productName: `${item.marca} ${item.modelo} (${item.calidad})`,
-        stock,
-        doc: {
-          id: customId,
-          marca:    item.marca,
-          modelo:   item.modelo,
-          calidad:  item.calidad,
-          precio:   Number(item.precio) || 0,
-          stock,
-          isHidden: stock === 0,
-        },
+        success: false,
+        message: "Cantidad o precio inválido en el lote.",
       };
+    const key =
+      normalized.marca + "|" + normalized.modelo + "|" + normalized.calidad;
+    const previous = consolidated.get(key);
+    if (previous && previous.precio !== normalized.precio)
+      return {
+        success: false,
+        message:
+          "El lote repite un producto con precios diferentes. Corrige la lista.",
+      };
+    consolidated.set(key, {
+      ...normalized,
+      stock: (previous?.stock ?? 0) + normalized.stock,
     });
-
-    const BATCH = 50;
-    let totalInserted = 0;
-    let totalErrors   = 0;
-
-    for (let i = 0; i < insertDocs.length; i += BATCH) {
-      const batch = insertDocs.slice(i, i + BATCH);
-      try {
-        await Product.insertMany(batch.map((b) => b.doc), { ordered: false });
-
-        const stockEntries = batch
-          .filter((b) => b.stock > 0)
-          .map((b) => ({
-            productId:   b.customId,
-            productName: b.productName,
-            type:        'entrada' as const,
-            qty:         b.stock,
-            stockBefore: 0,
-            stockAfter:  b.stock,
-            reason:      'Alta masiva (lote grande) por Asistente IA',
-          }));
-
-        if (stockEntries.length > 0) {
-          await StockHistory.insertMany(stockEntries, { ordered: false });
-        }
-        totalInserted += batch.length;
-      } catch {
-        totalErrors += batch.length;
-      }
-    }
-
-    return {
-      success: totalErrors === 0,
-      message:
-        `📦 **Alta masiva grande completada**\n\n` +
-        `✅ ${totalInserted} producto(s) nuevo(s) insertado(s)\n` +
-        (toIncrement.length > 0 ? `🔄 ${toIncrement.length} producto(s) existente(s) actualizados (stock sumado y precio actualizado al de la lista)\n` : '') +
-        (totalErrors > 0        ? `❌ ${totalErrors} producto(s) con error\n` : '') +
-        `\nEl catálogo ha sido actualizado en la base de datos con los nuevos precios y existencias.`,
-    };
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { success: false, message: `❌ Error crítico en alta masiva: ${msg}` };
   }
+  const results: string[] = [];
+  for (const item of consolidated.values()) {
+    const result = await executeAgregarProducto(item);
+    if (!result.success) throw new Error(result.message);
+    results.push(result.message);
+  }
+  return {
+    success: true,
+    message:
+      "Lote confirmado: " +
+      consolidated.size +
+      " productos procesados.\n\n" +
+      results.slice(0, 15).join("\n\n") +
+      (results.length > 15
+        ? "\nConsulta el inventario para ver el resto."
+        : ""),
+  };
 }
-
-// ─── Actualizar Calidad ────────────────────────────────────────────────────────
+export const executeAgregarLoteBulk = executeAgregarProductosLote;
 
 export async function executeActualizarCalidadProducto(
   queryProducto: string,
-  nuevaCalidad: string
+  nuevaCalidad: string,
 ) {
   try {
     await connectToDatabase();
-    const { findProductSmart } = await import('@/lib/whatsapp/tools');
+    const { findProductSmart } = await import("@/lib/whatsapp/tools");
     const product = await findProductSmart(queryProducto);
 
     if (!product) {
@@ -576,7 +253,7 @@ export async function executeActualizarCalidadProducto(
 
     await Product.updateOne(
       { _id: product._id },
-      { $set: { calidad: nuevaCalidadUpper } }
+      { $set: { calidad: nuevaCalidadUpper } },
     );
 
     return {
@@ -585,7 +262,10 @@ export async function executeActualizarCalidadProducto(
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    return { success: false, message: `❌ Error al actualizar calidad: ${msg}` };
+    return {
+      success: false,
+      message: `❌ Error al actualizar calidad: ${msg}`,
+    };
   }
 }
 
@@ -600,7 +280,7 @@ export async function executeModificarProducto(input: {
 }) {
   try {
     await connectToDatabase();
-    const { findProductSmart } = await import('@/lib/whatsapp/tools');
+    const { findProductSmart } = await import("@/lib/whatsapp/tools");
     const product = await findProductSmart(input.queryProducto);
 
     if (!product) {
@@ -627,22 +307,30 @@ export async function executeModificarProducto(input: {
     }
     if (input.nuevoPrecio !== undefined && input.nuevoPrecio >= 0) {
       updates.precio = input.nuevoPrecio;
-      changes.push(`Precio: $${(product.precio as number).toFixed(2)} ➔ **$${updates.precio.toFixed(2)} USD**`);
+      changes.push(
+        `Precio: $${(product.precio as number).toFixed(2)} ➔ **$${updates.precio.toFixed(2)} USD**`,
+      );
     }
 
     if (Object.keys(updates).length === 0) {
-      return { success: false, message: '⚠️ No se proporcionó ningún dato para modificar.' };
+      return {
+        success: false,
+        message: "⚠️ No se proporcionó ningún dato para modificar.",
+      };
     }
 
     await Product.updateOne({ _id: product._id }, { $set: updates });
 
     return {
       success: true,
-      message: `✅ **Producto Modificado**\n\n📱 Original: **${product.marca} ${product.modelo} ${product.calidad}**\n\n**Cambios aplicados:**\n${changes.map((c) => `• ${c}`).join('\n')}`,
+      message: `✅ **Producto Modificado**\n\n📱 Original: **${product.marca} ${product.modelo} ${product.calidad}**\n\n**Cambios aplicados:**\n${changes.map((c) => `• ${c}`).join("\n")}`,
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    return { success: false, message: `❌ Error al modificar producto: ${msg}` };
+    return {
+      success: false,
+      message: `❌ Error al modificar producto: ${msg}`,
+    };
   }
 }
 
@@ -651,7 +339,7 @@ export async function executeModificarProducto(input: {
 export async function executeOcultarProducto(queryProducto: string) {
   try {
     await connectToDatabase();
-    const { findProductSmart } = await import('@/lib/whatsapp/tools');
+    const { findProductSmart } = await import("@/lib/whatsapp/tools");
     const product = await findProductSmart(queryProducto);
 
     if (!product) {
@@ -678,10 +366,13 @@ export async function executeOcultarProducto(queryProducto: string) {
 export async function executeOcultarLote(queries: string[]) {
   try {
     await connectToDatabase();
-    const { findProductSmart } = await import('@/lib/whatsapp/tools');
+    const { findProductSmart } = await import("@/lib/whatsapp/tools");
 
     if (!queries || queries.length === 0) {
-      return { success: false, message: '❌ No se proporcionaron productos para ocultar.' };
+      return {
+        success: false,
+        message: "❌ No se proporcionaron productos para ocultar.",
+      };
     }
 
     let successCount = 0;
@@ -690,16 +381,25 @@ export async function executeOcultarLote(queries: string[]) {
     for (const query of queries) {
       const product = await findProductSmart(query);
       if (product) {
-        await Product.updateOne({ _id: product._id }, { $set: { isHidden: true } });
+        await Product.updateOne(
+          { _id: product._id },
+          { $set: { isHidden: true } },
+        );
         successCount++;
       } else {
-        fallidos.push(query);
+        throw new Error("Producto no encontrado: " + query);
       }
     }
 
     let msg = `✅ **Lote ocultado correctamente (Deshacer ejecutado)**\n\n👁️ Se ocultaron **${successCount}** productos del catálogo.`;
     if (fallidos.length > 0) {
-      msg += `\n\n⚠️ No se encontraron ${fallidos.length} productos:\n` + fallidos.slice(0, 10).map((f) => `• ${f}`).join('\n') + (fallidos.length > 10 ? `\n... y ${fallidos.length - 10} más` : '');
+      msg +=
+        `\n\n⚠️ No se encontraron ${fallidos.length} productos:\n` +
+        fallidos
+          .slice(0, 10)
+          .map((f) => `• ${f}`)
+          .join("\n") +
+        (fallidos.length > 10 ? `\n... y ${fallidos.length - 10} más` : "");
     }
 
     return {
@@ -714,135 +414,23 @@ export async function executeOcultarLote(queries: string[]) {
 
 // ─── Ver Deudores ─────────────────────────────────────────────────────────────
 
-export async function getDeudores() {
-  try {
-    await connectToDatabase();
-    const pendientes = await Sale.find({ paid: false }).sort({ createdAt: -1 }).lean();
-
-    if (pendientes.length === 0) {
-      return {
-        success: true,
-        message: '🎉 ¡No hay deudas pendientes! Todos los clientes están al día.',
-      };
-    }
-
-    const totalDeuda = pendientes.reduce((s: number, o: { totalUSD: number }) => s + o.totalUSD, 0);
-    const lista = pendientes
-      .map(
-        (o: { orderNumber: string; clientName: string; totalUSD: number; createdAt: Date }) =>
-          `👤 **${o.clientName || 'Consumidor Final'}** (Orden: \`#${o.orderNumber}\` • ${new Date(o.createdAt).toLocaleDateString('es-ES')})\n   ↳ Adeuda: **$${o.totalUSD.toFixed(2)} USD**`
-      )
-      .join('\n\n');
-
-    return {
-      success: true,
-      message: `📋 **Cuentas Pendientes de Cobro (${pendientes.length} órdenes)**\n\n${lista}\n\n💵 **Total Pendiente: $${totalDeuda.toFixed(2)} USD**`,
-    };
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { success: false, message: `❌ Error: ${msg}` };
-  }
-}
-
-// ─── Ver Ventas de Hoy ─────────────────────────────────────────────────────────
-
-export async function getVentasHoy() {
-  try {
-    await connectToDatabase();
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date();
-    endOfDay.setHours(23, 59, 59, 999);
-
-    const ventas = await Sale.find({
-      createdAt: { $gte: startOfDay, $lte: endOfDay },
-    })
-      .sort({ createdAt: -1 })
-      .lean();
-
-    if (ventas.length === 0) {
-      return { success: true, message: '📊 No hay ventas registradas hoy.' };
-    }
-
-    const totalUSD = ventas.reduce((s: number, v: { totalUSD: number }) => s + v.totalUSD, 0);
-    const pagadas = ventas.filter((v: { paid: boolean }) => v.paid).length;
-    const pendientes = ventas.length - pagadas;
-
-    const lista = ventas
-      .slice(0, 10)
-      .map((v: { orderNumber: string; clientName: string; totalUSD: number; paid: boolean }) =>
-        `• **#${v.orderNumber}** — ${v.clientName || 'Consumidor Final'} — $${v.totalUSD.toFixed(2)} ${v.paid ? '✅' : '⏳'}`
-      )
-      .join('\n');
-
-    return {
-      success: true,
-      message: `📊 **Ventas de Hoy (${new Date().toLocaleDateString('es-ES')})**\n\n${lista}${ventas.length > 10 ? `\n...y ${ventas.length - 10} más` : ''}\n\n💵 **Total: $${totalUSD.toFixed(2)} USD** | ✅ Pagadas: ${pagadas} | ⏳ Pendientes: ${pendientes}`,
-    };
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { success: false, message: `❌ Error: ${msg}` };
-  }
-}
-
-// ─── Catálogo para Contexto de IA ─────────────────────────────────────────────
-
-export async function getCatalogoForContext(): Promise<string> {
-  try {
-    await connectToDatabase();
-    const products = await Product.find({ isHidden: false })
-      .select('marca modelo calidad precio stock')
-      .sort({ marca: 1, modelo: 1 })
-      .lean();
-
-    if (products.length === 0) return 'El catálogo está vacío.';
-
-    const available = products.filter((p) => (p.stock || 0) > 0);
-    const outOfStock = products.filter((p) => (p.stock || 0) <= 0);
-    const totalPhysicalUnits = available.reduce((acc, p) => acc + (p.stock || 0), 0);
-
-    const availableLines = available.map(
-      (p) => `• [DISPONIBLE] ${p.marca} ${p.modelo} (${p.calidad}) — $${p.precio.toFixed(2)} USD — Stock: ${p.stock} uds`
-    );
-
-    const outLines = outOfStock.map(
-      (p) => `• [AGOTADO] ${p.marca} ${p.modelo} (${p.calidad}) — $${p.precio.toFixed(2)} USD — Stock: 0 uds`
-    );
-
-    return (
-      `=== RESUMEN AUDITADO DEL INVENTARIO ===\n` +
-      `• Modelos disponibles con stock (> 0): ${available.length} modelos\n` +
-      `• Total de unidades físicas sumadas: ${totalPhysicalUnits} unidades en stock\n` +
-      `• Modelos agotados (stock 0): ${outOfStock.length} modelos\n` +
-      `• Total modelos registrados: ${products.length} modelos\n\n` +
-      `=== LISTA DE PRODUCTOS DISPONIBLES CON STOCK (${available.length} modelos, ${totalPhysicalUnits} uds) ===\n` +
-      `${availableLines.join('\n')}\n\n` +
-      `=== LISTA DE MODELOS AGOTADOS (${outOfStock.length} modelos, 0 uds) ===\n` +
-      `${outLines.join('\n')}`
-    );
-  } catch {
-    return 'No se pudo cargar el catálogo.';
-  }
-}
-
-// ─── Crear Orden Multi-Producto ───────────────────────────────────────────────
-
 export async function executeCrearOrdenMulti(input: {
   clientName: string;
   items: Array<{ productQuery: string; qty: number; precioOverride?: number }>;
-  currency?: 'USD' | 'CUP';
+  currency?: "USD" | "CUP";
   paid?: boolean;
   notes?: string;
 }) {
   try {
     await connectToDatabase();
-    const { findProductSmart } = await import('@/lib/whatsapp/tools');
+    const { findProductSmart } = await import("@/lib/whatsapp/tools");
 
-    const rateDoc = await getActiveExchangeRate() as { rate: number } | null;
-    if (!rateDoc || typeof rateDoc.rate !== 'number') {
+    const rateDoc = (await getActiveExchangeRate()) as { rate: number } | null;
+    if (!rateDoc || typeof rateDoc.rate !== "number") {
       return {
         success: false,
-        message: '❌ *Error Crítico:* No se ha configurado la Tasa de Cambio en el sistema. Configura la tasa primero para crear esta orden.',
+        message:
+          "❌ *Error Crítico:* No se ha configurado la Tasa de Cambio en el sistema. Configura la tasa primero para crear esta orden.",
       };
     }
     const exchangeRate = rateDoc.rate;
@@ -861,7 +449,23 @@ export async function executeCrearOrdenMulti(input: {
       productCustomId: string;
     }> = [];
 
+    if (!input.items.length || input.items.length > 100)
+      return {
+        success: false,
+        message: "La orden debe tener entre 1 y 100 artículos.",
+      };
     for (const item of input.items) {
+      if (
+        !Number.isSafeInteger(item.qty) ||
+        item.qty < 1 ||
+        item.qty > 10000 ||
+        (item.precioOverride != null &&
+          (!Number.isFinite(item.precioOverride) || item.precioOverride < 0))
+      )
+        return {
+          success: false,
+          message: "Cantidad o precio inválido en la orden.",
+        };
       const product = await findProductSmart(item.productQuery);
       if (!product) {
         return {
@@ -896,7 +500,7 @@ export async function executeCrearOrdenMulti(input: {
     const totalCUP = totalUSD * exchangeRate;
     const totalQty = resolvedItems.reduce((s, i) => s + i.qty, 0);
 
-    let orderNumber = '';
+    let orderNumber = "";
     for (let attempt = 0; attempt < 5; attempt++) {
       orderNumber = generateOrderNumber(totalQty);
       const exists = await Sale.findOne({ orderNumber });
@@ -905,7 +509,7 @@ export async function executeCrearOrdenMulti(input: {
 
     const sale = await Sale.create({
       orderNumber,
-      clientName: input.clientName || 'Consumidor Final',
+      clientName: input.clientName || "Consumidor Final",
       items: resolvedItems.map((i) => ({
         productId: i.productId,
         marca: i.marca,
@@ -916,14 +520,14 @@ export async function executeCrearOrdenMulti(input: {
         precioUSD: i.precioUSD,
         subtotalUSD: i.subtotalUSD,
       })),
-      currency: input.currency ?? 'USD',
+      currency: input.currency ?? "USD",
       exchangeRate,
       subtotalUSD,
       totalUSD,
       totalCUP,
       paid: input.paid !== false,
-      notes: input.notes ?? 'Registrada vía Asistente IA Web',
-      status: 'COMPLETED',
+      notes: input.notes ?? "Registrada vía Asistente IA Web",
+      status: "COMPLETED",
       totalRefundedUSD: 0,
       totalRefundedCUP: 0,
       refunds: [],
@@ -934,15 +538,19 @@ export async function executeCrearOrdenMulti(input: {
       const updatedProduct = await Product.findOneAndUpdate(
         { _id: item.productMongoId, stock: { $gte: item.qty } },
         { $inc: { stock: -item.qty } },
-        { new: true }
+        { returnDocument: "after" },
       );
 
       // Si falló por falta de stock repentina o producto eliminado, se omite el log (o se manejaría rollback en un sistema completo)
+      if (!updatedProduct)
+        throw new Error(
+          "El stock cambió mientras se creaba la orden. No se guardó la operación.",
+        );
       if (updatedProduct) {
         await StockHistory.create({
           productId: item.productCustomId,
           productName: `${item.marca} ${item.modelo} (${item.calidad})`,
-          type: 'salida',
+          type: "salida",
           qty: item.qty,
           stockBefore: item.stockBefore,
           stockAfter: updatedProduct.stock,
@@ -952,19 +560,22 @@ export async function executeCrearOrdenMulti(input: {
     }
 
     const itemsText = resolvedItems
-      .map((i) => `• ${i.qty}x ${i.marca} ${i.modelo} ${i.calidad} — $${i.precioUSD.toFixed(2)} c/u`)
-      .join('\n');
+      .map(
+        (i) =>
+          `• ${i.qty}x ${i.marca} ${i.modelo} ${i.calidad} — $${i.precioUSD.toFixed(2)} c/u`,
+      )
+      .join("\n");
 
     return {
       success: true,
       message:
         `✅ **Orden Creada Exitosamente**\n\n` +
         `🧾 **Orden #${orderNumber}**\n` +
-        `👤 Cliente: ${input.clientName || 'Consumidor Final'}\n\n` +
+        `👤 Cliente: ${input.clientName || "Consumidor Final"}\n\n` +
         `${itemsText}\n\n` +
         `💵 Total USD: $${totalUSD.toFixed(2)}\n` +
         `💴 Total CUP: $${totalCUP.toFixed(0)} (tasa: ${exchangeRate})\n` +
-        `💳 Estado: ${input.paid !== false ? 'PAGADA ✅' : 'PENDIENTE ⏳'}`,
+        `💳 Estado: ${input.paid !== false ? "PAGADA ✅" : "PENDIENTE ⏳"}`,
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -977,13 +588,19 @@ export async function executeCrearOrdenMulti(input: {
 export async function executeAnularOrden(orderNumber: string, motivo?: string) {
   try {
     await connectToDatabase();
-    const cleanOrder = (orderNumber || '').trim().replace('#', '');
+    const cleanOrder = (orderNumber || "").trim().replace("#", "");
     if (!cleanOrder) {
-      return { success: false, message: '❌ Debes especificar el número o código de la orden que deseas anular.' };
+      return {
+        success: false,
+        message:
+          "❌ Debes especificar el número o código de la orden que deseas anular.",
+      };
     }
 
     const sale = await Sale.findOne({
-      orderNumber: { $regex: new RegExp(`^${cleanOrder}$`, 'i') },
+      orderNumber: {
+        $regex: new RegExp("^" + escapeRegex(cleanOrder) + "$", "i"),
+      },
     });
 
     if (!sale) {
@@ -993,7 +610,7 @@ export async function executeAnularOrden(orderNumber: string, motivo?: string) {
       };
     }
 
-    if (sale.status === 'CANCELLED') {
+    if (sale.status === "CANCELLED") {
       return {
         success: false,
         message: `ℹ️ La orden #${sale.orderNumber} de *${sale.clientName}* ya se encontraba ANULADA previamente.`,
@@ -1008,55 +625,63 @@ export async function executeAnularOrden(orderNumber: string, motivo?: string) {
 
       if (remainingToReturn > 0) {
         const product = await Product.findOne({ id: item.productId });
+        if (!product)
+          throw new Error(
+            "No existe el producto original para reintegrar stock. Revisa la orden.",
+          );
         if (product) {
           const stockBefore = product.stock;
-          
+
           const updatedProduct = await Product.findOneAndUpdate(
             { id: item.productId },
-            { 
+            {
               $inc: { stock: remainingToReturn },
-              $set: { isHidden: false } 
             },
-            { new: true }
+            { returnDocument: "after" },
           );
 
           if (updatedProduct) {
             await StockHistory.create({
               productId: product.id,
               productName: `${product.marca} ${product.modelo} (${product.calidad})`,
-              type: 'entrada',
+              type: "entrada",
               qty: remainingToReturn,
               stockBefore,
               stockAfter: updatedProduct.stock,
-              reason: `Anulación Orden #${sale.orderNumber}: ${motivo || 'Cancelada vía Asistente IA'}`,
+              reason: `Anulación Orden #${sale.orderNumber}: ${motivo || "Cancelada vía Asistente IA"}`,
             });
-            restoredItems.push(`• **${remainingToReturn}x** ${item.marca} ${item.modelo} (${item.calidad}) ➔ Stock en almacén: **${updatedProduct.stock}** uds`);
+            restoredItems.push(
+              `• **${remainingToReturn}x** ${item.marca} ${item.modelo} (${item.calidad}) ➔ Stock en almacén: **${updatedProduct.stock}** uds`,
+            );
           }
         }
         item.returnedQty = item.qty;
       }
     }
 
-    sale.status = 'CANCELLED';
-    sale.notes = (sale.notes ? `${sale.notes} | ` : '') + `[ANULADA vía IA: ${motivo || 'Cancelación solicitada por Administrador'}]`;
+    sale.status = "CANCELLED";
+    sale.notes =
+      (sale.notes ? `${sale.notes} | ` : "") +
+      `[ANULADA vía IA: ${motivo || "Cancelación solicitada por Administrador"}]`;
     // BUG 4 FIX: markModified ensures Mongoose detects changes in the items subdocument array
-    sale.markModified('items');
+    sale.markModified("items");
     await sale.save();
 
-    const montoStr = sale.currency === 'CUP'
-      ? `${sale.totalCUP?.toLocaleString()} CUP`
-      : `$${sale.totalUSD?.toFixed(2)} USD`;
+    const montoStr =
+      sale.currency === "CUP"
+        ? `${sale.totalCUP?.toLocaleString()} CUP`
+        : `$${sale.totalUSD?.toFixed(2)} USD`;
 
     return {
       success: true,
       message:
         `🚫 **Orden #${sale.orderNumber} ANULADA con éxito**\n\n` +
-        `👤 Cliente: **${sale.clientName || 'Consumidor Final'}**\n` +
+        `👤 Cliente: **${sale.clientName || "Consumidor Final"}**\n` +
         `💰 Monto anulado: **${montoStr}**\n` +
-        `📝 Motivo: ${motivo ? `*${motivo}*` : 'Cancelación solicitada por Administrador'}\n\n` +
+        `📝 Motivo: ${motivo ? `*${motivo}*` : "Cancelación solicitada por Administrador"}\n\n` +
         (restoredItems.length > 0
-          ? `📦 **Stock reintegrado al almacén:**\n${restoredItems.join('\n')}`
-          : '📦 No había ítems pendientes por reintegrar.'),
+          ? `📦 **Stock reintegrado al almacén:**\n${restoredItems.join("\n")}`
+          : "📦 No había ítems pendientes por reintegrar."),
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -1071,12 +696,16 @@ export async function executeActualizarTasaCambio(nuevaTasa: number) {
     await connectToDatabase();
     const rate = parseFloat(String(nuevaTasa));
     if (!validExchangeRate(rate)) {
-      return { success: false, message: '❌ La tasa de cambio debe ser un número positivo válido (ej: 320, 340).' };
+      return {
+        success: false,
+        message:
+          "❌ La tasa de cambio debe ser un número positivo válido (ej: 320, 340).",
+      };
     }
 
     // Obtener la tasa actual para informar el cambio
-    const oldDoc = await getActiveExchangeRate() as { rate: number } | null;
-    const tasaAnterior = oldDoc?.rate ?? 'Sin configurar';
+    const oldDoc = (await getActiveExchangeRate()) as { rate: number } | null;
+    const tasaAnterior = oldDoc?.rate ?? "Sin configurar";
 
     // Actualizar atómicamente la tasa activa compartida
     await saveActiveExchangeRate(rate);
@@ -1091,7 +720,10 @@ export async function executeActualizarTasaCambio(nuevaTasa: number) {
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    return { success: false, message: `❌ Error al actualizar tasa de cambio: ${msg}` };
+    return {
+      success: false,
+      message: `❌ Error al actualizar tasa de cambio: ${msg}`,
+    };
   }
 }
 
@@ -1112,12 +744,19 @@ export async function executeFusionarProductos(params: {
     const primary = await Product.findOne({
       $or: [
         { id: q1 },
-        { modelo: { $regex: new RegExp(q1.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') } },
+        {
+          modelo: {
+            $regex: new RegExp(q1.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"),
+          },
+        },
       ],
     });
 
     if (!primary) {
-      return { success: false, message: `❌ No se encontró el producto principal con "${q1}"` };
+      return {
+        success: false,
+        message: `❌ No se encontró el producto principal con "${q1}"`,
+      };
     }
 
     // Buscar secundario
@@ -1125,50 +764,83 @@ export async function executeFusionarProductos(params: {
       _id: { $ne: primary._id },
       $or: [
         { id: q2 },
-        { modelo: { $regex: new RegExp(q2.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') } },
+        {
+          modelo: {
+            $regex: new RegExp(q2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"),
+          },
+        },
       ],
     });
 
     if (!secondary) {
-      return { success: false, message: `❌ No se encontró el producto secundario con "${q2}"` };
+      return {
+        success: false,
+        message: `❌ No se encontró el producto secundario con "${q2}"`,
+      };
     }
 
+    if (
+      primary.marca !== secondary.marca ||
+      primary.calidad !== secondary.calidad
+    )
+      return {
+        success: false,
+        message: "No se pueden fusionar marcas o calidades diferentes.",
+      };
+    const { calculateDuplicateScore } = await import("@/lib/duplicateDetector");
+    if (calculateDuplicateScore(primary as any, secondary as any).score < 95)
+      return {
+        success: false,
+        message:
+          "La equivalencia no es inequívoca. Revisa las variantes en el gestor de productos.",
+      };
     const stockBefore = primary.stock || 0;
     const stockSec = secondary.stock || 0;
     const combinedStock = stockBefore + stockSec;
 
-    const finalModelo = (params.nuevoModelo || primary.modelo).toUpperCase().trim();
-    const finalPrecio = params.nuevoPrecio !== undefined && params.nuevoPrecio >= 0 ? params.nuevoPrecio : primary.precio;
+    const finalModelo = (params.nuevoModelo || primary.modelo)
+      .toUpperCase()
+      .trim();
+    const finalPrecio =
+      params.nuevoPrecio !== undefined && params.nuevoPrecio >= 0
+        ? params.nuevoPrecio
+        : primary.precio;
 
     primary.modelo = finalModelo;
     primary.precio = finalPrecio;
     primary.stock = combinedStock;
-    if (combinedStock > 0) primary.isHidden = false;
+
     await primary.save();
 
     // Migrar StockHistory
     await StockHistory.updateMany(
       { productId: secondary.id },
-      { $set: { productId: primary.id, productName: `${primary.marca} ${finalModelo} (${primary.calidad})` } }
+      {
+        $set: {
+          productId: primary.id,
+          productName: `${primary.marca} ${finalModelo} (${primary.calidad})`,
+        },
+      },
     );
 
     // Migrar Sale items
     await Sale.updateMany(
-      { 'items.productId': secondary.id },
-      { $set: { 'items.$[elem].productId': primary.id, 'items.$[elem].modelo': finalModelo } },
-      { arrayFilters: [{ 'elem.productId': secondary.id }] }
+      { "items.productId": secondary.id },
+      { $set: { "items.$[elem].productId": primary.id } },
+      { arrayFilters: [{ "elem.productId": secondary.id }] },
     );
 
     // Registrar nuevo historial
-    await StockHistory.create({
-      productId: primary.id,
-      productName: `${primary.marca} ${finalModelo} (${primary.calidad})`,
-      type: 'entrada',
-      qty: Math.max(1, stockSec),
-      stockBefore,
-      stockAfter: combinedStock,
-      reason: `Fusión de inventario por Asistente IA: se integraron +${stockSec} uds de "${secondary.modelo}" en "${finalModelo}". Precio: $${finalPrecio} USD`,
-    });
+    if (stockSec > 0)
+      await StockHistory.create({
+        productId: primary.id,
+        productName: `${primary.marca} ${finalModelo} (${primary.calidad})`,
+        type: "entrada",
+        qty: stockSec,
+        stockBefore,
+        stockAfter: combinedStock,
+        reason: `Fusión de inventario por Asistente IA: se integraron +${stockSec} uds de "${secondary.modelo}" en "${finalModelo}". Precio: $${finalPrecio} USD`,
+      });
 
     // Eliminar secundario
     await Product.deleteOne({ _id: secondary._id });
@@ -1184,7 +856,10 @@ export async function executeFusionarProductos(params: {
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    return { success: false, message: `❌ Error al fusionar productos: ${msg}` };
+    return {
+      success: false,
+      message: `❌ Error al fusionar productos: ${msg}`,
+    };
   }
 }
 
@@ -1198,8 +873,8 @@ export async function executeNormalizarCatalogoExistente() {
       $or: [
         { modelo: /\((INCELL|ORIGINAL|OLED|AMOLED|AAA|COMPATIBLE)\)/i },
         { modelo: /\b(INCELL|ORIGINAL|OLED|AMOLED)\b/i },
-        { calidad: 'C/M' },
-        { calidad: 'S/M' },
+        { calidad: "C/M" },
+        { calidad: "S/M" },
       ],
     });
 
@@ -1208,14 +883,22 @@ export async function executeNormalizarCatalogoExistente() {
     const logs: string[] = [];
 
     for (const prod of candidates) {
-      const { modelo: cleanMod, calidad: cleanCal } = cleanModelAndQuality(prod.modelo, prod.calidad);
+      const { modelo: cleanMod, calidad: cleanCal } = cleanModelAndQuality(
+        prod.modelo,
+        prod.calidad,
+      );
       if (cleanMod === prod.modelo && cleanCal === prod.calidad) continue;
 
       // Verificar si ya existe otro registro con ese modelo y calidad limpios
       const existing = await Product.findOne({
         _id: { $ne: prod._id },
         marca: prod.marca,
-        modelo: { $regex: new RegExp(`^${cleanMod.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+        modelo: {
+          $regex: new RegExp(
+            `^${cleanMod.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+            "i",
+          ),
+        },
         calidad: cleanCal,
       });
 
@@ -1226,27 +909,32 @@ export async function executeNormalizarCatalogoExistente() {
         if (prod.precio > 0 && prod.precio !== existing.precio) {
           existing.precio = prod.precio;
         }
-        existing.isHidden = false; // Siempre visible tras fusión
+        // Preserve deliberate catalog visibility.
         await existing.save();
 
         // Migrar StockHistory
         await StockHistory.updateMany(
           { productId: prod.id },
-          { $set: { productId: existing.id, productName: `${existing.marca} ${cleanMod} (${cleanCal})` } }
+          {
+            $set: {
+              productId: existing.id,
+              productName: `${existing.marca} ${cleanMod} (${cleanCal})`,
+            },
+          },
         );
 
         // Migrar Sale items
         await Sale.updateMany(
-          { 'items.productId': prod.id },
-          { $set: { 'items.$[elem].productId': existing.id, 'items.$[elem].modelo': cleanMod } },
-          { arrayFilters: [{ 'elem.productId': prod.id }] }
+          { "items.productId": prod.id },
+          { $set: { "items.$[elem].productId": existing.id } },
+          { arrayFilters: [{ "elem.productId": prod.id }] },
         );
 
         if (stockToAdd > 0) {
           await StockHistory.create({
             productId: existing.id,
             productName: `${existing.marca} ${cleanMod} (${cleanCal})`,
-            type: 'entrada',
+            type: "entrada",
             qty: stockToAdd,
             stockBefore: existing.stock - stockToAdd,
             stockAfter: existing.stock,
@@ -1257,7 +945,9 @@ export async function executeNormalizarCatalogoExistente() {
         // Eliminar producto viciado
         await Product.deleteOne({ _id: prod._id });
         mergedCount++;
-        logs.push(`• Fusionado "${prod.modelo}" en "${cleanMod}" (${cleanCal}) ➔ Stock: ${existing.stock} uds`);
+        logs.push(
+          `• Fusionado "${prod.modelo}" en "${cleanMod}" (${cleanCal}) ➔ Stock: ${existing.stock} uds`,
+        );
       } else {
         // Actualizar registro en su lugar
         const oldName = `${prod.modelo} [${prod.calidad}]`;
@@ -1268,7 +958,7 @@ export async function executeNormalizarCatalogoExistente() {
         // Actualizar nombres en historiales si aplica
         await StockHistory.updateMany(
           { productId: prod.id },
-          { $set: { productName: `${prod.marca} ${cleanMod} (${cleanCal})` } }
+          { $set: { productName: `${prod.marca} ${cleanMod} (${cleanCal})` } },
         );
 
         modifiedCount++;
@@ -1284,12 +974,15 @@ export async function executeNormalizarCatalogoExistente() {
         `🧹 **Normalización de Catálogo Ejecutada con Éxito**\n\n` +
         `✅ **${modifiedCount} repuesto(s) corregidos** (calidad y modelo limpiados)\n` +
         `🔀 **${mergedCount} repuesto(s) duplicados fusionados** a sus registros oficiales con stock sumado\n\n` +
-        (logs.length > 0 ? logs.slice(0, 15).join('\n') : 'El catálogo ya se encontraba 100% normalizado.'),
+        (logs.length > 0
+          ? logs.slice(0, 15).join("\n")
+          : "El catálogo ya se encontraba 100% normalizado."),
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    return { success: false, message: `❌ Error al normalizar catálogo: ${msg}` };
+    return {
+      success: false,
+      message: `❌ Error al normalizar catálogo: ${msg}`,
+    };
   }
 }
-
-

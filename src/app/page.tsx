@@ -1,44 +1,51 @@
-'use client';
+"use client";
+import { useWhatsAppPhone } from "@/lib/useWhatsAppPhone";
 
-import { useActiveExchangeRate } from '@/lib/useActiveExchangeRate';
-import React, { useState, useEffect, useMemo } from 'react';
-import Navbar from '@/components/Navbar';
-import SearchBar from '@/components/SearchBar';
-import BrandFilter from '@/components/BrandFilter';
-import ProductCard from '@/components/ProductCard';
-import ProductTable from '@/components/ProductTable';
-import seedProducts from '@/data/products_seed.json';
-import { Product, ViewMode, SortOption, Currency } from '@/lib/types';
-import { Sparkles, SearchX, MessageSquare, Users, ShieldCheck } from 'lucide-react';
+import { useActiveExchangeRate } from "@/lib/useActiveExchangeRate";
+import React, { useState, useEffect, useMemo } from "react";
+import Navbar from "@/components/Navbar";
+import SearchBar from "@/components/SearchBar";
+import BrandFilter from "@/components/BrandFilter";
+import ProductCard from "@/components/ProductCard";
+import ProductTable from "@/components/ProductTable";
+import seedProducts from "@/data/products_seed.json";
+import { Product, ViewMode, SortOption, Currency } from "@/lib/types";
+import {
+  Sparkles,
+  SearchX,
+  MessageSquare,
+  Users,
+  ShieldCheck,
+} from "lucide-react";
 import {
   getCanonicalBrand,
   getBrandCounts,
   getSortedBrands,
   matchBrandFilter,
   sortProductsByPopularity,
-} from '@/lib/brandUtils';
-import { fuzzyMatchProduct } from '@/lib/searchUtils';
+} from "@/lib/brandUtils";
+import { fuzzyMatchProduct } from "@/lib/searchUtils";
 
 export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedBrand, setSelectedBrand] = useState('ALL');
-  const [selectedQuality, setSelectedQuality] = useState('ALL');
-  const [sortOption, setSortOption] = useState<SortOption>('default');
-  const [viewMode, setViewMode] = useState<ViewMode>('grid');
-  const [currency, setCurrency] = useState<Currency>('USD');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedBrand, setSelectedBrand] = useState("ALL");
+  const [selectedQuality, setSelectedQuality] = useState("ALL");
+  const [sortOption, setSortOption] = useState<SortOption>("default");
+  const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [currency, setCurrency] = useState<Currency>("USD");
   const [exchangeRate, setExchangeRate] = useActiveExchangeRate();
 
-  const whatsappNumber = '5352031972';
+  const whatsappNumber = useWhatsAppPhone();
   const whatsappGroupUrl =
-    'https://chat.whatsapp.com/EJLkGTDLoDX15fyILvOge6?s=cl&p=i&ilr=2&amv=1';
+    "https://chat.whatsapp.com/EJLkGTDLoDX15fyILvOge6?s=cl&p=i&ilr=2&amv=1";
 
   // Load products from API with fallback to localStorage / seed
   useEffect(() => {
     async function loadData() {
       try {
-        const res = await fetch('/api/products');
+        const res = await fetch("/api/products");
         if (res.ok) {
           const data = await res.json();
           if (data.products && Array.isArray(data.products)) {
@@ -48,11 +55,11 @@ export default function Home() {
           }
         }
       } catch (err) {
-        console.warn('API error, loading local seed fallback', err);
+        console.warn("API error, loading local seed fallback", err);
       }
 
       // Check local storage
-      const local = localStorage.getItem('el_arca_products');
+      const local = localStorage.getItem("el_arca_products");
       if (local) {
         try {
           setProducts(JSON.parse(local));
@@ -68,12 +75,12 @@ export default function Home() {
     loadData();
 
     // Load saved currency preference and live exchange rate
-    const savedCurrency = localStorage.getItem('el_arca_currency');
-    if (savedCurrency === 'USD' || savedCurrency === 'CUP') {
+    const savedCurrency = localStorage.getItem("el_arca_currency");
+    if (savedCurrency === "USD" || savedCurrency === "CUP") {
       setCurrency(savedCurrency as Currency);
     }
 
-    fetch('/api/exchange-rate')
+    fetch("/api/exchange-rate")
       .then((r) => r.json())
       .then((d) => {
         if (d.success && d.rate) {
@@ -85,13 +92,13 @@ export default function Home() {
 
   const handleCurrencyChange = (c: Currency) => {
     setCurrency(c);
-    localStorage.setItem('el_arca_currency', c);
+    localStorage.setItem("el_arca_currency", c);
   };
 
   // Sync state to local storage for offline fallback
   useEffect(() => {
     if (products.length > 0) {
-      localStorage.setItem('el_arca_products', JSON.stringify(products));
+      localStorage.setItem("el_arca_products", JSON.stringify(products));
     }
   }, [products]);
 
@@ -128,12 +135,12 @@ export default function Home() {
         }
 
         // Quality filter
-        if (selectedQuality !== 'ALL' && p.calidad !== selectedQuality) {
+        if (selectedQuality !== "ALL" && p.calidad !== selectedQuality) {
           return null;
         }
 
         // Fuzzy & Token search
-        if (searchTerm.trim() !== '') {
+        if (searchTerm.trim() !== "") {
           const { match, score } = fuzzyMatchProduct(p, searchTerm);
           if (!match) return null;
           return { product: p, score };
@@ -141,23 +148,36 @@ export default function Home() {
 
         return { product: p, score: 0 };
       })
-      .filter((item): item is { product: Product; score: number } => item !== null);
+      .filter(
+        (item): item is { product: Product; score: number } => item !== null,
+      );
 
     // If active search without explicit sort, rank by fuzzy match score first, then popularity
-    if (searchTerm.trim() !== '' && sortOption === 'default') {
+    if (searchTerm.trim() !== "" && sortOption === "default") {
       scoredList.sort((a, b) => b.score - a.score);
       return scoredList.map((item) => item.product);
     }
 
     const list = scoredList.map((item) => item.product);
 
-    if (sortOption === 'price-asc') return [...list].sort((a, b) => a.precio - b.precio);
-    if (sortOption === 'price-desc') return [...list].sort((a, b) => b.precio - a.precio);
-    if (sortOption === 'brand-asc') return [...list].sort((a, b) => a.marca.localeCompare(b.marca));
-    if (sortOption === 'model-asc') return [...list].sort((a, b) => a.modelo.localeCompare(b.modelo));
+    if (sortOption === "price-asc")
+      return [...list].sort((a, b) => a.precio - b.precio);
+    if (sortOption === "price-desc")
+      return [...list].sort((a, b) => b.precio - a.precio);
+    if (sortOption === "brand-asc")
+      return [...list].sort((a, b) => a.marca.localeCompare(b.marca));
+    if (sortOption === "model-asc")
+      return [...list].sort((a, b) => a.modelo.localeCompare(b.modelo));
 
     return sortProductsByPopularity(list, brandCounts);
-  }, [availableProducts, searchTerm, selectedBrand, selectedQuality, sortOption, brandCounts]);
+  }, [
+    availableProducts,
+    searchTerm,
+    selectedBrand,
+    selectedQuality,
+    sortOption,
+    brandCounts,
+  ]);
 
   return (
     <div className="min-h-screen bg-[#090A0F] text-white flex flex-col">
@@ -183,19 +203,29 @@ export default function Home() {
             </div>
 
             <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white leading-tight">
-              Encuentra el Display Exacto para tu Celular en{' '}
+              Encuentra el Display Exacto para tu Celular en{" "}
               <span className="gold-gradient-text">EL ARCA</span>
             </h1>
 
             <p className="text-gray-300 text-sm sm:text-base leading-relaxed">
-              Explora nuestra lista actualizada de repuestos pantallas en calidad{' '}
-              <strong className="text-[#F3E0A9]">Original, InCell, OLED y Con Marco (C/M)</strong>. Búsqueda instantánea en tiempo real y cotización directa por WhatsApp.
+              Explora nuestra lista actualizada de repuestos pantallas en
+              calidad{" "}
+              <strong className="text-[#F3E0A9]">
+                Original, InCell, OLED y Con Marco (C/M)
+              </strong>
+              . Búsqueda instantánea en tiempo real y cotización directa por
+              WhatsApp.
             </p>
 
             {/* Direct WhatsApp Callouts & Group Link */}
             <div className="pt-2 flex flex-wrap items-center gap-3">
               <a
-                href={`https://wa.me/${whatsappNumber}?text=${encodeURIComponent('Hola! Deseo información general sobre el catálogo de displays en EL ARCA DISPLAY CLUB.')}`}
+                href={
+                  whatsappNumber
+                    ? `https://wa.me/${whatsappNumber}?text=${encodeURIComponent("Hola! Deseo información general sobre el catálogo de displays en EL ARCA DISPLAY CLUB.")}`
+                    : undefined
+                }
+                aria-disabled={!whatsappNumber}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-5 py-3 rounded-2xl bg-gradient-to-r from-[#E5C158] to-[#D4AF37] text-black font-extrabold text-sm shadow-gold-glow hover:scale-105 active:scale-95 transition-all duration-200 flex items-center gap-2"
@@ -254,15 +284,19 @@ export default function Home() {
         <div className="flex items-center justify-between border-b border-white/10 pb-4">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-gray-400">
-              Mostrando <strong className="text-white">{filteredProducts.length}</strong> de{' '}
-              <strong className="text-[#D4AF37]">{products.length}</strong> modelos
+              Mostrando{" "}
+              <strong className="text-white">{filteredProducts.length}</strong>{" "}
+              de <strong className="text-[#D4AF37]">{products.length}</strong>{" "}
+              modelos
             </span>
-            {(searchTerm || selectedBrand !== 'ALL' || selectedQuality !== 'ALL') && (
+            {(searchTerm ||
+              selectedBrand !== "ALL" ||
+              selectedQuality !== "ALL") && (
               <button
                 onClick={() => {
-                  setSearchTerm('');
-                  setSelectedBrand('ALL');
-                  setSelectedQuality('ALL');
+                  setSearchTerm("");
+                  setSelectedBrand("ALL");
+                  setSelectedQuality("ALL");
                 }}
                 className="text-xs text-[#E5C158] underline hover:text-white ml-2 transition-colors"
               >
@@ -277,7 +311,10 @@ export default function Home() {
           // Skeleton loading state
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
             {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="glass-card rounded-2xl p-5 flex flex-col gap-3 animate-pulse">
+              <div
+                key={i}
+                className="glass-card rounded-2xl p-5 flex flex-col gap-3 animate-pulse"
+              >
                 <div className="flex items-center justify-between gap-2">
                   <div className="h-6 w-20 bg-white/10 rounded-lg" />
                   <div className="h-5 w-16 bg-white/10 rounded-full" />
@@ -292,7 +329,7 @@ export default function Home() {
             ))}
           </div>
         ) : filteredProducts.length > 0 ? (
-          viewMode === 'grid' ? (
+          viewMode === "grid" ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
               {filteredProducts.map((product) => (
                 <ProductCard
@@ -316,15 +353,19 @@ export default function Home() {
             <div className="w-16 h-16 rounded-2xl bg-[#171B2B] border border-white/10 flex items-center justify-center mx-auto text-[#D4AF37]">
               <SearchX className="w-8 h-8" />
             </div>
-            <h3 className="text-xl font-bold text-white">No se encontraron displays</h3>
+            <h3 className="text-xl font-bold text-white">
+              No se encontraron displays
+            </h3>
             <p className="text-gray-400 text-sm">
-              No hay coincidencias para tu búsqueda "{searchTerm}". Intenta buscar con otro término como "Samsung", "OLED" o limpia los filtros.
+              No hay coincidencias para tu búsqueda "{searchTerm}". Intenta
+              buscar con otro término como "Samsung", "OLED" o limpia los
+              filtros.
             </p>
             <button
               onClick={() => {
-                setSearchTerm('');
-                setSelectedBrand('ALL');
-                setSelectedQuality('ALL');
+                setSearchTerm("");
+                setSelectedBrand("ALL");
+                setSelectedQuality("ALL");
               }}
               className="px-5 py-2.5 rounded-xl bg-[#171B2B] hover:bg-[#22273D] text-[#F3E0A9] border border-[#D4AF37]/30 text-xs font-bold transition-all"
             >
@@ -344,7 +385,8 @@ export default function Home() {
                 Comunidad Oficial EL ARCA DISPLAY CLUB
               </h3>
               <p className="text-xs text-gray-300">
-                Únete a nuestro grupo oficial de WhatsApp para enterarte de nuevos arribos, ofertas y disponibilidad diaria.
+                Únete a nuestro grupo oficial de WhatsApp para enterarte de
+                nuevos arribos, ofertas y disponibilidad diaria.
               </p>
             </div>
           </div>
@@ -364,7 +406,11 @@ export default function Home() {
       <footer className="border-t border-white/10 bg-[#06070B] py-10 mt-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-3">
-            <img src="/logo.png" alt="Logo" className="w-8 h-8 object-contain" />
+            <img
+              src="/logo.png"
+              alt="Logo"
+              className="w-8 h-8 object-contain"
+            />
             <span className="text-sm font-bold text-white">
               EL ARCA <span className="gold-gradient-text">DISPLAY CLUB</span>
             </span>
@@ -373,7 +419,8 @@ export default function Home() {
           <div className="text-xs text-gray-400 text-center md:text-right space-y-1">
             <p>© 2026 EL ARCA DISPLAY CLUB. Todos los derechos reservados.</p>
             <p className="text-gray-500">
-              Atención WhatsApp: <strong className="text-[#E5C158]">+53 52031972</strong> |{' '}
+              Atención WhatsApp:{" "}
+              <strong className="text-[#E5C158]">+53 52031972</strong> |{" "}
               <a
                 href={whatsappGroupUrl}
                 target="_blank"

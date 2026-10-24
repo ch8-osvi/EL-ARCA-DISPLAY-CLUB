@@ -1,40 +1,55 @@
-import mongoose, { Schema, Document, Model } from 'mongoose';
+import mongoose, { Schema, Document, Model } from "mongoose";
 
 export interface IWhatsAppConfig extends Document {
   adminPhones: string[];
   blacklistedPhones: string[];
   botPhone: string;
-  botStatus: 'online' | 'offline';
+  botStatus: "online" | "offline";
   lastPingAt?: Date;
 }
 
 const WhatsAppConfigSchema = new Schema<IWhatsAppConfig>(
   {
-    adminPhones: { type: [String], default: ['5352031972'] },
+    adminPhones: {
+      type: [String],
+      default: () =>
+        process.env.ADMIN_PHONE_NUMBER
+          ? [process.env.ADMIN_PHONE_NUMBER.replace(/\D/g, "")]
+          : [],
+    },
     blacklistedPhones: { type: [String], default: [] },
-    botPhone: { type: String, default: '' },
-    botStatus: { type: String, enum: ['online', 'offline'], default: 'offline' },
-    lastPingAt: { type: Date, default: Date.now },
+    botPhone: { type: String, default: "" },
+    botStatus: {
+      type: String,
+      enum: ["online", "offline"],
+      default: "offline",
+    },
+    lastPingAt: { type: Date },
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 export const WhatsAppConfig: Model<IWhatsAppConfig> =
   mongoose.models.WhatsAppConfig ||
-  mongoose.model<IWhatsAppConfig>('WhatsAppConfig', WhatsAppConfigSchema);
+  mongoose.model<IWhatsAppConfig>("WhatsAppConfig", WhatsAppConfigSchema);
 
 export async function getWhatsAppConfig(): Promise<IWhatsAppConfig> {
-  let config = await WhatsAppConfig.findOne();
-  if (!config) {
-    config = await WhatsAppConfig.create({
-      adminPhones: ['5352031972'],
-      blacklistedPhones: [],
-      botPhone: process.env.BOT_PHONE || '',
-      botStatus: 'online',
-      lastPingAt: new Date(),
-    });
-  }
-  return config;
+  const existing = await WhatsAppConfig.findOne();
+  if (existing) return existing;
+  return WhatsAppConfig.findOneAndUpdate(
+    { _id: "000000000000000000000002" },
+    {
+      $setOnInsert: {
+        adminPhones: process.env.ADMIN_PHONE_NUMBER
+          ? [process.env.ADMIN_PHONE_NUMBER.replace(/\D/g, "")]
+          : [],
+        blacklistedPhones: [],
+        botPhone: "",
+        botStatus: "offline",
+      },
+    },
+    { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
+  );
 }

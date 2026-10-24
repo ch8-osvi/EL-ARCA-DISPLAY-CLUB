@@ -1,9 +1,18 @@
-'use client';
+"use client";
+import { useWhatsAppPhone } from "@/lib/useWhatsAppPhone";
 
-import React from 'react';
-import { Product, Currency } from '@/lib/types';
-import { MessageSquare, Tag, Smartphone, Search, TrendingUp, AlertCircle, Sparkles } from 'lucide-react';
-import { roundCupPrice } from '@/lib/searchUtils';
+import React from "react";
+import { Product, Currency } from "@/lib/types";
+import {
+  MessageSquare,
+  Tag,
+  Smartphone,
+  Search,
+  TrendingUp,
+  AlertCircle,
+  Sparkles,
+} from "lucide-react";
+import { roundCupPrice } from "@/lib/searchUtils";
 
 interface ProductTableProps {
   products: Product[];
@@ -13,18 +22,18 @@ interface ProductTableProps {
 
 export default function ProductTable({
   products,
-  currency = 'USD',
+  currency = "USD",
   exchangeRate = null,
 }: ProductTableProps) {
-  const whatsappNumber = '5352031972';
+  const whatsappNumber = useWhatsAppPhone();
 
   const getQualityBadgeClass = (calidad: string) => {
     const q = calidad.toUpperCase();
-    if (q.includes('C/M') || q.includes('MARCO')) return 'badge-cm';
-    if (q.includes('ORIGINAL')) return 'badge-original';
-    if (q.includes('INCELL')) return 'badge-incell';
-    if (q.includes('OLED')) return 'badge-oled';
-    return 'badge-other';
+    if (q.includes("C/M") || q.includes("MARCO")) return "badge-cm";
+    if (q.includes("ORIGINAL")) return "badge-original";
+    if (q.includes("INCELL")) return "badge-incell";
+    if (q.includes("OLED")) return "badge-oled";
+    return "badge-other";
   };
 
   return (
@@ -45,7 +54,9 @@ export default function ProductTable({
           <tbody className="divide-y divide-white/5 text-gray-200">
             {products.map((product) => {
               const cupPrice = roundCupPrice(product.precio, exchangeRate);
-              const formattedCUP = (Number.isFinite(cupPrice) ? cupPrice.toLocaleString('es-CU') : 'No disponible');
+              const formattedCUP = Number.isFinite(cupPrice)
+                ? cupPrice.toLocaleString("es-CU")
+                : "No disponible";
 
               const isTopSeller = Boolean(product.isTopSeller);
               const isLowStock = product.stock === 1;
@@ -57,12 +68,12 @@ export default function ProductTable({
               })();
 
               const whatsappText = encodeURIComponent(
-                `Hola! Deseo consultar la disponibilidad del display: ${product.marca} ${product.modelo} (${product.calidad}) - $${product.precio} USD (${formattedCUP} CUP) en EL ARCA DISPLAY CLUB.`
+                `Hola! Deseo consultar la disponibilidad del display: ${product.marca} ${product.modelo} (${product.calidad}) - $${product.precio} USD (${formattedCUP} CUP) en EL ARCA DISPLAY CLUB.`,
               );
               const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${whatsappText}`;
 
               const googleSearchQuery = encodeURIComponent(
-                `display ${product.marca} ${product.modelo} ${product.calidad}`
+                `display ${product.marca} ${product.modelo} ${product.calidad}`,
               );
               const googleSearchUrl = `https://www.google.com/search?tbm=isch&q=${googleSearchQuery}`;
 
@@ -114,7 +125,9 @@ export default function ProductTable({
 
                   {/* Calidad */}
                   <td className="py-3.5 px-6 whitespace-nowrap">
-                    <span className={`badge-quality ${getQualityBadgeClass(product.calidad)}`}>
+                    <span
+                      className={`badge-quality ${getQualityBadgeClass(product.calidad)}`}
+                    >
                       {product.calidad}
                     </span>
                   </td>
@@ -124,12 +137,16 @@ export default function ProductTable({
                     <div className="flex flex-col items-end">
                       <div>
                         <span className="text-base gold-gradient-text">
-                          {currency === 'CUP' ? formattedCUP : `$${product.precio}`}
+                          {currency === "CUP"
+                            ? formattedCUP
+                            : `$${product.precio}`}
                         </span>
-                        <span className="text-xs text-gray-400 ml-1">{currency}</span>
+                        <span className="text-xs text-gray-400 ml-1">
+                          {currency}
+                        </span>
                       </div>
                       <span className="text-[10px] text-gray-400 font-normal">
-                        {currency === 'CUP'
+                        {currency === "CUP"
                           ? `≈ $${product.precio} USD`
                           : `≈ ${formattedCUP} CUP`}
                       </span>
@@ -150,7 +167,8 @@ export default function ProductTable({
                       </a>
 
                       <a
-                        href={whatsappUrl}
+                        href={whatsappNumber ? whatsappUrl : undefined}
+                        aria-disabled={!whatsappNumber}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600/80 hover:bg-emerald-500 text-white text-xs font-bold transition-all duration-200"
@@ -169,4 +187,3 @@ export default function ProductTable({
     </div>
   );
 }
-

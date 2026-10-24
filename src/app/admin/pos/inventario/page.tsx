@@ -1,8 +1,9 @@
-'use client';
+"use client";
+import { checkAdminSession, loginAdmin } from "@/lib/auth-client";
 
-import { useActiveExchangeRate } from '@/lib/useActiveExchangeRate';
-import React, { useState, useEffect, useMemo } from 'react';
-import Link from 'next/link';
+import { useActiveExchangeRate } from "@/lib/useActiveExchangeRate";
+import React, { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import {
   ArrowLeft,
   Boxes,
@@ -20,15 +21,19 @@ import {
   Trash2,
   Pencil,
   RefreshCw,
-} from 'lucide-react';
-import { Product } from '@/lib/types';
+} from "lucide-react";
+import { Product } from "@/lib/types";
 import {
   getBrandCounts,
   getSortedBrands,
   matchBrandFilter,
   sortProductsByPopularity,
-} from '@/lib/brandUtils';
-import { fuzzyMatchProduct, fuzzyMatchGeneric, roundCupPrice } from '@/lib/searchUtils';
+} from "@/lib/brandUtils";
+import {
+  fuzzyMatchProduct,
+  fuzzyMatchGeneric,
+  roundCupPrice,
+} from "@/lib/searchUtils";
 
 interface ProductWithHidden extends Product {
   isHidden?: boolean;
@@ -38,7 +43,7 @@ interface StockHistoryRecord {
   _id: string;
   productId: string;
   productName: string;
-  type: 'entrada' | 'salida' | 'merma';
+  type: "entrada" | "salida" | "merma";
   qty: number;
   stockBefore: number;
   stockAfter: number;
@@ -51,30 +56,33 @@ export default function InventoryPage() {
   const [products, setProducts] = useState<ProductWithHidden[]>([]);
   const [mermas, setMermas] = useState<StockHistoryRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentView, setCurrentView] = useState<'STOCK' | 'MERMAS'>('STOCK');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterStock, setFilterStock] = useState<'ALL' | 'AVAILABLE' | 'OUT'>('ALL');
-  const [selectedBrand, setSelectedBrand] = useState('ALL');
+  const [currentView, setCurrentView] = useState<"STOCK" | "MERMAS">("STOCK");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterStock, setFilterStock] = useState<"ALL" | "AVAILABLE" | "OUT">(
+    "ALL",
+  );
+  const [selectedBrand, setSelectedBrand] = useState("ALL");
   const [exchangeRate, setExchangeRate] = useActiveExchangeRate();
 
   // Add Product Modal State
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newMarca, setNewMarca] = useState('');
-  const [newModelo, setNewModelo] = useState('');
-  const [newCalidadSelect, setNewCalidadSelect] = useState('ORIGINAL C/M');
-  const [newCalidadCustom, setNewCalidadCustom] = useState('');
-  const [newPrecio, setNewPrecio] = useState('');
-  const [newStock, setNewStock] = useState('1');
+  const [newMarca, setNewMarca] = useState("");
+  const [newModelo, setNewModelo] = useState("");
+  const [newCalidadSelect, setNewCalidadSelect] = useState("ORIGINAL C/M");
+  const [newCalidadCustom, setNewCalidadCustom] = useState("");
+  const [newPrecio, setNewPrecio] = useState("");
+  const [newStock, setNewStock] = useState("1");
   const [isSubmittingAdd, setIsSubmittingAdd] = useState(false);
 
   // Edit Product Modal State
-  const [editingProduct, setEditingProduct] = useState<ProductWithHidden | null>(null);
-  const [editMarca, setEditMarca] = useState('');
-  const [editModelo, setEditModelo] = useState('');
-  const [editCalidadSelect, setEditCalidadSelect] = useState('ORIGINAL C/M');
-  const [editCalidadCustom, setEditCalidadCustom] = useState('');
-  const [editPrecio, setEditPrecio] = useState('');
-  const [editStock, setEditStock] = useState('');
+  const [editingProduct, setEditingProduct] =
+    useState<ProductWithHidden | null>(null);
+  const [editMarca, setEditMarca] = useState("");
+  const [editModelo, setEditModelo] = useState("");
+  const [editCalidadSelect, setEditCalidadSelect] = useState("ORIGINAL C/M");
+  const [editCalidadCustom, setEditCalidadCustom] = useState("");
+  const [editPrecio, setEditPrecio] = useState("");
+  const [editStock, setEditStock] = useState("");
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
 
   // Add Stock Modal
@@ -82,8 +90,10 @@ export default function InventoryPage() {
     open: boolean;
     product: ProductWithHidden | null;
   }>({ open: false, product: null });
-  const [addQty, setAddQty] = useState('1');
-  const [adjustReason, setAdjustReason] = useState('Entrada de stock proveedor');
+  const [addQty, setAddQty] = useState("1");
+  const [adjustReason, setAdjustReason] = useState(
+    "Entrada de stock proveedor",
+  );
   const [adjustLoading, setAdjustLoading] = useState(false);
 
   // Movement History Modal
@@ -101,7 +111,10 @@ export default function InventoryPage() {
     isDeleting: boolean;
   }>({ open: false, product: null, isDeleting: false });
 
-  const [toastMessage, setToastMessage] = useState<{ text: string; isError?: boolean } | null>(null);
+  const [toastMessage, setToastMessage] = useState<{
+    text: string;
+    isError?: boolean;
+  } | null>(null);
 
   const triggerToast = (text: string, isError = false) => {
     setToastMessage({ text, isError });
@@ -109,38 +122,35 @@ export default function InventoryPage() {
   };
 
   useEffect(() => {
-    const auth = sessionStorage.getItem('el_arca_admin_auth');
-    if (auth === 'true') {
-      setIsAuthenticated(true);
-    }
+    void checkAdminSession().then(setIsAuthenticated);
   }, []);
 
   const fetchInventory = async () => {
     setLoading(true);
     try {
       const [resStock, resMermas, resRate] = await Promise.allSettled([
-        fetch('/api/stock'),
-        fetch('/api/stock?type=merma'),
-        fetch('/api/exchange-rate'),
+        fetch("/api/stock"),
+        fetch("/api/stock?type=merma"),
+        fetch("/api/exchange-rate"),
       ]);
 
-      if (resStock.status === 'fulfilled' && resStock.value.ok) {
+      if (resStock.status === "fulfilled" && resStock.value.ok) {
         const data = await resStock.value.json();
         setProducts(data.products || []);
       }
-      if (resMermas.status === 'fulfilled' && resMermas.value.ok) {
+      if (resMermas.status === "fulfilled" && resMermas.value.ok) {
         const dataMermas = await resMermas.value.json();
         setMermas(dataMermas.mermas || []);
       }
-      if (resRate.status === 'fulfilled' && resRate.value.ok) {
+      if (resRate.status === "fulfilled" && resRate.value.ok) {
         const dataRate = await resRate.value.json();
-        if (dataRate?.rate && typeof dataRate.rate === 'number') {
+        if (dataRate?.rate && typeof dataRate.rate === "number") {
           setExchangeRate(dataRate.rate);
         }
       }
     } catch (err) {
-      console.error('Error fetching inventory:', err);
-      triggerToast('Error cargando inventario', true);
+      console.error("Error fetching inventory:", err);
+      triggerToast("Error cargando inventario", true);
     } finally {
       setLoading(false);
     }
@@ -158,11 +168,11 @@ export default function InventoryPage() {
     if (!newModelo.trim() || !newPrecio) return;
 
     const finalCalidad =
-      newCalidadSelect === 'CUSTOM'
-        ? newCalidadCustom.trim().toUpperCase() || 'ORIGINAL C/M'
+      newCalidadSelect === "CUSTOM"
+        ? newCalidadCustom.trim().toUpperCase() || "ORIGINAL C/M"
         : newCalidadSelect.trim().toUpperCase();
 
-    const marcaTrimmed = (newMarca || 'VARIOS').toUpperCase().trim();
+    const marcaTrimmed = (newMarca || "VARIOS").toUpperCase().trim();
     const modeloTrimmed = newModelo.trim();
 
     // Check duplicate
@@ -170,11 +180,14 @@ export default function InventoryPage() {
       (p) =>
         p.marca.toUpperCase() === marcaTrimmed &&
         p.modelo.toUpperCase() === modeloTrimmed.toUpperCase() &&
-        p.calidad.toUpperCase() === finalCalidad
+        p.calidad.toUpperCase() === finalCalidad,
     );
 
     if (isDuplicate) {
-      triggerToast('Error: Ya existe un display con la misma Marca, Modelo y Calidad.', true);
+      triggerToast(
+        "Error: Ya existe un display con la misma Marca, Modelo y Calidad.",
+        true,
+      );
       return;
     }
 
@@ -189,27 +202,27 @@ export default function InventoryPage() {
 
     setIsSubmittingAdd(true);
     try {
-      const res = await fetch('/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'add', product: newProd }),
+      const res = await fetch("/api/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "add", product: newProd }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
         triggerToast(`¡Display ${modeloTrimmed} agregado con éxito!`);
         setShowAddModal(false);
-        setNewMarca('');
-        setNewModelo('');
-        setNewCalidadSelect('ORIGINAL C/M');
-        setNewCalidadCustom('');
-        setNewPrecio('');
-        setNewStock('1');
+        setNewMarca("");
+        setNewModelo("");
+        setNewCalidadSelect("ORIGINAL C/M");
+        setNewCalidadCustom("");
+        setNewPrecio("");
+        setNewStock("1");
         fetchInventory();
       } else {
-        triggerToast(data.error || 'Error al guardar el producto', true);
+        triggerToast(data.error || "Error al guardar el producto", true);
       }
     } catch {
-      triggerToast('Error de conexión al guardar producto', true);
+      triggerToast("Error de conexión al guardar producto", true);
     } finally {
       setIsSubmittingAdd(false);
     }
@@ -218,8 +231,8 @@ export default function InventoryPage() {
   // Open add stock modal
   const handleOpenAdjust = (prod: ProductWithHidden) => {
     setAdjustModal({ open: true, product: prod });
-    setAddQty('1');
-    setAdjustReason('Entrada de stock proveedor');
+    setAddQty("1");
+    setAdjustReason("Entrada de stock proveedor");
   };
 
   // Submit stock addition
@@ -229,17 +242,17 @@ export default function InventoryPage() {
 
     const qtyNum = parseInt(addQty, 10);
     if (!qtyNum || isNaN(qtyNum) || qtyNum < 1) {
-      triggerToast('Ingresa una cantidad válida (mínimo 1)', true);
+      triggerToast("Ingresa una cantidad válida (mínimo 1)", true);
       return;
     }
 
     setAdjustLoading(true);
     try {
-      const res = await fetch('/api/stock', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/stock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: 'add',
+          action: "add",
           productId: adjustModal.product.id,
           qty: qtyNum,
           reason: adjustReason,
@@ -248,14 +261,16 @@ export default function InventoryPage() {
 
       const data = await res.json();
       if (res.ok && data.success) {
-        triggerToast(`+${qtyNum} unidades añadidas a ${adjustModal.product.modelo}`);
+        triggerToast(
+          `+${qtyNum} unidades añadidas a ${adjustModal.product.modelo}`,
+        );
         setAdjustModal({ open: false, product: null });
         fetchInventory();
       } else {
-        triggerToast(data.error || 'Error al actualizar stock', true);
+        triggerToast(data.error || "Error al actualizar stock", true);
       }
     } catch {
-      triggerToast('Error de conexión', true);
+      triggerToast("Error de conexión", true);
     } finally {
       setAdjustLoading(false);
     }
@@ -268,25 +283,34 @@ export default function InventoryPage() {
 
   const handleConfirmDelete = async () => {
     if (!deleteConfirmModal.product) return;
-    
+
     setDeleteConfirmModal((prev) => ({ ...prev, isDeleting: true }));
     try {
-      const res = await fetch('/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete-permanent', id: deleteConfirmModal.product.id }),
+      const res = await fetch("/api/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "delete-permanent",
+          id: deleteConfirmModal.product.id,
+        }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        triggerToast(`Producto ${deleteConfirmModal.product.modelo} eliminado permanentemente.`);
+        triggerToast(
+          `Producto ${deleteConfirmModal.product.modelo} eliminado permanentemente.`,
+        );
         fetchInventory(); // Reload inventory
-        setDeleteConfirmModal({ open: false, product: null, isDeleting: false });
+        setDeleteConfirmModal({
+          open: false,
+          product: null,
+          isDeleting: false,
+        });
       } else {
-        triggerToast(data.error || 'Error al eliminar producto', true);
+        triggerToast(data.error || "Error al eliminar producto", true);
         setDeleteConfirmModal((prev) => ({ ...prev, isDeleting: false }));
       }
     } catch {
-      triggerToast('Error de conexión al eliminar producto', true);
+      triggerToast("Error de conexión al eliminar producto", true);
       setDeleteConfirmModal((prev) => ({ ...prev, isDeleting: false }));
     }
   };
@@ -294,31 +318,33 @@ export default function InventoryPage() {
   // Open Edit Product Modal
   const handleOpenEdit = (product: ProductWithHidden) => {
     setEditingProduct(product);
-    setEditMarca(product.marca || '');
-    setEditModelo(product.modelo || '');
-    setEditPrecio(product.precio !== undefined ? product.precio.toString() : '0');
-    setEditStock(product.stock !== undefined ? product.stock.toString() : '0');
+    setEditMarca(product.marca || "");
+    setEditModelo(product.modelo || "");
+    setEditPrecio(
+      product.precio !== undefined ? product.precio.toString() : "0",
+    );
+    setEditStock(product.stock !== undefined ? product.stock.toString() : "0");
 
     const standardQualities = [
-      'ORIGINAL C/M',
-      'INCELL C/M',
-      'OLED C/M',
-      'ORIGINAL',
-      'INCELL',
-      'OLED',
-      'OLED SOFT',
-      'AMOLED C/M',
-      'MECHANIC',
-      'AAA',
+      "ORIGINAL C/M",
+      "INCELL C/M",
+      "OLED C/M",
+      "ORIGINAL",
+      "INCELL",
+      "OLED",
+      "OLED SOFT",
+      "AMOLED C/M",
+      "MECHANIC",
+      "AAA",
     ];
 
-    const currentUpper = (product.calidad || '').toUpperCase().trim();
+    const currentUpper = (product.calidad || "").toUpperCase().trim();
     if (standardQualities.includes(currentUpper)) {
       setEditCalidadSelect(currentUpper);
-      setEditCalidadCustom('');
+      setEditCalidadCustom("");
     } else {
-      setEditCalidadSelect('CUSTOM');
-      setEditCalidadCustom(product.calidad || '');
+      setEditCalidadSelect("CUSTOM");
+      setEditCalidadCustom(product.calidad || "");
     }
   };
 
@@ -329,27 +355,33 @@ export default function InventoryPage() {
 
     const parsedPrecio = parseFloat(editPrecio);
     if (isNaN(parsedPrecio) || parsedPrecio < 0) {
-      triggerToast('Error: Ingresa un precio válido mayor o igual a 0 USD.', true);
+      triggerToast(
+        "Error: Ingresa un precio válido mayor o igual a 0 USD.",
+        true,
+      );
       return;
     }
 
     const parsedStock = parseInt(editStock, 10);
     if (isNaN(parsedStock) || parsedStock < 0) {
-      triggerToast('Error: Ingresa una cantidad de stock válida (mínimo 0).', true);
+      triggerToast(
+        "Error: Ingresa una cantidad de stock válida (mínimo 0).",
+        true,
+      );
       return;
     }
 
     if (!editModelo.trim()) {
-      triggerToast('Error: El modelo no puede estar vacío.', true);
+      triggerToast("Error: El modelo no puede estar vacío.", true);
       return;
     }
 
     const finalCalidad =
-      editCalidadSelect === 'CUSTOM'
-        ? editCalidadCustom.trim().toUpperCase() || 'ORIGINAL'
+      editCalidadSelect === "CUSTOM"
+        ? editCalidadCustom.trim().toUpperCase() || "ORIGINAL"
         : editCalidadSelect.trim().toUpperCase();
 
-    const marcaTrimmed = (editMarca || 'VARIOS').toUpperCase().trim();
+    const marcaTrimmed = (editMarca || "VARIOS").toUpperCase().trim();
     const modeloTrimmed = editModelo.toUpperCase().trim();
 
     setIsSubmittingEdit(true);
@@ -368,15 +400,15 @@ export default function InventoryPage() {
           };
         }
         return p;
-      })
+      }),
     );
 
     try {
-      const res = await fetch('/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: 'update',
+          action: "update",
           id: editingProduct.id,
           marca: marcaTrimmed,
           modelo: modeloTrimmed,
@@ -388,10 +420,12 @@ export default function InventoryPage() {
 
       const data = await res.json();
       if (res.ok && data.success) {
-        triggerToast(`Display ${modeloTrimmed} actualizado: $${parsedPrecio} USD (Stock: ${parsedStock})`);
+        triggerToast(
+          `Display ${modeloTrimmed} actualizado: $${parsedPrecio} USD (Stock: ${parsedStock})`,
+        );
         fetchInventory();
       } else {
-        triggerToast(data.error || 'Display actualizado en modo local', true);
+        triggerToast(data.error || "Display actualizado en modo local", true);
       }
     } catch {
       triggerToast(`Display ${modeloTrimmed} actualizado en modo local`);
@@ -415,11 +449,11 @@ export default function InventoryPage() {
           loading: false,
         });
       } else {
-        triggerToast('Error al cargar movimientos', true);
+        triggerToast("Error al cargar movimientos", true);
         setHistoryModal((prev) => ({ ...prev, loading: false }));
       }
     } catch {
-      triggerToast('Error al conectar con la base de datos', true);
+      triggerToast("Error al conectar con la base de datos", true);
       setHistoryModal((prev) => ({ ...prev, loading: false }));
     }
   };
@@ -431,21 +465,21 @@ export default function InventoryPage() {
 
   // Brand list sorted by frequency (majority of models first)
   const brands = useMemo(() => {
-    return ['ALL', ...getSortedBrands(products)];
+    return ["ALL", ...getSortedBrands(products)];
   }, [products]);
 
   // Filtered & Sorted Products with Intelligent Fuzzy Search
   const filtered = useMemo(() => {
     const scoredList = products
       .map((p) => {
-        if (filterStock === 'OUT' && p.stock > 0) return null;
-        if (filterStock === 'AVAILABLE' && p.stock <= 0) return null;
+        if (filterStock === "OUT" && p.stock > 0) return null;
+        if (filterStock === "AVAILABLE" && p.stock <= 0) return null;
 
         if (!matchBrandFilter(p.marca, selectedBrand)) {
           return null;
         }
 
-        if (searchTerm.trim() !== '') {
+        if (searchTerm.trim() !== "") {
           const { match, score } = fuzzyMatchProduct(p, searchTerm);
           if (!match) return null;
           return { product: p, score };
@@ -453,24 +487,27 @@ export default function InventoryPage() {
 
         return { product: p, score: 0 };
       })
-      .filter((item): item is { product: ProductWithHidden; score: number } => item !== null);
+      .filter(
+        (item): item is { product: ProductWithHidden; score: number } =>
+          item !== null,
+      );
 
-    if (searchTerm.trim() !== '') {
+    if (searchTerm.trim() !== "") {
       scoredList.sort((a, b) => b.score - a.score);
       return scoredList.map((item) => item.product);
     }
 
     return sortProductsByPopularity(
       scoredList.map((item) => item.product),
-      brandCounts
+      brandCounts,
     );
   }, [products, filterStock, selectedBrand, searchTerm, brandCounts]);
 
   // Filtered Mermas with Fuzzy Search
   const filteredMermas = useMemo(() => {
-    if (searchTerm.trim() === '') return mermas;
+    if (searchTerm.trim() === "") return mermas;
     return mermas.filter((m) =>
-      fuzzyMatchGeneric([m.productName, m.reason, m.productId], searchTerm)
+      fuzzyMatchGeneric([m.productName, m.reason, m.productId], searchTerm),
     );
   }, [mermas, searchTerm]);
 
@@ -505,8 +542,8 @@ export default function InventoryPage() {
         <div
           className={`fixed bottom-6 right-6 z-[100] glass-panel px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-bounce border ${
             toastMessage.isError
-              ? 'border-rose-500/60 bg-[#1A1118] text-rose-300 shadow-rose-950/50'
-              : 'border-[#D4AF37]/40 bg-[#121522] text-white shadow-gold-glow'
+              ? "border-rose-500/60 bg-[#1A1118] text-rose-300 shadow-rose-950/50"
+              : "border-[#D4AF37]/40 bg-[#121522] text-white shadow-gold-glow"
           }`}
         >
           {toastMessage.isError ? (
@@ -530,9 +567,12 @@ export default function InventoryPage() {
             </button>
 
             <div className="space-y-1">
-              <h3 className="text-xl font-bold text-white">Agregar Nuevo Display</h3>
+              <h3 className="text-xl font-bold text-white">
+                Agregar Nuevo Display
+              </h3>
               <p className="text-xs text-gray-400">
-                Añade un repuesto individual al catálogo e inventario en tiempo real.
+                Añade un repuesto individual al catálogo e inventario en tiempo
+                real.
               </p>
             </div>
 
@@ -575,7 +615,9 @@ export default function InventoryPage() {
                     onChange={(e) => setNewCalidadSelect(e.target.value)}
                     className="w-full px-3 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-xs focus:border-[#D4AF37] focus:outline-none cursor-pointer"
                   >
-                    <option value="ORIGINAL C/M">ORIGINAL C/M (Con Marco)</option>
+                    <option value="ORIGINAL C/M">
+                      ORIGINAL C/M (Con Marco)
+                    </option>
                     <option value="INCELL C/M">INCELL C/M (Con Marco)</option>
                     <option value="OLED C/M">OLED C/M (Con Marco)</option>
                     <option value="ORIGINAL">ORIGINAL S/M (Sin Marco)</option>
@@ -620,10 +662,11 @@ export default function InventoryPage() {
                 </div>
               </div>
 
-              {newCalidadSelect === 'CUSTOM' && (
+              {newCalidadSelect === "CUSTOM" && (
                 <div>
                   <label className="text-xs font-semibold text-amber-300 block mb-1">
-                    Escribe la calidad personalizada (ej. ORIGINAL C/M ESPECIAL):
+                    Escribe la calidad personalizada (ej. ORIGINAL C/M
+                    ESPECIAL):
                   </label>
                   <input
                     type="text"
@@ -649,7 +692,7 @@ export default function InventoryPage() {
                   disabled={isSubmittingAdd}
                   className="flex-1 py-3 rounded-xl gold-gradient-bg text-black text-xs font-extrabold shadow-gold-glow flex items-center justify-center gap-2 disabled:opacity-50"
                 >
-                  {isSubmittingAdd ? 'Guardando...' : 'Guardar Display'}
+                  {isSubmittingAdd ? "Guardando..." : "Guardar Display"}
                 </button>
               </div>
             </form>
@@ -676,8 +719,14 @@ export default function InventoryPage() {
                 {adjustModal.product.modelo}
               </h3>
               <p className="text-xs text-gray-400">
-                Calidad: <strong className="text-gray-300">{adjustModal.product.calidad}</strong> • Stock actual:{' '}
-                <strong className="text-emerald-400">{adjustModal.product.stock} uds</strong>
+                Calidad:{" "}
+                <strong className="text-gray-300">
+                  {adjustModal.product.calidad}
+                </strong>{" "}
+                • Stock actual:{" "}
+                <strong className="text-emerald-400">
+                  {adjustModal.product.stock} uds
+                </strong>
               </p>
             </div>
 
@@ -723,7 +772,7 @@ export default function InventoryPage() {
                   disabled={adjustLoading}
                   className="flex-1 py-3 rounded-xl gold-gradient-bg text-black text-xs font-extrabold shadow-gold-glow flex items-center justify-center gap-2 disabled:opacity-50"
                 >
-                  {adjustLoading ? 'Guardando...' : 'Confirmar Entrada'}
+                  {adjustLoading ? "Guardando..." : "Confirmar Entrada"}
                 </button>
               </div>
             </form>
@@ -736,7 +785,14 @@ export default function InventoryPage() {
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-lg glass-panel rounded-3xl p-6 border border-white/20 shadow-2xl space-y-4 max-h-[85vh] flex flex-col relative">
             <button
-              onClick={() => setHistoryModal({ open: false, product: null, records: [], loading: false })}
+              onClick={() =>
+                setHistoryModal({
+                  open: false,
+                  product: null,
+                  records: [],
+                  loading: false,
+                })
+              }
               className="absolute top-5 right-5 text-gray-400 hover:text-white"
             >
               <X className="w-5 h-5" />
@@ -750,7 +806,10 @@ export default function InventoryPage() {
                 Historial de Movimientos: {historyModal.product.modelo}
               </h3>
               <p className="text-xs text-gray-400">
-                Stock actual: <strong className="text-white">{historyModal.product.stock} uds</strong>
+                Stock actual:{" "}
+                <strong className="text-white">
+                  {historyModal.product.stock} uds
+                </strong>
               </p>
             </div>
 
@@ -772,16 +831,16 @@ export default function InventoryPage() {
                     <div className="flex items-center gap-2.5">
                       <div
                         className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-                          rec.type === 'entrada'
-                            ? 'bg-emerald-500/20 text-emerald-400'
-                            : rec.type === 'merma'
-                            ? 'bg-rose-500/20 text-rose-400'
-                            : 'bg-amber-500/20 text-amber-300'
+                          rec.type === "entrada"
+                            ? "bg-emerald-500/20 text-emerald-400"
+                            : rec.type === "merma"
+                              ? "bg-rose-500/20 text-rose-400"
+                              : "bg-amber-500/20 text-amber-300"
                         }`}
                       >
-                        {rec.type === 'entrada' ? (
+                        {rec.type === "entrada" ? (
                           <ArrowUpRight className="w-4 h-4" />
-                        ) : rec.type === 'merma' ? (
+                        ) : rec.type === "merma" ? (
                           <AlertOctagon className="w-4 h-4" />
                         ) : (
                           <ArrowDownRight className="w-4 h-4" />
@@ -791,29 +850,33 @@ export default function InventoryPage() {
                         <div className="flex items-center gap-2">
                           <span
                             className={`font-bold ${
-                              rec.type === 'entrada'
-                                ? 'text-emerald-400'
-                                : rec.type === 'merma'
-                                ? 'text-rose-400'
-                                : 'text-amber-300'
+                              rec.type === "entrada"
+                                ? "text-emerald-400"
+                                : rec.type === "merma"
+                                  ? "text-rose-400"
+                                  : "text-amber-300"
                             }`}
                           >
-                            {rec.type === 'entrada'
+                            {rec.type === "entrada"
                               ? `+${rec.qty} Entrada`
-                              : rec.type === 'merma'
-                              ? `-${rec.qty} MERMA / ROTO`
-                              : `-${rec.qty} Venta POS`}
+                              : rec.type === "merma"
+                                ? `-${rec.qty} MERMA / ROTO`
+                                : `-${rec.qty} Venta POS`}
                           </span>
                         </div>
-                        <span className="text-[11px] text-gray-400 block">{rec.reason}</span>
+                        <span className="text-[11px] text-gray-400 block">
+                          {rec.reason}
+                        </span>
                       </div>
                     </div>
                     <div className="text-right shrink-0">
                       <span className="text-[11px] text-gray-300 block font-semibold">
-                        {rec.stockBefore} → <strong className="text-white">{rec.stockAfter}</strong> uds
+                        {rec.stockBefore} →{" "}
+                        <strong className="text-white">{rec.stockAfter}</strong>{" "}
+                        uds
                       </span>
                       <span className="text-[9px] text-gray-500">
-                        {new Date(rec.createdAt).toLocaleDateString('es-CU')}
+                        {new Date(rec.createdAt).toLocaleDateString("es-CU")}
                       </span>
                     </div>
                   </div>
@@ -829,7 +892,13 @@ export default function InventoryPage() {
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-sm glass-panel rounded-3xl p-6 sm:p-7 border border-rose-500/40 shadow-2xl relative space-y-5">
             <button
-              onClick={() => setDeleteConfirmModal({ open: false, product: null, isDeleting: false })}
+              onClick={() =>
+                setDeleteConfirmModal({
+                  open: false,
+                  product: null,
+                  isDeleting: false,
+                })
+              }
               className="absolute top-5 right-5 text-gray-400 hover:text-white"
             >
               <X className="w-5 h-5" />
@@ -840,11 +909,16 @@ export default function InventoryPage() {
                 <ShieldAlert className="w-7 h-7" />
               </div>
               <div>
-                <h3 className="text-lg font-extrabold text-white">¿Eliminar Producto?</h3>
+                <h3 className="text-lg font-extrabold text-white">
+                  ¿Eliminar Producto?
+                </h3>
                 <p className="text-xs text-gray-400 mt-2">
-                  Estás a punto de borrar permanentemente el producto{' '}
-                  <strong className="text-rose-400">{deleteConfirmModal.product.modelo}</strong> ({deleteConfirmModal.product.calidad}).
-                  Esta acción no se puede deshacer y borrará su historial de mermas.
+                  Estás a punto de borrar permanentemente el producto{" "}
+                  <strong className="text-rose-400">
+                    {deleteConfirmModal.product.modelo}
+                  </strong>{" "}
+                  ({deleteConfirmModal.product.calidad}). Esta acción no se
+                  puede deshacer y borrará su historial de mermas.
                 </p>
               </div>
             </div>
@@ -852,7 +926,13 @@ export default function InventoryPage() {
             <div className="flex gap-3 pt-2">
               <button
                 type="button"
-                onClick={() => setDeleteConfirmModal({ open: false, product: null, isDeleting: false })}
+                onClick={() =>
+                  setDeleteConfirmModal({
+                    open: false,
+                    product: null,
+                    isDeleting: false,
+                  })
+                }
                 className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 text-xs font-bold hover:bg-gray-700 transition-colors"
               >
                 Cancelar
@@ -863,7 +943,9 @@ export default function InventoryPage() {
                 disabled={deleteConfirmModal.isDeleting}
                 className="flex-1 py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold shadow-md shadow-rose-950/50 flex items-center justify-center gap-2 disabled:opacity-50 transition-all"
               >
-                {deleteConfirmModal.isDeleting ? 'Eliminando...' : 'Sí, Eliminar'}
+                {deleteConfirmModal.isDeleting
+                  ? "Eliminando..."
+                  : "Sí, Eliminar"}
               </button>
             </div>
           </div>
@@ -892,7 +974,8 @@ export default function InventoryPage() {
               </div>
               <h3 className="text-xl font-bold text-white">Editar Display</h3>
               <p className="text-xs text-gray-400">
-                Ajusta el precio, stock o datos técnicos del display en tiempo real.
+                Ajusta el precio, stock o datos técnicos del display en tiempo
+                real.
               </p>
             </div>
 
@@ -982,7 +1065,7 @@ export default function InventoryPage() {
                 </div>
               </div>
 
-              {editCalidadSelect === 'CUSTOM' && (
+              {editCalidadSelect === "CUSTOM" && (
                 <div>
                   <label className="text-xs font-semibold text-amber-300 block mb-1">
                     Calidad Personalizada:
@@ -1042,7 +1125,9 @@ export default function InventoryPage() {
           </Link>
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#E5C158]/10 border border-[#D4AF37]/30">
             <Boxes className="w-3.5 h-3.5 text-[#D4AF37]" />
-            <span className="text-xs font-bold text-[#E5C158]">{products.length} Modelos Totales</span>
+            <span className="text-xs font-bold text-[#E5C158]">
+              {products.length} Modelos Totales
+            </span>
           </div>
         </div>
       </header>
@@ -1059,7 +1144,9 @@ export default function InventoryPage() {
               Control de Inventario & Stock
             </h1>
             <p className="text-xs text-gray-300 leading-relaxed">
-              Monitorea el inventario vendible en tiempo real, añade nuevas unidades de proveedores y consulta el registro de mermas y repuestos defectuosos.
+              Monitorea el inventario vendible en tiempo real, añade nuevas
+              unidades de proveedores y consulta el registro de mermas y
+              repuestos defectuosos.
             </p>
           </div>
 
@@ -1078,28 +1165,32 @@ export default function InventoryPage() {
             {/* Button 2: Stock Activo */}
             <button
               id="btn-view-stock"
-              onClick={() => setCurrentView('STOCK')}
+              onClick={() => setCurrentView("STOCK")}
               className={`h-10 px-3.5 sm:px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-sm w-full sm:w-auto ${
-                currentView === 'STOCK'
-                  ? 'bg-blue-600/30 hover:bg-blue-600/40 text-blue-200 border border-blue-400/70 ring-1 ring-blue-400/40 shadow-sm shadow-blue-900/30'
-                  : 'bg-blue-600/15 hover:bg-blue-600/25 text-blue-300/80 border border-blue-500/30'
+                currentView === "STOCK"
+                  ? "bg-blue-600/30 hover:bg-blue-600/40 text-blue-200 border border-blue-400/70 ring-1 ring-blue-400/40 shadow-sm shadow-blue-900/30"
+                  : "bg-blue-600/15 hover:bg-blue-600/25 text-blue-300/80 border border-blue-500/30"
               }`}
             >
-              <Boxes className={`w-4 h-4 shrink-0 ${currentView === 'STOCK' ? 'text-blue-300' : 'text-blue-400'}`} />
+              <Boxes
+                className={`w-4 h-4 shrink-0 ${currentView === "STOCK" ? "text-blue-300" : "text-blue-400"}`}
+              />
               <span>Stock Activo</span>
             </button>
 
             {/* Button 3: Mermas & Bajas */}
             <button
               id="btn-view-mermas"
-              onClick={() => setCurrentView('MERMAS')}
+              onClick={() => setCurrentView("MERMAS")}
               className={`h-10 px-3.5 sm:px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-105 shadow-sm w-full sm:w-auto ${
-                currentView === 'MERMAS'
-                  ? 'bg-rose-600/30 hover:bg-rose-600/40 text-rose-200 border border-rose-400/70 ring-1 ring-rose-400/40 shadow-sm shadow-rose-900/30'
-                  : 'bg-rose-600/15 hover:bg-rose-600/25 text-rose-300/80 border border-rose-500/30'
+                currentView === "MERMAS"
+                  ? "bg-rose-600/30 hover:bg-rose-600/40 text-rose-200 border border-rose-400/70 ring-1 ring-rose-400/40 shadow-sm shadow-rose-900/30"
+                  : "bg-rose-600/15 hover:bg-rose-600/25 text-rose-300/80 border border-rose-500/30"
               }`}
             >
-              <AlertOctagon className={`w-4 h-4 shrink-0 ${currentView === 'MERMAS' ? 'text-rose-300' : 'text-rose-400'}`} />
+              <AlertOctagon
+                className={`w-4 h-4 shrink-0 ${currentView === "MERMAS" ? "text-rose-300" : "text-rose-400"}`}
+              />
               <span>Mermas & Bajas ({totalMermaUnits})</span>
             </button>
           </div>
@@ -1108,7 +1199,7 @@ export default function InventoryPage() {
         {/* ------------------------------------------------------------- */}
         {/* VIEW 1: ACTIVE INVENTORY & STOCK */}
         {/* ------------------------------------------------------------- */}
-        {currentView === 'STOCK' && (
+        {currentView === "STOCK" && (
           <>
             {/* Search & Stock Filter Bar */}
             <div className="space-y-3">
@@ -1126,31 +1217,31 @@ export default function InventoryPage() {
 
                 <div className="flex items-center gap-2 w-full sm:w-auto">
                   <button
-                    onClick={() => setFilterStock('ALL')}
+                    onClick={() => setFilterStock("ALL")}
                     className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
-                      filterStock === 'ALL'
-                        ? 'gold-gradient-bg text-black shadow-gold-glow'
-                        : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
+                      filterStock === "ALL"
+                        ? "gold-gradient-bg text-black shadow-gold-glow"
+                        : "bg-[#10131E] text-gray-400 hover:text-white border border-white/10"
                     }`}
                   >
                     Todos
                   </button>
                   <button
-                    onClick={() => setFilterStock('AVAILABLE')}
+                    onClick={() => setFilterStock("AVAILABLE")}
                     className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
-                      filterStock === 'AVAILABLE'
-                        ? 'bg-emerald-600 text-white shadow-md'
-                        : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
+                      filterStock === "AVAILABLE"
+                        ? "bg-emerald-600 text-white shadow-md"
+                        : "bg-[#10131E] text-gray-400 hover:text-white border border-white/10"
                     }`}
                   >
                     Disponibles
                   </button>
                   <button
-                    onClick={() => setFilterStock('OUT')}
+                    onClick={() => setFilterStock("OUT")}
                     className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
-                      filterStock === 'OUT'
-                        ? 'bg-rose-600 text-white shadow-md'
-                        : 'bg-[#10131E] text-gray-400 hover:text-white border border-white/10'
+                      filterStock === "OUT"
+                        ? "bg-rose-600 text-white shadow-md"
+                        : "bg-[#10131E] text-gray-400 hover:text-white border border-white/10"
                     }`}
                   >
                     Agotados
@@ -1161,23 +1252,24 @@ export default function InventoryPage() {
               {/* Brand Filter */}
               <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
                 {brands.map((b) => {
-                  const count = b === 'ALL' ? products.length : brandCounts.get(b) || 0;
+                  const count =
+                    b === "ALL" ? products.length : brandCounts.get(b) || 0;
                   return (
                     <button
                       key={b}
                       onClick={() => setSelectedBrand(b)}
                       className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all duration-200 flex items-center gap-1.5 ${
                         selectedBrand === b
-                          ? 'gold-gradient-bg text-black shadow-gold-glow scale-105'
-                          : 'bg-[#10131E] text-gray-300 hover:text-white border border-white/10 hover:border-white/20'
+                          ? "gold-gradient-bg text-black shadow-gold-glow scale-105"
+                          : "bg-[#10131E] text-gray-300 hover:text-white border border-white/10 hover:border-white/20"
                       }`}
                     >
-                      <span>{b === 'ALL' ? 'Todas las Marcas' : b}</span>
+                      <span>{b === "ALL" ? "Todas las Marcas" : b}</span>
                       <span
                         className={`text-[10px] px-1.5 py-0.5 rounded-md font-extrabold ${
                           selectedBrand === b
-                            ? 'bg-black/20 text-black'
-                            : 'bg-white/10 text-[#E5C158]'
+                            ? "bg-black/20 text-black"
+                            : "bg-white/10 text-[#E5C158]"
                         }`}
                       >
                         {count}
@@ -1192,7 +1284,10 @@ export default function InventoryPage() {
             {loading ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {[...Array(8)].map((_, i) => (
-                  <div key={i} className="glass-card rounded-2xl p-4 border border-white/5 flex flex-col justify-between min-h-[195px] animate-pulse">
+                  <div
+                    key={i}
+                    className="glass-card rounded-2xl p-4 border border-white/5 flex flex-col justify-between min-h-[195px] animate-pulse"
+                  >
                     <div>
                       <div className="flex items-center justify-between gap-1 mb-2">
                         <div className="w-16 h-5 bg-white/10 rounded-md"></div>
@@ -1219,23 +1314,27 @@ export default function InventoryPage() {
             ) : filtered.length === 0 ? (
               <div className="glass-panel rounded-3xl p-16 text-center space-y-2 border border-white/10">
                 <Boxes className="w-8 h-8 text-gray-600 mx-auto" />
-                <p className="text-gray-300 font-bold text-sm">No se encontraron productos</p>
+                <p className="text-gray-300 font-bold text-sm">
+                  No se encontraron productos
+                </p>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {filtered.map((prod) => {
                   const cupPrice = roundCupPrice(prod.precio, exchangeRate);
-                  const formattedCUP = (Number.isFinite(cupPrice) ? cupPrice.toLocaleString('es-CU') : 'No disponible');
+                  const formattedCUP = Number.isFinite(cupPrice)
+                    ? cupPrice.toLocaleString("es-CU")
+                    : "No disponible";
 
                   return (
                     <div
                       key={prod.id}
                       className={`glass-card rounded-2xl p-4 border flex flex-col justify-between transition-all ${
                         prod.stock <= 0
-                          ? 'border-rose-500/30 opacity-75'
+                          ? "border-rose-500/30 opacity-75"
                           : prod.stock <= 2
-                          ? 'border-amber-500/30'
-                          : 'border-white/10'
+                            ? "border-amber-500/30"
+                            : "border-white/10"
                       }`}
                     >
                       <div>
@@ -1258,15 +1357,24 @@ export default function InventoryPage() {
                         {/* Dual Currency Price (CUP & USD) */}
                         <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-[#10131E]/80 border border-white/5">
                           <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] uppercase font-bold text-gray-400">Precio:</span>
+                            <span className="text-[10px] uppercase font-bold text-gray-400">
+                              Precio:
+                            </span>
                             <span className="text-xs sm:text-sm font-extrabold text-[#F3E0A9]">
-                              {formattedCUP} <span className="text-[10px] font-semibold text-[#E5C158]">CUP</span>
+                              {formattedCUP}{" "}
+                              <span className="text-[10px] font-semibold text-[#E5C158]">
+                                CUP
+                              </span>
                             </span>
                           </div>
                           <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">
-                            <span className="text-[10px] text-gray-400 font-medium">≈</span>
+                            <span className="text-[10px] text-gray-400 font-medium">
+                              ≈
+                            </span>
                             <span>${prod.precio}</span>
-                            <span className="text-[9px] text-emerald-300/70 font-semibold">USD</span>
+                            <span className="text-[9px] text-emerald-300/70 font-semibold">
+                              USD
+                            </span>
                           </div>
                         </div>
 
@@ -1276,15 +1384,15 @@ export default function InventoryPage() {
                           <span
                             className={`font-extrabold ${
                               prod.stock <= 0
-                                ? 'text-rose-400'
+                                ? "text-rose-400"
                                 : prod.stock <= 2
-                                ? 'text-amber-400'
-                                : 'text-emerald-400'
+                                  ? "text-amber-400"
+                                  : "text-emerald-400"
                             }`}
                           >
                             {prod.stock <= 0
-                              ? 'Agotado (0)'
-                              : `${prod.stock} ${prod.stock === 1 ? 'unidad' : 'unidades'}`}
+                              ? "Agotado (0)"
+                              : `${prod.stock} ${prod.stock === 1 ? "unidad" : "unidades"}`}
                           </span>
                         </div>
 
@@ -1331,7 +1439,7 @@ export default function InventoryPage() {
         {/* ------------------------------------------------------------- */}
         {/* VIEW 2: MERMAS & DEFECTIVE PARTS AUDIT */}
         {/* ------------------------------------------------------------- */}
-        {currentView === 'MERMAS' && (
+        {currentView === "MERMAS" && (
           <div className="space-y-4">
             <div className="glass-panel rounded-2xl p-5 border border-rose-500/30 bg-rose-950/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
@@ -1340,21 +1448,29 @@ export default function InventoryPage() {
                   Registro de Mermas, Roturas y Garantías
                 </h3>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  Estos repuestos fueron devueltos por fallas/rotura y fueron dados de baja permanentemente del inventario vendible.
+                  Estos repuestos fueron devueltos por fallas/rotura y fueron
+                  dados de baja permanentemente del inventario vendible.
                 </p>
               </div>
               <div className="px-4 py-2 rounded-xl bg-rose-500/20 border border-rose-500/40 text-center shrink-0">
-                <span className="text-xs font-bold text-gray-300 block">Total Piezas en Merma</span>
-                <span className="text-xl font-extrabold text-rose-400 block">{totalMermaUnits} uds</span>
+                <span className="text-xs font-bold text-gray-300 block">
+                  Total Piezas en Merma
+                </span>
+                <span className="text-xl font-extrabold text-rose-400 block">
+                  {totalMermaUnits} uds
+                </span>
               </div>
             </div>
 
             {filteredMermas.length === 0 ? (
               <div className="glass-panel rounded-3xl p-16 text-center space-y-2 border border-white/10">
                 <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto" />
-                <h4 className="text-sm font-bold text-white">No hay mermas registradas</h4>
+                <h4 className="text-sm font-bold text-white">
+                  No hay mermas registradas
+                </h4>
                 <p className="text-xs text-gray-400">
-                  Cuando proceses una devolución seleccionando "Baja / Merma (Roto)", aparecerá registrada aquí automáticamente.
+                  Cuando proceses una devolución seleccionando "Baja / Merma
+                  (Roto)", aparecerá registrada aquí automáticamente.
                 </p>
               </div>
             ) : (
@@ -1370,9 +1486,11 @@ export default function InventoryPage() {
                       </div>
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-extrabold text-sm text-white">{m.productName}</span>
+                          <span className="font-extrabold text-sm text-white">
+                            {m.productName}
+                          </span>
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                            {m.qty} {m.qty === 1 ? 'unidad' : 'unidades'}
+                            {m.qty} {m.qty === 1 ? "unidad" : "unidades"}
                           </span>
                         </div>
                         <span className="text-xs text-gray-400 block mt-0.5">
@@ -1383,7 +1501,13 @@ export default function InventoryPage() {
 
                     <div className="text-left sm:text-right shrink-0 border-t sm:border-t-0 pt-2 sm:pt-0 border-white/5">
                       <span className="text-xs text-gray-400 block">
-                        Registrado el {new Date(m.createdAt).toLocaleDateString('es-CU')} a las {new Date(m.createdAt).toLocaleTimeString('es-CU', { hour: '2-digit', minute: '2-digit' })}
+                        Registrado el{" "}
+                        {new Date(m.createdAt).toLocaleDateString("es-CU")} a
+                        las{" "}
+                        {new Date(m.createdAt).toLocaleTimeString("es-CU", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
                       </span>
                     </div>
                   </div>

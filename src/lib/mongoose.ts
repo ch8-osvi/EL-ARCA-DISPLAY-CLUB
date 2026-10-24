@@ -1,4 +1,13 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
+import { setServers } from "node:dns";
+import { isIP } from "node:net";
+mongoose.set("transactionAsyncLocalStorage", true);
+if (process.env.MONGODB_DNS_SERVERS) {
+  const servers = process.env.MONGODB_DNS_SERVERS.split(",").map((s) =>
+    s.trim(),
+  );
+  if (servers.length && servers.every((s) => isIP(s))) setServers(servers);
+}
 
 /**
  * Global is used here to maintain a cached connection across hot reloads
@@ -14,7 +23,9 @@ if (!cached) {
 async function connectToDatabase() {
   const uri = process.env.MONGODB_URI;
   if (!uri) {
-    throw new Error('Por favor define la variable MONGODB_URI dentro de .env.local');
+    throw new Error(
+      "Por favor define la variable MONGODB_URI dentro de .env.local",
+    );
   }
 
   if (cached.conn) {
@@ -24,15 +35,21 @@ async function connectToDatabase() {
   if (!cached.promise) {
     const opts = {
       bufferCommands: false,
+      maxPoolSize: 10,
+      serverSelectionTimeoutMS: 10000,
+      connectTimeoutMS: 10000,
     };
 
-    cached.promise = mongoose.connect(uri, opts).then((mongoose) => {
-      console.log('✅ Conectado a MongoDB Atlas (Mongoose)');
-      return mongoose;
-    }).catch(err => {
-      console.error('❌ Error conectando a MongoDB:', err);
-      throw err;
-    });
+    cached.promise = mongoose
+      .connect(uri, opts)
+      .then((mongoose) => {
+        console.log("✅ Conectado a MongoDB Atlas (Mongoose)");
+        return mongoose;
+      })
+      .catch((err) => {
+        console.error("❌ Error conectando a MongoDB:", err);
+        throw err;
+      });
   }
 
   try {

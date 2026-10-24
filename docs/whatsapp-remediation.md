@@ -111,6 +111,8 @@ Validación de esta entrega: 30 pruebas automatizadas correctas, compilación de
 
 Validación de esta revisión: 33 pruebas automatizadas, compilación y pruebas de integración en base aislada. Se verificaron recibos simultáneos para evitar que el historial retroceda de leído a enviado. Con autorización del propietario se hicieron dos envíos únicamente a su número y se procesó su respuesta real «Hola prueba». La primera entrega por teléfono necesitó dos reintentos; la respuesta posterior por LID no tuvo reintentos, tardó 889 ms en la IA y notificó lectura unos 3,4 segundos después del envío. El segundo envío por LID también llegó sin reintentos. El propietario confirmó que la respuesta y la segunda prueba se veían sin el cartel de espera y con la negrita correcta. No se enviaron pruebas a clientes.
 
+La carga inicial de `/admin/whatsapp` utiliza un único componente de skeleton tanto en la ruta como durante la comprobación de sesión y la primera consulta de datos. El panel no se muestra en el intervalo entre autenticar y comenzar la consulta. Al terminar esa primera consulta se muestra el contenido o su error; los refrescos posteriores no vuelven a reemplazar toda la pantalla por un skeleton.
+
 ## Límites operativos explícitos
 
 - La PC y WhatsApp deben permanecer disponibles. El panel marca desconexión tras 60 segundos sin señal; la cola conserva pendientes hasta siete días.

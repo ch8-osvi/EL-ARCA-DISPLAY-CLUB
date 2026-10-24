@@ -308,22 +308,27 @@ export default function Home() {
 
         {/* Catalog Grid or Table View */}
         {loading ? (
-          // Skeleton loading state
+          // Luxury Skeleton loading state matching ProductCard dimensions
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
             {Array.from({ length: 8 }).map((_, i) => (
               <div
                 key={i}
-                className="glass-card rounded-2xl p-5 flex flex-col gap-3 animate-pulse"
+                className="glass-card rounded-2xl p-5 flex flex-col justify-between min-h-[220px] animate-pulse border border-white/5 bg-white/[0.02]"
               >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="h-6 w-20 bg-white/10 rounded-lg" />
-                  <div className="h-5 w-16 bg-white/10 rounded-full" />
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="h-5 w-20 bg-white/10 rounded-md" />
+                    <div className="h-5 w-24 bg-white/10 rounded-full" />
+                  </div>
+                  <div className="h-5 w-4/5 bg-white/15 rounded-lg" />
+                  <div className="h-3.5 w-1/2 bg-white/5 rounded-md" />
                 </div>
-                <div className="h-4 w-full bg-white/10 rounded-lg" />
-                <div className="h-4 w-3/4 bg-white/10 rounded-lg" />
-                <div className="mt-auto pt-4 border-t border-white/5 flex items-center justify-between">
-                  <div className="h-7 w-16 bg-white/10 rounded-lg" />
-                  <div className="h-8 w-24 bg-white/10 rounded-xl" />
+                <div className="mt-6 pt-4 border-t border-white/5 flex items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="h-6 w-20 bg-white/15 rounded-lg" />
+                    <div className="h-3.5 w-16 bg-white/5 rounded" />
+                  </div>
+                  <div className="h-9 w-28 bg-emerald-500/10 border border-emerald-500/20 rounded-xl" />
                 </div>
               </div>
             ))}

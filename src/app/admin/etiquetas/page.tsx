@@ -622,7 +622,23 @@ export default function EtiquetasPage() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             {/* COLUMNA IZQUIERDA */}
             <div className="lg:col-span-7 space-y-4">
-              {mode === "box" ? (
+              {loadingProducts ? (
+                <div className="space-y-4 animate-pulse">
+                  {[...Array(2)].map((_, i) => (
+                    <div
+                      key={i}
+                      className="glass-card rounded-2xl p-5 border border-white/5 space-y-4 bg-white/[0.02]"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="h-5 w-36 bg-white/10 rounded-md" />
+                        <div className="h-6 w-16 bg-white/10 rounded-lg" />
+                      </div>
+                      <div className="h-10 w-full bg-white/5 rounded-xl" />
+                      <div className="h-24 w-full bg-white/5 rounded-xl" />
+                    </div>
+                  ))}
+                </div>
+              ) : mode === "box" ? (
                 <>
                   <div className="flex items-center justify-between">
                     <h2 className="text-base font-extrabold text-white flex items-center gap-2">

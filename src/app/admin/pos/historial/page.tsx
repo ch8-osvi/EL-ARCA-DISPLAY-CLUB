@@ -939,126 +939,147 @@ export default function SalesHistoryPage() {
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {/* Daily Cash & Refund Summary Banner */}
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* USD Cash Drawer */}
-          <div className="glass-card rounded-2xl p-5 border border-emerald-500/40 relative overflow-hidden bg-emerald-950/10">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                Caja USD Hoy (Efectivo)
-              </span>
-              <DollarSign className="w-4 h-4 text-emerald-400" />
-            </div>
-            <div className="text-2xl font-extrabold text-white mt-2">
-              $
-              {(daily.todayNetUSD !== undefined
-                ? daily.todayNetUSD
-                : 0
-              ).toFixed(2)}{" "}
-              USD
-            </div>
-            <div className="text-[11px] text-gray-400 mt-1 space-y-0.5">
-              <div className="flex justify-between">
-                <span>Ventas cobradas:</span>
-                <strong className="text-emerald-300">
-                  ${(daily.todayGrossUSD || 0).toFixed(2)}
-                </strong>
-              </div>
-              {daily.todayRefundsUSD > 0 && (
-                <div className="flex justify-between text-rose-400 font-semibold">
-                  <span>Devoluciones:</span>
-                  <span>-${daily.todayRefundsUSD.toFixed(2)}</span>
+        {loading ? (
+          <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-pulse">
+            {[...Array(4)].map((_, i) => (
+              <div
+                key={i}
+                className="glass-card rounded-2xl p-5 border border-white/5 space-y-3 bg-white/[0.02]"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="h-3.5 w-28 bg-white/10 rounded-md" />
+                  <div className="w-5 h-5 bg-white/10 rounded-lg" />
                 </div>
-              )}
-              <div className="flex justify-between text-gray-500 text-[10px] pt-1 border-t border-white/5">
-                <span>{daily.usdCount || 0} órdenes en USD</span>
-                {daily.todayPendingUSD > 0 && (
-                  <span className="text-amber-400 font-semibold">
-                    Pendiente: ${daily.todayPendingUSD.toFixed(2)}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* CUP Cash Drawer */}
-          <div className="glass-card rounded-2xl p-5 border border-[#D4AF37]/40 relative overflow-hidden bg-[#121626]">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-[#E5C158]">
-                Caja CUP Hoy (Efectivo)
-              </span>
-              <Banknote className="w-4 h-4 text-[#D4AF37]" />
-            </div>
-            <div className="text-2xl font-extrabold text-white mt-2">
-              {(daily.todayNetCUP !== undefined
-                ? daily.todayNetCUP
-                : 0
-              ).toLocaleString("en-US", {
-                minimumFractionDigits: 0,
-                maximumFractionDigits: 0,
-              })}{" "}
-              CUP
-            </div>
-            <div className="text-[11px] text-gray-400 mt-1 space-y-0.5">
-              <div className="flex justify-between">
-                <span>Ventas cobradas:</span>
-                <strong className="text-[#F3E0A9]">
-                  {(daily.todayGrossCUP || 0).toLocaleString()} CUP
-                </strong>
-              </div>
-              {daily.todayRefundsCUP > 0 && (
-                <div className="flex justify-between text-rose-400 font-semibold">
-                  <span>Devoluciones:</span>
-                  <span>
-                    -{(daily.todayRefundsCUP || 0).toLocaleString()} CUP
-                  </span>
+                <div className="h-7 w-36 bg-white/15 rounded-lg mt-2" />
+                <div className="space-y-1.5 pt-2 border-t border-white/5">
+                  <div className="h-3 w-full bg-white/5 rounded" />
+                  <div className="h-3 w-2/3 bg-white/5 rounded" />
                 </div>
-              )}
-              <div className="flex justify-between text-gray-500 text-[10px] pt-1 border-t border-white/5">
-                <span>{daily.cupCount || 0} órdenes en CUP</span>
-                {daily.todayPendingCUP > 0 && (
-                  <span className="text-amber-400 font-semibold">
-                    Pendiente: {(daily.todayPendingCUP || 0).toLocaleString()}{" "}
-                    CUP
-                  </span>
+              </div>
+            ))}
+          </section>
+        ) : (
+          <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* USD Cash Drawer */}
+            <div className="glass-card rounded-2xl p-5 border border-emerald-500/40 relative overflow-hidden bg-emerald-950/10">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
+                  Caja USD Hoy (Efectivo)
+                </span>
+                <DollarSign className="w-4 h-4 text-emerald-400" />
+              </div>
+              <div className="text-2xl font-extrabold text-white mt-2">
+                $
+                {(daily.todayNetUSD !== undefined
+                  ? daily.todayNetUSD
+                  : 0
+                ).toFixed(2)}{" "}
+                USD
+              </div>
+              <div className="text-[11px] text-gray-400 mt-1 space-y-0.5">
+                <div className="flex justify-between">
+                  <span>Ventas cobradas:</span>
+                  <strong className="text-emerald-300">
+                    ${(daily.todayGrossUSD || 0).toFixed(2)}
+                  </strong>
+                </div>
+                {daily.todayRefundsUSD > 0 && (
+                  <div className="flex justify-between text-rose-400 font-semibold">
+                    <span>Devoluciones:</span>
+                    <span>-${daily.todayRefundsUSD.toFixed(2)}</span>
+                  </div>
                 )}
+                <div className="flex justify-between text-gray-500 text-[10px] pt-1 border-t border-white/5">
+                  <span>{daily.usdCount || 0} órdenes en USD</span>
+                  {daily.todayPendingUSD > 0 && (
+                    <span className="text-amber-400 font-semibold">
+                      Pendiente: ${daily.todayPendingUSD.toFixed(2)}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Orders Count Today */}
-          <div className="glass-card rounded-2xl p-5 border border-blue-500/30">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-blue-400">
-                Órdenes de Hoy
-              </span>
-              <Calendar className="w-4 h-4 text-blue-400" />
+            {/* CUP Cash Drawer */}
+            <div className="glass-card rounded-2xl p-5 border border-[#D4AF37]/40 relative overflow-hidden bg-[#121626]">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#E5C158]">
+                  Caja CUP Hoy (Efectivo)
+                </span>
+                <Banknote className="w-4 h-4 text-[#D4AF37]" />
+              </div>
+              <div className="text-2xl font-extrabold text-white mt-2">
+                {(daily.todayNetCUP !== undefined
+                  ? daily.todayNetCUP
+                  : 0
+                ).toLocaleString("en-US", {
+                  minimumFractionDigits: 0,
+                  maximumFractionDigits: 0,
+                })}{" "}
+                CUP
+              </div>
+              <div className="text-[11px] text-gray-400 mt-1 space-y-0.5">
+                <div className="flex justify-between">
+                  <span>Ventas cobradas:</span>
+                  <strong className="text-[#F3E0A9]">
+                    {(daily.todayGrossCUP || 0).toLocaleString()} CUP
+                  </strong>
+                </div>
+                {daily.todayRefundsCUP > 0 && (
+                  <div className="flex justify-between text-rose-400 font-semibold">
+                    <span>Devoluciones:</span>
+                    <span>
+                      -{(daily.todayRefundsCUP || 0).toLocaleString()} CUP
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between text-gray-500 text-[10px] pt-1 border-t border-white/5">
+                  <span>{daily.cupCount || 0} órdenes en CUP</span>
+                  {daily.todayPendingCUP > 0 && (
+                    <span className="text-amber-400 font-semibold">
+                      Pendiente: {(daily.todayPendingCUP || 0).toLocaleString()}{" "}
+                      CUP
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
-            <div className="text-2xl font-extrabold text-white mt-2">
-              {daily.count || 0}
-            </div>
-            <div className="text-[11px] text-gray-400 mt-1 flex justify-between">
-              <span>{daily.usdCount || 0} en USD</span>
-              <span>•</span>
-              <span>{daily.cupCount || 0} en CUP</span>
-            </div>
-          </div>
 
-          {/* Historic Total */}
-          <div className="glass-card rounded-2xl p-5 border border-white/10">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-gray-400">
-                Total Histórico
+            {/* Orders Count Today */}
+            <div className="glass-card rounded-2xl p-5 border border-blue-500/30">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-blue-400">
+                  Órdenes de Hoy
+                </span>
+                <Calendar className="w-4 h-4 text-blue-400" />
+              </div>
+              <div className="text-2xl font-extrabold text-white mt-2">
+                {daily.count || 0}
+              </div>
+              <div className="text-[11px] text-gray-400 mt-1 flex justify-between">
+                <span>{daily.usdCount || 0} en USD</span>
+                <span>•</span>
+                <span>{daily.cupCount || 0} en CUP</span>
+              </div>
+            </div>
+
+            {/* Historic Total */}
+            <div className="glass-card rounded-2xl p-5 border border-white/10">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-gray-400">
+                  Total Histórico
+                </span>
+                <History className="w-4 h-4 text-gray-400" />
+              </div>
+              <div className="text-2xl font-extrabold text-white mt-2">
+                {sales.length}
+              </div>
+              <span className="text-[11px] text-gray-400">
+                Órdenes totales en base de datos
               </span>
-              <History className="w-4 h-4 text-gray-400" />
             </div>
-            <div className="text-2xl font-extrabold text-white mt-2">
-              {sales.length}
-            </div>
-            <span className="text-[11px] text-gray-400">
-              Órdenes totales en base de datos
-            </span>
-          </div>
-        </section>
+          </section>
+        )}
 
         {/* Search and Advanced Filter Control Center */}
         <div className="glass-card rounded-3xl p-5 border border-white/10 space-y-4">
@@ -1304,11 +1325,31 @@ export default function SalesHistoryPage() {
           </div>
         </div>
 
-        {/* Sales Table */}
+        {/* Sales Table / Skeleton */}
         {loading ? (
-          <div className="py-20 text-center space-y-3">
-            <div className="w-8 h-8 border-3 border-[#D4AF37] border-t-transparent rounded-full animate-spin mx-auto" />
-            <p className="text-gray-400 text-xs">Cargando ventas...</p>
+          <div className="space-y-3">
+            {[...Array(6)].map((_, i) => (
+              <div
+                key={i}
+                className="glass-card rounded-2xl p-4 sm:p-5 border border-white/5 animate-pulse flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white/[0.02]"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-white/10 shrink-0" />
+                  <div className="space-y-2">
+                    <div className="h-4 w-40 bg-white/10 rounded-md" />
+                    <div className="h-3 w-56 bg-white/5 rounded-md" />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between md:justify-end gap-4 w-full md:w-auto pt-3 md:pt-0 border-t md:border-t-0 border-white/5">
+                  <div className="space-y-1.5 text-right hidden sm:block">
+                    <div className="h-4 w-28 bg-white/10 rounded-md ml-auto" />
+                    <div className="h-3 w-16 bg-white/5 rounded-md ml-auto" />
+                  </div>
+                  <div className="h-7 w-20 bg-white/10 rounded-full" />
+                  <div className="h-8 w-24 bg-white/10 rounded-xl" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : filteredSales.length === 0 ? (
           <div className="glass-panel rounded-3xl p-16 text-center space-y-3 border border-white/10">

@@ -1086,17 +1086,20 @@ export default function AIAssistantPage() {
                 </div>
               ))}
 
-              {/* Thinking Indicator */}
+              {/* Thinking Indicator / AI Response Skeleton */}
               {loading && (
-                <div className="flex items-start gap-3">
+                <div className="flex items-start gap-3 animate-fade-in">
                   <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-700 text-white flex items-center justify-center shrink-0 shadow-lg shadow-purple-950/40">
                     <Bot className="w-4 h-4 animate-bounce" />
                   </div>
-                  <div className="glass-card rounded-2xl px-4 py-3 border border-purple-500/30 flex items-center gap-2.5 text-xs text-purple-200 bg-[#121628]/90 shadow-xl">
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#D4AF37]" />
-                    <span className="font-semibold tracking-wide">
-                      Consultando datos y procesando...
-                    </span>
+                  <div className="max-w-[85%] sm:max-w-[70%] rounded-2xl p-4 bg-[#121626] border border-purple-500/30 text-gray-200 shadow-xl space-y-2.5 animate-pulse">
+                    <div className="flex items-center gap-2 text-xs text-purple-300 font-semibold mb-2">
+                      <Sparkles className="w-3.5 h-3.5 text-[#D4AF37] animate-spin" />
+                      <span>Analizando solicitud con Gemini...</span>
+                    </div>
+                    <div className="h-3.5 w-3/4 bg-white/10 rounded-md" />
+                    <div className="h-3.5 w-full bg-white/10 rounded-md" />
+                    <div className="h-3.5 w-1/2 bg-white/10 rounded-md" />
                   </div>
                 </div>
               )}

@@ -24,6 +24,7 @@ const { messageStore } = require("./message-store");
 const { scanPage } = require("./scan-page");
 const { recoverableSignalError } = require("./errors");
 const { sendQueuedText } = require("./send-text");
+const { transientConnectionError, reconnectScheduler } = require("./reconnect");
 const { signedHeaders, equalSecret, extractText } = require("./security");
 const PORT = Number(process.env.PORT || 7860),
   HOST = "127.0.0.1";
@@ -67,12 +68,17 @@ let sock = null,
   phone = "",
   qr = "",
   stopping = false,
+  loggedOut = false,
   reconnecting = false,
-  backoff = 2000,
   working = false,
   submitting = false,
   lastError = "",
   lastHeartbeat = 0;
+const reconnect = reconnectScheduler({
+  connect: start,
+  stopped: () => stopping || loggedOut,
+  onError: fatal,
+});
 const app = express();
 app.disable("x-powered-by");
 app.use(express.urlencoded({ extended: false, limit: "2kb" }));
@@ -343,7 +349,7 @@ async function start() {
   try {
     const { state, saveCreds, flush } = await authStore(AUTH);
     flushAuth = flush;
-    const { version } = await fetchLatestBaileysVersion();
+    const { version } = await fetchLatestBaileysVersion({ timeout: 10000 });
     const current = makeWASocket({
       version,
       auth: {
@@ -381,7 +387,7 @@ async function start() {
         phone =
           current.user?.id?.split(":")[0]?.split("@")[0]?.replace(/\D/g, "") ||
           "";
-        backoff = 2000;
+        reconnect.reset();
         console.log(
           "[WhatsApp] Conectado. Panel QR: http://127.0.0.1:" + PORT + "/scan",
         );
@@ -392,16 +398,14 @@ async function start() {
         lastHeartbeat = 0;
         const code = update.lastDisconnect?.error?.output?.statusCode;
         if (code === DisconnectReason.loggedOut) {
+          loggedOut = true;
+          reconnect.reset();
           console.error(
             "[WhatsApp] Sesión cerrada desde el teléfono. Conserva una copia y retira auth_session para vincular de nuevo.",
           );
           return;
         }
-        if (!stopping) {
-          const delay = backoff;
-          backoff = Math.min(60000, backoff * 2);
-          setTimeout(() => start().catch(fatal), delay);
-        }
+        reconnect.schedule();
       }
     });
     current.ev.on("contacts.upsert", (contacts) => {
@@ -532,6 +536,7 @@ async function start() {
 async function shutdown(code = 0) {
   if (stopping) return;
   stopping = true;
+  reconnect.reset();
   clearTimeout(workTimer);
   while (working || submitting || flushingReceipts)
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -549,6 +554,19 @@ async function shutdown(code = 0) {
 }
 function fatal(e) {
   const msg = e?.message || String(e);
+  if (transientConnectionError(e)) {
+    connected = false;
+    lastHeartbeat = 0;
+    lastError = "Conexión interrumpida; reconectando";
+    console.warn("[Reconexión de WhatsApp]", msg);
+    try {
+      sock?.end(new Error("Reconexión tras interrupción de red"));
+    } catch {
+      /* Already closed. */
+    }
+    reconnect.schedule();
+    return;
+  }
   if (recoverableSignalError(e)) {
     console.warn("[Advertencia no fatal Baileys]:", msg);
     return;

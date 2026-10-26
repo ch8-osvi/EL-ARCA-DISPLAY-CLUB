@@ -25,6 +25,7 @@ La configuración privada vive en whatsapp-bridge/.env. BRIDGE_SECRET debe coinc
 - La cola de salida se consulta por HTTPS, con firma HMAC y fecha. No existe un endpoint público /send ni CORS universal.
 - Los reintentos de confirmaciones recuperan el resultado previamente confirmado. Una entrega de WhatsApp no puede garantizar exactamente una copia ante cualquier caída entre proveedor y disco; se conserva progreso y se usan IDs estables para reducir ese caso.
 - Las reconexiones usan espera progresiva y un solo socket. Un fallo fatal detiene el proceso para evitar continuar en estado corrupto.
+- Los cierres anormales de WebSocket (`1006`) y los errores de red identificados en Baileys solicitan una reconexión, sin cerrar el servidor local del QR. Los avisos repetidos comparten un solo temporizador; conectar o apagar cancela el reintento. Un cierre de sesión explícito no se reintenta. La consulta de versión tiene un límite de diez segundos para no bloquear el arranque cuando falla Internet.
 - Si el teléfono cierra la sesión, el puente lo indica en la consola. Conserva una copia de auth_session antes de retirarla manualmente para volver a vincular.
 
 ## Disponibilidad y consumo

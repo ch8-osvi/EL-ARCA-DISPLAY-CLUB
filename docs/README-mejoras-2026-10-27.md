@@ -2,6 +2,13 @@
 
 Esta entrega prepara El Arca para vender pantallas, baterías, tapas traseras y accesorios con el mismo diseño oscuro y dorado. También corrige problemas de inventario, importación, presentación y contexto de la IA de clientes.
 
+## Ajustes visuales posteriores: buscador, categorías y marcas
+
+- Los campos de texto en móvil utilizan 16 px para evitar el zoom de enfoque de iPhone. Se conserva el zoom manual: no se añadieron restricciones al viewport.
+- La categoría de producto deja de ser una píldora amarilla. Ahora es una línea neutra con icono de acento frío y texto legible, sin fondo ni borde. En la tarjeta pública se elimina el icono de teléfono duplicado junto al modelo.
+- «Todas las marcas» y las marcas seleccionadas ya no se agrandan dentro del contenedor. Tienen separación lateral, tamaño estable y desplazamiento horizontal sin la barra dorada.
+- Verificado en navegador a 390 px: fuente del buscador enfocado de 16 px, botón completo dentro del contenedor, ausencia de desbordamiento horizontal y `viewport` sin límites de zoom. Compilación de producción correcta. No se ha probado el teclado en un iPhone físico.
+
 ## Plan ejecutado por fases
 
 1. **Revisar la situación actual:** rutas de catálogo, inventario, ventas, comprobantes, herramientas de IA, conversación y transporte de WhatsApp; preservar las correcciones anteriores de cifrado, audio y permisos.
@@ -52,7 +59,7 @@ No se añadieron productos ficticios al negocio. Las categorías nuevas se activ
 
 Vista móvil verificada con productos de ejemplo en una base temporal:
 
-![Catálogo móvil con selector de categorías y batería identificada](qa-catalogo-movil.png)
+![Catálogo móvil con categoría sin píldora y filtro de marcas completo](qa-ajustes-movil-2026-10-27.png)
 
 ## Cambios en la IA de clientes
 

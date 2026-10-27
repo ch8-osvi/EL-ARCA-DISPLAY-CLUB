@@ -6,7 +6,6 @@ import { CategoryBadge } from "./CategoryFilter";
 import React, { useMemo } from "react";
 import { Product, Currency } from "@/lib/types";
 import {
-  Smartphone,
   MessageSquare,
   Tag,
   Search,
@@ -130,7 +129,6 @@ export default function ProductCard({
           <CategoryBadge category={product.categoria} />
         </div>
         <h3 className="text-base font-bold text-white group-hover:text-[#F3E0A9] transition-colors leading-snug mb-3 flex items-start gap-2">
-          <Smartphone className="w-4 h-4 text-gray-400 mt-1 shrink-0 group-hover:text-[#D4AF37] transition-colors" />
           <span>{product.modelo}</span>
         </h3>
       </div>

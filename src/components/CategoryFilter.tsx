@@ -21,9 +21,15 @@ export function CategoryBadge({ category }: { category?: unknown }) {
   const item = CATEGORIES.find((c) => c.id === productCategory(category))!,
     Icon = icons[item.id];
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#D4AF37]/20 bg-[#D4AF37]/5 px-2 py-1 text-[10px] font-bold text-[#E5C158]">
-      <Icon aria-hidden="true" className="h-3 w-3" />
-      {item.singular}
+    <span
+      aria-label={`Tipo de repuesto: ${item.singular}`}
+      className="inline-flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-300"
+    >
+      <Icon
+        aria-hidden="true"
+        className="h-3.5 w-3.5 shrink-0 text-cyan-300/80"
+      />
+      <span>{item.singular}</span>
     </span>
   );
 }

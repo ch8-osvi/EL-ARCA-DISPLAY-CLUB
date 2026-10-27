@@ -1,3 +1,4 @@
+import { productCategory } from "@/lib/categories";
 import { atomicResponse } from "@/lib/security/atomic-response";
 import { requireAdmin } from "@/lib/security/admin";
 import { getActiveExchangeRate } from "@/lib/exchangeRate";
@@ -192,7 +193,7 @@ async function handlePOST(req: Request) {
           {
             $inc: { stock: -qty },
           },
-          { new: true },
+          { returnDocument: "after" },
         );
 
         if (!updatedProduct) {
@@ -222,6 +223,7 @@ async function handlePOST(req: Request) {
           marca: product.marca,
           modelo: product.modelo,
           calidad: product.calidad,
+          categoria: productCategory(product.categoria),
           qty,
           returnedQty: 0,
           precioUSD: item.precioUSD,
@@ -357,6 +359,7 @@ async function handlePOST(req: Request) {
           marca: item.marca,
           modelo: item.modelo,
           calidad: item.calidad,
+          categoria: productCategory(item.categoria),
           qty: qtyNum,
           refundUSD: itemRefundUSD,
           refundCUP: itemRefundCUP,
@@ -380,7 +383,7 @@ async function handlePOST(req: Request) {
               {
                 $inc: { stock: qtyNum },
               },
-              { new: true },
+              { returnDocument: "after" },
             );
 
             const stockAfter = updatedProduct

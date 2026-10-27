@@ -11,7 +11,19 @@ function load(file, mocks = {}) {
   m.filename = filename;
   m.paths = module.paths;
   const original = m.require.bind(m);
-  m.require = (id) => (Object.hasOwn(mocks, id) ? mocks[id] : original(id));
+  const sourcedRequire = (id) => {
+    const workspaceRoot = path.resolve(__dirname, "../..");
+    const source = id.startsWith(".")
+      ? path.resolve(path.dirname(filename), id + ".ts")
+      : id === "@/lib/categories"
+        ? path.join(workspaceRoot, "src/lib/categories.ts")
+        : null;
+    return source && fs.existsSync(source)
+      ? load(path.relative(workspaceRoot, source))
+      : original(id);
+  };
+  m.require = (id) =>
+    Object.hasOwn(mocks, id) ? mocks[id] : sourcedRequire(id);
   m._compile(
     ts.transpileModule(fs.readFileSync(filename, "utf8"), {
       compilerOptions: {
@@ -29,16 +41,21 @@ const bridge = load("src/lib/security/bridge.ts");
 const { signedHeaders } = require("../../whatsapp-bridge/security");
 const session = load("src/lib/security/session.ts");
 const duplicate = load("src/lib/duplicateDetector.ts");
-test('Excel actualizado conserva datos de exportaciones con estilos', () => {
-  const styled = require('xlsx-js-style');
-  const reader = require('xlsx');
+test("Excel actualizado conserva datos de exportaciones con estilos", () => {
+  const styled = require("xlsx-js-style");
+  const reader = require("xlsx");
   const workbook = styled.utils.book_new();
-  const sheet = styled.utils.aoa_to_sheet([['MODELO','PRECIO'],['A12',15.5]]);
+  const sheet = styled.utils.aoa_to_sheet([
+    ["MODELO", "PRECIO"],
+    ["A12", 15.5],
+  ]);
   sheet.A1.s = { font: { bold: true } };
-  styled.utils.book_append_sheet(workbook,sheet,'DISPLAYS');
-  const bytes = styled.write(workbook,{type:'buffer',bookType:'xlsx'});
-  const result = reader.read(bytes,{type:'buffer'});
-  assert.deepEqual(reader.utils.sheet_to_json(result.Sheets.DISPLAYS),[{MODELO:'A12',PRECIO:15.5}]);
+  styled.utils.book_append_sheet(workbook, sheet, "DISPLAYS");
+  const bytes = styled.write(workbook, { type: "buffer", bookType: "xlsx" });
+  const result = reader.read(bytes, { type: "buffer" });
+  assert.deepEqual(reader.utils.sheet_to_json(result.Sheets.DISPLAYS), [
+    { MODELO: "A12", PRECIO: 15.5 },
+  ]);
 });
 
 test("sesiones firmadas: acepta sesión válida y rechaza falsificación, caducidad y firma alterada", async () => {

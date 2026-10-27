@@ -1,14 +1,15 @@
-'use client';
+"use client";
 
-import React, { useState, useMemo } from 'react';
-import { Product } from '@/lib/types';
-import { EyeOff, Smartphone, Tag } from 'lucide-react';
-import { roundCupPrice } from '@/lib/searchUtils';
+import { CategoryBadge } from "./CategoryFilter";
+import React, { useState, useMemo } from "react";
+import { Product } from "@/lib/types";
+import { EyeOff, Smartphone, Tag } from "lucide-react";
+import { roundCupPrice } from "@/lib/searchUtils";
 
 interface AdminProductCardProps {
   product: Product;
   exchangeRate?: number | null;
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => void | Promise<boolean | void>;
 }
 
 export default function AdminProductCard({
@@ -23,35 +24,43 @@ export default function AdminProductCard({
     return roundCupPrice(product.precio, exchangeRate);
   }, [product.precio, exchangeRate]);
 
-  const formattedCUP = (Number.isFinite(cupPrice) ? cupPrice.toLocaleString('es-CU') : 'No disponible');
+  const formattedCUP = Number.isFinite(cupPrice)
+    ? cupPrice.toLocaleString("es-CU")
+    : "No disponible";
 
-  const handleDeleteClick = () => {
+  const handleDeleteClick = async () => {
     setIsDeleting(true);
-    onDelete(product.id);
+    try {
+      if ((await onDelete(product.id)) !== true) setIsDeleting(false);
+    } catch {
+      setIsDeleting(false);
+    }
   };
 
   const getQualityBadgeClass = (calidad: string) => {
     const q = calidad.toUpperCase();
-    if (q.includes('C/M') || q.includes('MARCO')) return 'badge-cm';
-    if (q.includes('ORIGINAL')) return 'badge-original';
-    if (q.includes('INCELL')) return 'badge-incell';
-    if (q.includes('OLED')) return 'badge-oled';
-    return 'badge-other';
+    if (q.includes("C/M") || q.includes("MARCO")) return "badge-cm";
+    if (q.includes("ORIGINAL")) return "badge-original";
+    if (q.includes("INCELL")) return "badge-incell";
+    if (q.includes("OLED")) return "badge-oled";
+    return "badge-other";
   };
 
   return (
     <div
       className={`glass-card rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden transition-all duration-300 ${
-        isDeleting ? 'opacity-30 scale-95 pointer-events-none' : ''
+        isDeleting ? "opacity-30 scale-95 pointer-events-none" : ""
       }`}
     >
       <div>
-        <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <span className="px-2.5 py-1 rounded-lg bg-[#171B2B] border border-white/10 text-[11px] font-bold tracking-wide text-[#E5C158] uppercase flex items-center gap-1.5">
             <Tag className="w-3 h-3 text-[#D4AF37]" />
             {product.marca}
           </span>
-          <span className={`badge-quality ${getQualityBadgeClass(product.calidad)}`}>
+          <span
+            className={`badge-quality ${getQualityBadgeClass(product.calidad)}`}
+          >
             {product.calidad}
           </span>
         </div>
@@ -72,6 +81,9 @@ export default function AdminProductCard({
           </div>
         )}
 
+        <div className="mb-2">
+          <CategoryBadge category={product.categoria} />
+        </div>
         <h3 className="text-base font-bold text-white leading-snug flex items-start gap-2">
           <Smartphone className="w-4 h-4 text-gray-400 mt-1 shrink-0" />
           <span>{product.modelo}</span>
@@ -83,11 +95,11 @@ export default function AdminProductCard({
         <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
           <span className="font-medium text-gray-400">Stock:</span>
           <span className="font-semibold text-gray-200">
-            {product.stock <= 0 ? 'Sin stock' : `${product.stock} uds.`}
+            {product.stock <= 0 ? "Sin stock" : `${product.stock} uds.`}
           </span>
         </div>
 
-        <div className="pt-3 border-t border-white/5 flex items-center justify-between gap-2">
+        <div className="pt-3 border-t border-white/5 flex flex-wrap items-center justify-between gap-2">
           <div>
             <span className="text-[10px] uppercase font-semibold text-gray-400 block tracking-wider">
               Precio

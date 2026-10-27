@@ -1,4 +1,5 @@
 "use client";
+import RouteLoading from "./loading";
 import { checkAdminSession, loginAdmin } from "@/lib/auth-client";
 
 import { useActiveExchangeRate } from "@/lib/useActiveExchangeRate";
@@ -22,6 +23,12 @@ import {
   Pencil,
   RefreshCw,
 } from "lucide-react";
+import CategoryFilter, { CategoryBadge } from "@/components/CategoryFilter";
+import {
+  CATEGORIES,
+  productCategory,
+  type ProductCategory,
+} from "@/lib/categories";
 import { Product } from "@/lib/types";
 import {
   getBrandCounts,
@@ -53,6 +60,7 @@ interface StockHistoryRecord {
 
 export default function InventoryPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [products, setProducts] = useState<ProductWithHidden[]>([]);
   const [mermas, setMermas] = useState<StockHistoryRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,10 +70,18 @@ export default function InventoryPage() {
     "ALL",
   );
   const [selectedBrand, setSelectedBrand] = useState("ALL");
+  const [selectedCategory, setSelectedCategory] = useState<
+    ProductCategory | "ALL"
+  >("ALL");
+  const changeCategory = (value: ProductCategory | "ALL") => {
+    setSelectedCategory(value);
+    setSelectedBrand("ALL");
+  };
   const [exchangeRate, setExchangeRate] = useActiveExchangeRate();
 
   // Add Product Modal State
   const [showAddModal, setShowAddModal] = useState(false);
+  const [newCategory, setNewCategory] = useState<ProductCategory>("DISPLAY");
   const [newMarca, setNewMarca] = useState("");
   const [newModelo, setNewModelo] = useState("");
   const [newCalidadSelect, setNewCalidadSelect] = useState("ORIGINAL C/M");
@@ -77,6 +93,7 @@ export default function InventoryPage() {
   // Edit Product Modal State
   const [editingProduct, setEditingProduct] =
     useState<ProductWithHidden | null>(null);
+  const [editCategory, setEditCategory] = useState<ProductCategory>("DISPLAY");
   const [editMarca, setEditMarca] = useState("");
   const [editModelo, setEditModelo] = useState("");
   const [editCalidadSelect, setEditCalidadSelect] = useState("ORIGINAL C/M");
@@ -122,7 +139,10 @@ export default function InventoryPage() {
   };
 
   useEffect(() => {
-    void checkAdminSession().then(setIsAuthenticated);
+    void checkAdminSession().then((value) => {
+      setIsAuthenticated(value);
+      setCheckingSession(false);
+    });
   }, []);
 
   const fetchInventory = async () => {
@@ -178,6 +198,7 @@ export default function InventoryPage() {
     // Check duplicate
     const isDuplicate = products.some(
       (p) =>
+        productCategory(p.categoria) === newCategory &&
         p.marca.toUpperCase() === marcaTrimmed &&
         p.modelo.toUpperCase() === modeloTrimmed.toUpperCase() &&
         p.calidad.toUpperCase() === finalCalidad,
@@ -185,7 +206,7 @@ export default function InventoryPage() {
 
     if (isDuplicate) {
       triggerToast(
-        "Error: Ya existe un display con la misma Marca, Modelo y Calidad.",
+        "Error: Ya existe un producto con la misma Marca, Modelo y Calidad.",
         true,
       );
       return;
@@ -193,11 +214,12 @@ export default function InventoryPage() {
 
     const newProd: Product = {
       id: `prod-custom-${Date.now()}`,
+      categoria: newCategory,
       marca: marcaTrimmed,
       modelo: modeloTrimmed,
       calidad: finalCalidad,
-      precio: parseFloat(newPrecio) || 0,
-      stock: Math.max(0, parseInt(newStock, 10) || 0),
+      precio: Number(newPrecio),
+      stock: Number(newStock),
     };
 
     setIsSubmittingAdd(true);
@@ -240,8 +262,8 @@ export default function InventoryPage() {
     e.preventDefault();
     if (!adjustModal.product) return;
 
-    const qtyNum = parseInt(addQty, 10);
-    if (!qtyNum || isNaN(qtyNum) || qtyNum < 1) {
+    const qtyNum = Number(addQty);
+    if (!Number.isSafeInteger(qtyNum) || qtyNum < 1) {
       triggerToast("Ingresa una cantidad válida (mínimo 1)", true);
       return;
     }
@@ -318,6 +340,7 @@ export default function InventoryPage() {
   // Open Edit Product Modal
   const handleOpenEdit = (product: ProductWithHidden) => {
     setEditingProduct(product);
+    setEditCategory(productCategory(product.categoria));
     setEditMarca(product.marca || "");
     setEditModelo(product.modelo || "");
     setEditPrecio(
@@ -362,8 +385,8 @@ export default function InventoryPage() {
       return;
     }
 
-    const parsedStock = parseInt(editStock, 10);
-    if (isNaN(parsedStock) || parsedStock < 0) {
+    const parsedStock = Number(editStock);
+    if (!Number.isSafeInteger(parsedStock) || parsedStock < 0) {
       triggerToast(
         "Error: Ingresa una cantidad de stock válida (mínimo 0).",
         true,
@@ -395,6 +418,7 @@ export default function InventoryPage() {
             marca: marcaTrimmed,
             modelo: modeloTrimmed,
             calidad: finalCalidad,
+            categoria: editCategory,
             precio: parsedPrecio,
             stock: parsedStock,
           };
@@ -413,6 +437,7 @@ export default function InventoryPage() {
           marca: marcaTrimmed,
           modelo: modeloTrimmed,
           calidad: finalCalidad,
+          categoria: editCategory,
           precio: parsedPrecio,
           stock: parsedStock,
         }),
@@ -458,19 +483,29 @@ export default function InventoryPage() {
     }
   };
 
+  const categoryProducts = useMemo(
+    () =>
+      products.filter(
+        (p) =>
+          selectedCategory === "ALL" ||
+          productCategory(p.categoria) === selectedCategory,
+      ),
+    [products, selectedCategory],
+  );
+
   // Brand counts (most products first)
   const brandCounts = useMemo(() => {
-    return getBrandCounts(products);
-  }, [products]);
+    return getBrandCounts(categoryProducts);
+  }, [categoryProducts]);
 
   // Brand list sorted by frequency (majority of models first)
   const brands = useMemo(() => {
-    return ["ALL", ...getSortedBrands(products)];
-  }, [products]);
+    return ["ALL", ...getSortedBrands(categoryProducts)];
+  }, [categoryProducts]);
 
   // Filtered & Sorted Products with Intelligent Fuzzy Search
   const filtered = useMemo(() => {
-    const scoredList = products
+    const scoredList = categoryProducts
       .map((p) => {
         if (filterStock === "OUT" && p.stock > 0) return null;
         if (filterStock === "AVAILABLE" && p.stock <= 0) return null;
@@ -501,7 +536,7 @@ export default function InventoryPage() {
       scoredList.map((item) => item.product),
       brandCounts,
     );
-  }, [products, filterStock, selectedBrand, searchTerm, brandCounts]);
+  }, [categoryProducts, filterStock, selectedBrand, searchTerm, brandCounts]);
 
   // Filtered Mermas with Fuzzy Search
   const filteredMermas = useMemo(() => {
@@ -514,6 +549,8 @@ export default function InventoryPage() {
   const totalMermaUnits = useMemo(() => {
     return mermas.reduce((acc, m) => acc + m.qty, 0);
   }, [mermas]);
+
+  if (checkingSession) return <RouteLoading />;
 
   if (!isAuthenticated) {
     return (
@@ -558,7 +595,7 @@ export default function InventoryPage() {
       {/* Add New Single Product Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-lg glass-panel rounded-3xl p-6 sm:p-8 border border-[#D4AF37]/40 shadow-2xl relative space-y-6">
+          <div className="w-full max-w-lg max-h-[90dvh] overflow-y-auto glass-panel rounded-3xl p-6 sm:p-8 border border-[#D4AF37]/40 shadow-2xl relative space-y-6">
             <button
               onClick={() => setShowAddModal(false)}
               className="absolute top-5 right-5 text-gray-400 hover:text-white"
@@ -567,9 +604,7 @@ export default function InventoryPage() {
             </button>
 
             <div className="space-y-1">
-              <h3 className="text-xl font-bold text-white">
-                Agregar Nuevo Display
-              </h3>
+              <h3 className="text-xl font-bold text-white">Agregar producto</h3>
               <p className="text-xs text-gray-400">
                 Añade un repuesto individual al catálogo e inventario en tiempo
                 real.
@@ -577,6 +612,26 @@ export default function InventoryPage() {
             </div>
 
             <form onSubmit={handleAddProduct} className="space-y-4">
+              <label className="block text-xs font-semibold text-gray-300">
+                Categoría
+                <select
+                  value={newCategory}
+                  onChange={(e) => {
+                    const value = e.target.value as ProductCategory;
+                    setNewCategory(value);
+                    setNewCalidadSelect(
+                      CATEGORIES.find((c) => c.id === value)!.qualities[0],
+                    );
+                  }}
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-[#10131E] p-3 text-white"
+                >
+                  {CATEGORIES.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <div>
                 <label className="text-xs font-semibold text-gray-300 block mb-1">
                   Marca
@@ -605,29 +660,26 @@ export default function InventoryPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 [&>div:first-child]:col-span-2 sm:[&>div:first-child]:col-span-1">
                 <div>
                   <label className="text-xs font-semibold text-gray-300 block mb-1">
-                    Calidad del Display
+                    Calidad / especificación
                   </label>
                   <select
                     value={newCalidadSelect}
                     onChange={(e) => setNewCalidadSelect(e.target.value)}
-                    className="w-full px-3 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-xs focus:border-[#D4AF37] focus:outline-none cursor-pointer"
+                    className="w-full rounded-xl border border-white/10 bg-[#10131E] p-3 text-sm text-white"
                   >
-                    <option value="ORIGINAL C/M">
-                      ORIGINAL C/M (Con Marco)
+                    {CATEGORIES.find(
+                      (c) => c.id === newCategory,
+                    )!.qualities.map((q) => (
+                      <option key={q} value={q}>
+                        {q}
+                      </option>
+                    ))}
+                    <option value="CUSTOM">
+                      Otra calidad / especificación
                     </option>
-                    <option value="INCELL C/M">INCELL C/M (Con Marco)</option>
-                    <option value="OLED C/M">OLED C/M (Con Marco)</option>
-                    <option value="ORIGINAL">ORIGINAL S/M (Sin Marco)</option>
-                    <option value="INCELL">INCELL S/M (Sin Marco)</option>
-                    <option value="OLED">OLED S/M (Sin Marco)</option>
-                    <option value="OLED SOFT">OLED SOFT (Gama Alta)</option>
-                    <option value="AMOLED C/M">AMOLED C/M</option>
-                    <option value="MECHANIC">MECHANIC (Especial)</option>
-                    <option value="AAA">AAA</option>
-                    <option value="CUSTOM">-- Personalizada --</option>
                   </select>
                 </div>
 
@@ -692,7 +744,7 @@ export default function InventoryPage() {
                   disabled={isSubmittingAdd}
                   className="flex-1 py-3 rounded-xl gold-gradient-bg text-black text-xs font-extrabold shadow-gold-glow flex items-center justify-center gap-2 disabled:opacity-50"
                 >
-                  {isSubmittingAdd ? "Guardando..." : "Guardar Display"}
+                  {isSubmittingAdd ? "Guardando..." : "Guardar producto"}
                 </button>
               </div>
             </form>
@@ -972,7 +1024,7 @@ export default function InventoryPage() {
                   {editingProduct.marca}
                 </span>
               </div>
-              <h3 className="text-xl font-bold text-white">Editar Display</h3>
+              <h3 className="text-xl font-bold text-white">Editar producto</h3>
               <p className="text-xs text-gray-400">
                 Ajusta el precio, stock o datos técnicos del display en tiempo
                 real.
@@ -980,6 +1032,26 @@ export default function InventoryPage() {
             </div>
 
             <form onSubmit={handleSaveEdit} className="space-y-4">
+              <label className="block text-xs font-semibold text-gray-300">
+                Categoría
+                <select
+                  value={editCategory}
+                  onChange={(e) => {
+                    const value = e.target.value as ProductCategory;
+                    setEditCategory(value);
+                    setEditCalidadSelect(
+                      CATEGORIES.find((c) => c.id === value)!.qualities[0],
+                    );
+                  }}
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-[#10131E] p-3 text-white"
+                >
+                  {CATEGORIES.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <div>
                 <label className="text-xs font-semibold text-gray-300 block mb-1">
                   Marca
@@ -1008,7 +1080,7 @@ export default function InventoryPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 [&>div:first-child]:col-span-2 sm:[&>div:first-child]:col-span-1">
                 <div>
                   <label className="text-xs font-semibold text-gray-300 block mb-1">
                     Calidad
@@ -1016,19 +1088,18 @@ export default function InventoryPage() {
                   <select
                     value={editCalidadSelect}
                     onChange={(e) => setEditCalidadSelect(e.target.value)}
-                    className="w-full px-3 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-xs focus:border-[#D4AF37] focus:outline-none cursor-pointer"
+                    className="w-full rounded-xl border border-white/10 bg-[#10131E] p-3 text-sm text-white"
                   >
-                    <option value="ORIGINAL C/M">ORIGINAL C/M</option>
-                    <option value="INCELL C/M">INCELL C/M</option>
-                    <option value="OLED C/M">OLED C/M</option>
-                    <option value="ORIGINAL">ORIGINAL S/M</option>
-                    <option value="INCELL">INCELL S/M</option>
-                    <option value="OLED">OLED S/M</option>
-                    <option value="OLED SOFT">OLED SOFT</option>
-                    <option value="AMOLED C/M">AMOLED C/M</option>
-                    <option value="MECHANIC">MECHANIC</option>
-                    <option value="AAA">AAA</option>
-                    <option value="CUSTOM">-- Personalizada --</option>
+                    {CATEGORIES.find(
+                      (c) => c.id === editCategory,
+                    )!.qualities.map((q) => (
+                      <option key={q} value={q}>
+                        {q}
+                      </option>
+                    ))}
+                    <option value="CUSTOM">
+                      Otra calidad / especificación
+                    </option>
                   </select>
                 </div>
 
@@ -1197,6 +1268,14 @@ export default function InventoryPage() {
         </section>
 
         {/* ------------------------------------------------------------- */}
+        {currentView === "STOCK" && (
+          <CategoryFilter
+            loading={loading}
+            products={products}
+            value={selectedCategory}
+            onChange={changeCategory}
+          />
+        )}
         {/* VIEW 1: ACTIVE INVENTORY & STOCK */}
         {/* ------------------------------------------------------------- */}
         {currentView === "STOCK" && (
@@ -1343,7 +1422,8 @@ export default function InventoryPage() {
                             {prod.marca}
                           </span>
                           <span className="text-[10px] text-gray-300 font-semibold px-2 py-0.5 rounded-md bg-white/5">
-                            {prod.calidad}
+                            {prod.calidad}{" "}
+                            <CategoryBadge category={prod.categoria} />
                           </span>
                         </div>
 

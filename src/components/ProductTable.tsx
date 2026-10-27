@@ -1,6 +1,8 @@
 "use client";
+import { categoryLabel } from "@/lib/categories";
 import { useWhatsAppPhone } from "@/lib/useWhatsAppPhone";
 
+import { CategoryBadge } from "./CategoryFilter";
 import React from "react";
 import { Product, Currency } from "@/lib/types";
 import {
@@ -68,12 +70,12 @@ export default function ProductTable({
               })();
 
               const whatsappText = encodeURIComponent(
-                `Hola! Deseo consultar la disponibilidad del display: ${product.marca} ${product.modelo} (${product.calidad}) - $${product.precio} USD (${formattedCUP} CUP) en EL ARCA DISPLAY CLUB.`,
+                `Hola! Deseo consultar la disponibilidad de ${categoryLabel(product.categoria).toLowerCase()}: ${product.marca} ${product.modelo} (${product.calidad}) - $${product.precio} USD (${formattedCUP} CUP) en EL ARCA DISPLAY CLUB.`,
               );
               const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${whatsappText}`;
 
               const googleSearchQuery = encodeURIComponent(
-                `display ${product.marca} ${product.modelo} ${product.calidad}`,
+                `${categoryLabel(product.categoria)} ${product.marca} ${product.modelo} ${product.calidad}`,
               );
               const googleSearchUrl = `https://www.google.com/search?tbm=isch&q=${googleSearchQuery}`;
 
@@ -96,6 +98,7 @@ export default function ProductTable({
                       <div className="flex items-center gap-2">
                         <Smartphone className="w-4 h-4 text-gray-400 shrink-0" />
                         <span>{product.modelo}</span>
+                        <CategoryBadge category={product.categoria} />
                       </div>
                       {/* Sub-badges in table */}
                       {(isTopSeller || isLowStock || isNewArrival) && (

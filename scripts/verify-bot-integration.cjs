@@ -26,8 +26,10 @@ function load(file) {
   const originalRequire = m.require.bind(m);
   m.require = (id) =>
     id.startsWith("@/")
-      ? load("src/" + id.slice(2) + ".ts")
-      : id.startsWith("./") &&
+      ? id.endsWith(".json")
+        ? originalRequire(path.resolve("src/" + id.slice(2)))
+        : load("src/" + id.slice(2) + ".ts")
+      : id.startsWith(".") &&
           fs.existsSync(path.resolve(path.dirname(filename), id + ".ts"))
         ? load(path.resolve(path.dirname(filename), id + ".ts"))
         : originalRequire(id);
@@ -179,6 +181,181 @@ async function main() {
     const { registerSession } = load("src/lib/security/admin.ts");
     const token = await createSession();
     await registerSession(token);
+    // Exercise real category routes against this disposable database only.
+    const productRoute = load("src/app/api/products/route.ts");
+    const apiRequest = (pathname, body) =>
+      new Request("https://elarca.test" + pathname, {
+        method: "POST",
+        headers: {
+          cookie: "el_arca_admin_session=" + token,
+          origin: "https://elarca.test",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+    await Product.collection.insertOne({
+      id: "legacy-cat",
+      marca: "SAMSUNG",
+      modelo: "A50",
+      calidad: "ORIGINAL",
+      precio: 9,
+      stock: 3,
+      isHidden: false,
+    });
+    await Product.create({
+      id: "battery-cat",
+      categoria: "BATERIA",
+      marca: "SAMSUNG",
+      modelo: "A50",
+      calidad: "ORIGINAL",
+      precio: 6,
+      stock: 4,
+    });
+    const displayRows = await (
+      await productRoute.GET(
+        new Request("https://elarca.test/api/products?categoria=DISPLAY"),
+      )
+    ).json();
+    assert.ok(
+      displayRows.products.some(
+        (p) => p.id === "legacy-cat" && p.categoria === "DISPLAY",
+      ),
+    );
+    assert.ok(!displayRows.products.some((p) => p.id === "battery-cat"));
+    const batteryRows = await (
+      await productRoute.GET(
+        new Request("https://elarca.test/api/products?categoria=BATERIA"),
+      )
+    ).json();
+    assert.deepEqual(
+      batteryRows.products.map((p) => p.id),
+      ["battery-cat"],
+    );
+    assert.equal(
+      (
+        await productRoute.GET(
+          new Request("https://elarca.test/api/products?categoria=UNKNOWN"),
+        )
+      ).status,
+      400,
+    );
+    const addZero = await productRoute.POST(
+      apiRequest("/api/products", {
+        action: "add",
+        product: {
+          categoria: "TAPA",
+          marca: "SAMSUNG",
+          modelo: "A50",
+          calidad: "ORIGINAL",
+          precio: 3,
+          stock: 0,
+        },
+      }),
+    );
+    assert.equal(addZero.status, 200);
+    assert.equal((await addZero.json()).product.stock, 0);
+    assert.equal(
+      (
+        await productRoute.POST(
+          apiRequest("/api/products", {
+            action: "add",
+            product: { modelo: "bad-stock", precio: 1, stock: 0.5 },
+          }),
+        )
+      ).status,
+      400,
+    );
+    let result = await productRoute.POST(
+      apiRequest("/api/products", {
+        action: "sync",
+        initialList: [
+          { marca: "SAMSUNG", modelo: "A50", calidad: "ORIGINAL", precio: 10 },
+        ],
+      }),
+    );
+    assert.equal(result.status, 200);
+    assert.equal((await Product.findOne({ id: "legacy-cat" })).stock, 3);
+    assert.equal((await Product.findOne({ id: "legacy-cat" })).precio, 10);
+    assert.equal((await Product.findOne({ id: "battery-cat" })).stock, 4);
+    const movementsBefore = await StockHistory.countDocuments();
+    result = await productRoute.POST(
+      apiRequest("/api/products", {
+        action: "sync",
+        initialList: [
+          {
+            id: "legacy-cat",
+            marca: "SAMSUNG",
+            modelo: "A50",
+            calidad: "ORIGINAL",
+            precio: 99,
+            stock: 1,
+          },
+          { modelo: "INVALID", precio: 1, stock: -1 },
+        ],
+      }),
+    );
+    assert.equal(result.status, 400);
+    assert.equal((await Product.findOne({ id: "legacy-cat" })).precio, 10);
+    assert.equal(await StockHistory.countDocuments(), movementsBefore);
+    result = await productRoute.POST(
+      apiRequest("/api/products", {
+        action: "update",
+        id: "battery-cat",
+        stock: 2,
+      }),
+    );
+    assert.equal(result.status, 200);
+    assert.equal(
+      (await StockHistory.findOne({ productId: "battery-cat" })).stockAfter,
+      2,
+    );
+    assert.equal(
+      (
+        await productRoute.POST(
+          apiRequest("/api/products", {
+            action: "delete-permanent",
+            id: "battery-cat",
+          }),
+        )
+      ).status,
+      409,
+    );
+    assert.equal(
+      (
+        await productRoute.POST(
+          apiRequest("/api/products", { action: "restore" }),
+        )
+      ).status,
+      409,
+    );
+    const saleRoute = load("src/app/api/sales/route.ts");
+    const saleResponse = await saleRoute.POST(
+      apiRequest("/api/sales", {
+        action: "create",
+        clientName: "Category verification only",
+        items: [
+          {
+            productId: "battery-cat",
+            qty: 1,
+            precioUSD: 6,
+            categoria: "DISPLAY",
+          },
+        ],
+        currency: "USD",
+        exchangeRate: 835,
+        paid: true,
+      }),
+    );
+    assert.equal(saleResponse.status, 200);
+    const savedSale = await Sale.findOne({
+      clientName: "Category verification only",
+    });
+    assert.equal(savedSale.items[0].categoria, "BATERIA");
+    assert.equal((await Product.findOne({ id: "battery-cat" })).stock, 1);
+    assert.equal((await Product.findOne({ id: "legacy-cat" })).stock, 3);
+    console.log(
+      "PASS: categorías heredadas y nuevas, cero stock, importación no destructiva y rollback, trazabilidad, protección del historial y categoría real en ventas",
+    );
     const configRoute = load("src/app/api/whatsapp/admin/config/route.ts");
     const identity = load("src/lib/whatsapp/service.ts");
     const { WhatsAppConfig, getWhatsAppConfig } = load(
@@ -253,6 +430,79 @@ async function main() {
     const { WhatsAppLog } = load("src/lib/models/WhatsAppLog.ts");
     const { advanceDelivery } = load("src/lib/whatsapp/delivery.ts");
     const gemini = load("src/lib/ai/gemini.ts");
+    let customerSystem = "";
+    gemini.queryGemini = async (system) => {
+      customerSystem = system;
+      return {
+        text: "Respuesta de prueba",
+        tokens: 1,
+        actions: [],
+        model: "integration-mock",
+      };
+    };
+    await identity.processWhatsAppAiMessage(
+      "¿Pantalla Samsung A50?",
+      "5350000010",
+    );
+    let context = JSON.parse(customerSystem.split("DATOS VERIFICADOS:\n")[1]);
+    assert.equal(context.productos.length, 1);
+    assert.equal(context.productos[0].id, "legacy-cat");
+    assert.equal(context.productos[0].categoria, "DISPLAY");
+    await identity.processWhatsAppAiMessage("Ahora Redmi 9A", "5350000010");
+    context = JSON.parse(customerSystem.split("DATOS VERIFICADOS:\n")[1]);
+    assert.equal(context.productos.length, 1);
+    assert.equal(context.productos[0].modelo, "REDMI 9A");
+    assert.equal(context.productos[0].disponibilidad, "Agotado");
+    await identity.processWhatsAppAiMessage("Ahora Pixel 99Z", "5350000010");
+    context = JSON.parse(customerSystem.split("DATOS VERIFICADOS:\n")[1]);
+    assert.equal(context.productos.length, 0);
+    await states.BotConversation.updateOne(
+      { _id: "5350000010" },
+      { $set: { quotedUSD: 99, quotedProductId: "legacy-cat" } },
+    );
+    const categoryQuestion = await identity.processWhatsAppAiMessage(
+      "Precio Samsung A50",
+      "5350000010",
+    );
+    assert.match(categoryQuestion, /pantallas/);
+    assert.match(categoryQuestion, /baterías/);
+    assert.doesNotMatch(categoryQuestion, /tapas/);
+    assert.equal(
+      (await states.BotConversation.findById("5350000010")).quotedUSD,
+      undefined,
+    );
+    assert.equal(
+      (
+        await tools.executeFusionarProductos({
+          queryPrincipal: "legacy-cat",
+          querySecundario: "battery-cat",
+        })
+      ).success,
+      false,
+    );
+    const batteryAdd = await atomicResponse(async () =>
+      Response.json(
+        await tools.executeAgregarProducto({
+          categoria: "BATERIA",
+          marca: "SAMSUNG",
+          modelo: "A20 ORIGINAL",
+          calidad: "ORIGINAL",
+          precio: 5,
+          stock: 0,
+        }),
+      ),
+    );
+    assert.equal((await batteryAdd.json()).success, true);
+    assert.ok(
+      await Product.exists({
+        categoria: "BATERIA",
+        modelo: "A20 ORIGINAL",
+        calidad: "ORIGINAL",
+      }),
+    );
+    console.log(
+      "PASS: IA consulta categoría y modelo exactos, cambio de modelo sin arrastre, aclaración sin cotización anterior y altas/fusiones seguras por categoría",
+    );
     gemini.queryGemini = async () => ({
       text: "Tenemos **Redmi 9A**.",
       tokens: 10,

@@ -1,4 +1,5 @@
 export interface Product {
+  categoria?: import("./categories").ProductCategory;
   id: string;
   marca: string;
   modelo: string;
@@ -11,8 +12,13 @@ export interface Product {
   salesCount?: number;
 }
 
-export type ViewMode = 'grid' | 'table';
+export type ViewMode = "grid" | "table";
 
-export type Currency = 'USD' | 'CUP';
+export type Currency = "USD" | "CUP";
 
-export type SortOption = 'default' | 'price-asc' | 'price-desc' | 'brand-asc' | 'model-asc';
+export type SortOption =
+  | "default"
+  | "price-asc"
+  | "price-desc"
+  | "brand-asc"
+  | "model-asc";

@@ -1,4 +1,6 @@
 "use client";
+import RouteLoading from "./loading";
+import { useWhatsAppPhone } from "@/lib/useWhatsAppPhone";
 import { checkAdminSession, loginAdmin } from "@/lib/auth-client";
 
 import { useActiveExchangeRate } from "@/lib/useActiveExchangeRate";
@@ -23,6 +25,12 @@ import {
   Bluetooth,
   Usb,
 } from "lucide-react";
+import CategoryFilter, { CategoryBadge } from "@/components/CategoryFilter";
+import {
+  CATEGORIES,
+  productCategory,
+  type ProductCategory,
+} from "@/lib/categories";
 import { Product } from "@/lib/types";
 import {
   TicketContent,
@@ -39,6 +47,7 @@ import {
 import { fuzzyMatchProduct, roundCupPrice } from "@/lib/searchUtils";
 
 interface CartItem {
+  categoria?: ProductCategory;
   productId: string;
   marca: string;
   modelo: string;
@@ -49,11 +58,20 @@ interface CartItem {
 }
 
 export default function PosPage() {
+  const businessPhone = useWhatsAppPhone();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedBrand, setSelectedBrand] = useState("ALL");
+  const [selectedCategory, setSelectedCategory] = useState<
+    ProductCategory | "ALL"
+  >("ALL");
+  const changeCategory = (value: ProductCategory | "ALL") => {
+    setSelectedCategory(value);
+    setSelectedBrand("ALL");
+  };
 
   // Cart State
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -84,7 +102,10 @@ export default function PosPage() {
 
   // Auth check
   useEffect(() => {
-    void checkAdminSession().then(setIsAuthenticated);
+    void checkAdminSession().then((value) => {
+      setIsAuthenticated(value);
+      setCheckingSession(false);
+    });
   }, []);
 
   // Fetch products & exchange rate
@@ -154,9 +175,18 @@ export default function PosPage() {
   };
 
   // Available products with stock > 0
-  const availableProducts = useMemo(() => {
+  const allAvailableProducts = useMemo(() => {
     return products.filter((p) => p.stock > 0);
   }, [products]);
+  const availableProducts = useMemo(
+    () =>
+      allAvailableProducts.filter(
+        (p) =>
+          selectedCategory === "ALL" ||
+          productCategory(p.categoria) === selectedCategory,
+      ),
+    [allAvailableProducts, selectedCategory],
+  );
 
   // Brand frequencies (most products first)
   const brandCounts = useMemo(() => {
@@ -222,6 +252,7 @@ export default function PosPage() {
             marca: product.marca,
             modelo: product.modelo,
             calidad: product.calidad,
+            categoria: productCategory(product.categoria),
             qty: 1,
             precioUSD: product.precio,
             stockAvailable: product.stock,
@@ -280,6 +311,7 @@ export default function PosPage() {
   // Print helper supporting Bluetooth, USB and System
   const executePrintTicket = async (orderData: any) => {
     const ticketData = {
+      businessPhone,
       orderNumber: orderData.orderNumber,
       clientName: orderData.clientName,
       items: orderData.items,
@@ -385,6 +417,8 @@ export default function PosPage() {
     }
   };
 
+  if (checkingSession) return <RouteLoading />;
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-[#090A0F] text-white flex flex-col justify-center items-center p-4">
@@ -429,6 +463,7 @@ export default function PosPage() {
       <div style={{ display: "none" }}>
         {exchangeRate !== null && (
           <TicketContent
+            businessPhone={businessPhone}
             orderNumber={completedOrder?.orderNumber || "PREVIEW"}
             clientName={
               clientName || completedOrder?.clientName || "Consumidor Final"
@@ -577,6 +612,12 @@ export default function PosPage() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 min-w-0">
         {/* Left Column: Product Selection & Catalog (7 Cols) */}
         <section className="lg:col-span-7 flex flex-col space-y-4 min-w-0">
+          <CategoryFilter
+            loading={loading}
+            products={allAvailableProducts}
+            value={selectedCategory}
+            onChange={changeCategory}
+          />
           {/* Search & Brand Filter */}
           <div className="glass-panel rounded-2xl p-4 border border-white/10 space-y-3 shrink-0">
             <div className="relative">
@@ -686,7 +727,8 @@ export default function PosPage() {
                           {prod.marca}
                         </span>
                         <span className="text-[10px] text-gray-300 font-semibold px-2 py-0.5 rounded-md bg-white/5">
-                          {prod.calidad}
+                          {prod.calidad}{" "}
+                          <CategoryBadge category={prod.categoria} />
                         </span>
                       </div>
                       <h3 className="text-sm font-bold text-white leading-snug flex items-start gap-1.5">
@@ -793,6 +835,7 @@ export default function PosPage() {
                           {item.calidad}
                         </span>
                       </div>
+                      <CategoryBadge category={item.categoria} />
                       <h4 className="text-xs font-bold text-white truncate">
                         {item.modelo}
                       </h4>

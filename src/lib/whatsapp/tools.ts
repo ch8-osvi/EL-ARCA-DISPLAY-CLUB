@@ -5,6 +5,12 @@ import { Product } from "@/lib/models/Product";
 import { Sale } from "@/lib/models/Sale";
 import { StockHistory } from "@/lib/models/StockHistory";
 import { getHavanaMonthDay } from "@/lib/dateUtils";
+import {
+  categoryFilter,
+  productCategory,
+  type ProductCategory,
+} from "@/lib/categories";
+import { detectCategoryIntent } from "./customer";
 
 /** Generates order number: MMDD + 3 random letters + product count */
 function generateOrderNumber(totalItems: number): string {
@@ -19,24 +25,35 @@ function generateOrderNumber(totalItems: number): string {
 /**
  * Smart product finder that matches queries like "redmi 9a", "rm 9a", "sm a32", "la redmi 9a c/m", "samsung a04"
  */
-export async function findProductSmart(rawQuery: string) {
+export async function findProductSmart(
+  rawQuery: string,
+  categoria?: ProductCategory,
+) {
   await connectToDatabase();
   let query = (rawQuery || "").trim();
   if (!query) return null;
 
   const byId = await Product.findOne({ id: query });
-  if (byId) return byId;
+  if (byId)
+    return !categoria || productCategory(byId.categoria) === categoria
+      ? byId
+      : null;
+  const selectedCategory = categoria || detectCategoryIntent(query);
   const expanded = query
     .toUpperCase()
     .replace(/\bRM\b/g, "REDMI")
     .replace(/\b(SAM|SM)\b/g, "SAMSUNG")
     .replace(/\b(IP|IPH)\b/g, "IPHONE")
     .replace(/\bMOTO\b/g, "MOTOROLA")
-    .replace(/\b(PANTALLA|DISPLAY|DE|LA|EL|PARA)\b/g, " ")
+    .replace(
+      /\b(PANTALLAS?|DISPLAYS?|BATER[IÍ]AS?|TAPAS?|TRASERAS?|ACCESORIOS?|DE|LA|EL|PARA)\b/g,
+      " ",
+    )
     .trim();
   const tokens = expanded.split(/\s+/).filter(Boolean);
   if (!tokens.length) return null;
   const candidates = await Product.find({
+    ...(selectedCategory ? categoryFilter(selectedCategory) : {}),
     $and: tokens.map((t) => ({
       $or: ["modelo", "marca", "calidad", "id"].map((field) => ({
         [field]: new RegExp(
@@ -50,7 +67,18 @@ export async function findProductSmart(rawQuery: string) {
     throw new Error(
       "Producto ambiguo. Indica el ID y la calidad exactos: " +
         candidates
-          .map((p) => p.id + " " + p.marca + " " + p.modelo + " " + p.calidad)
+          .map(
+            (p) =>
+              p.id +
+              " [" +
+              productCategory(p.categoria) +
+              "] " +
+              p.marca +
+              " " +
+              p.modelo +
+              " " +
+              p.calidad,
+          )
           .join("; "),
     );
   if (candidates.length === 1) return candidates[0];

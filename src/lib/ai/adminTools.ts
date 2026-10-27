@@ -1,3 +1,4 @@
+import { productCategory, categoryFilter } from "@/lib/categories";
 import { escapeRegex } from "@/lib/security/validation";
 import {
   getActiveExchangeRate,
@@ -18,6 +19,7 @@ import { StockHistory } from "@/lib/models/StockHistory";
 import { getHavanaMonthDay } from "@/lib/dateUtils";
 import mongoose from "mongoose";
 import { cleanModelAndQuality } from "@/lib/ai/batchParser";
+import { findProductSmart } from "@/lib/whatsapp/tools";
 
 // Re-export whatsapp tools that work with the same DB schema
 export {
@@ -43,6 +45,7 @@ function generateOrderNumber(totalItems: number): string {
 // ─── Agregar Producto Individual (con detección de duplicados) ─────────────────
 
 export async function executeAgregarProducto(input: {
+  categoria?: string;
   marca: string;
   modelo: string;
   calidad: string;
@@ -52,11 +55,15 @@ export async function executeAgregarProducto(input: {
   try {
     await connectToDatabase();
 
+    const categoria = productCategory(input.categoria);
     const marcaUp = input.marca.toUpperCase().trim();
-    const { modelo: modeloClean, calidad: calidadClean } = cleanModelAndQuality(
-      input.modelo,
-      input.calidad,
-    );
+    const { modelo: modeloClean, calidad: calidadClean } =
+      categoria === "DISPLAY"
+        ? cleanModelAndQuality(input.modelo, input.calidad)
+        : {
+            modelo: input.modelo.trim().toUpperCase(),
+            calidad: input.calidad.trim().toUpperCase(),
+          };
     const modeloUp = modeloClean;
     const calidadUp = calidadClean;
     const stock = input.stock ?? 1;
@@ -72,6 +79,7 @@ export async function executeAgregarProducto(input: {
 
     // ━ Check if product already exists (including hidden / agotados)
     const existing = await Product.findOne({
+      ...categoryFilter(categoria),
       marca: marcaUp,
       modelo: {
         $regex: new RegExp(
@@ -85,7 +93,7 @@ export async function executeAgregarProducto(input: {
     if (existing) {
       const stockBefore = existing.stock || 0;
       const stockAfter = stockBefore + stock;
-      const wasHidden = existing.isHidden || stockBefore === 0;
+      const wasHidden = existing.isHidden;
 
       existing.stock = stockAfter;
       if (precio > 0) {
@@ -114,7 +122,7 @@ export async function executeAgregarProducto(input: {
           `📱 **${existing.marca} ${existing.modelo} ${existing.calidad}**\n` +
           `📦 Stock anterior: ${stockBefore} uds\n` +
           `➕ Unidades sumadas: +${stock} uds\n` +
-          `📦 **Nuevo stock total: ${stockAfter} unidades** ${wasHidden && stockAfter > 0 ? "✨ *(Reactivado de agotados)*" : ""}\n` +
+          `📦 **Nuevo stock total: ${stockAfter} unidades** ${wasHidden ? "*(Conserva su visibilidad oculta)*" : ""}\n` +
           `💰 Precio: $${existing.precio.toFixed(2)} USD\n` +
           `🆔 ID: ${existing.id}`,
       };
@@ -126,6 +134,7 @@ export async function executeAgregarProducto(input: {
     const customId = `${mm}${dd}-${rnd}`;
 
     const product = await Product.create({
+      categoria,
       id: customId,
       marca: marcaUp,
       modelo: modeloUp,
@@ -166,6 +175,7 @@ export async function executeAgregarProducto(input: {
 
 export async function executeAgregarProductosLote(
   items: Array<{
+    categoria?: string;
     marca: string;
     modelo: string;
     calidad: string;
@@ -180,9 +190,16 @@ export async function executeAgregarProductosLote(
     };
   const consolidated = new Map<string, (typeof items)[number]>();
   for (const item of items) {
-    const clean = cleanModelAndQuality(item.modelo, item.calidad);
+    const clean =
+      productCategory(item.categoria) === "DISPLAY"
+        ? cleanModelAndQuality(item.modelo, item.calidad)
+        : {
+            modelo: item.modelo.trim().toUpperCase(),
+            calidad: item.calidad.trim().toUpperCase(),
+          };
     const normalized = {
       ...item,
+      categoria: productCategory(item.categoria),
       marca: item.marca.toUpperCase().trim(),
       ...clean,
       stock: item.stock ?? 1,
@@ -199,7 +216,13 @@ export async function executeAgregarProductosLote(
         message: "Cantidad o precio inválido en el lote.",
       };
     const key =
-      normalized.marca + "|" + normalized.modelo + "|" + normalized.calidad;
+      normalized.categoria +
+      "|" +
+      normalized.marca +
+      "|" +
+      normalized.modelo +
+      "|" +
+      normalized.calidad;
     const previous = consolidated.get(key);
     if (previous && previous.precio !== normalized.precio)
       return {
@@ -437,6 +460,7 @@ export async function executeCrearOrdenMulti(input: {
 
     const resolvedItems: Array<{
       productId: string;
+      categoria?: string;
       marca: string;
       modelo: string;
       calidad: string;
@@ -485,6 +509,7 @@ export async function executeCrearOrdenMulti(input: {
         marca: product.marca,
         modelo: product.modelo,
         calidad: product.calidad,
+        categoria: productCategory(product.categoria),
         qty: item.qty,
         precioUSD,
         subtotalUSD: precioUSD * item.qty,
@@ -515,6 +540,7 @@ export async function executeCrearOrdenMulti(input: {
         marca: i.marca,
         modelo: i.modelo,
         calidad: i.calidad,
+        categoria: productCategory(i.categoria),
         qty: i.qty,
         returnedQty: 0,
         precioUSD: i.precioUSD,
@@ -740,17 +766,7 @@ export async function executeFusionarProductos(params: {
     const q1 = params.queryPrincipal.trim();
     const q2 = params.querySecundario.trim();
 
-    // Buscar primario
-    const primary = await Product.findOne({
-      $or: [
-        { id: q1 },
-        {
-          modelo: {
-            $regex: new RegExp(q1.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"),
-          },
-        },
-      ],
-    });
+    const primary = await findProductSmart(q1);
 
     if (!primary) {
       return {
@@ -759,18 +775,9 @@ export async function executeFusionarProductos(params: {
       };
     }
 
-    // Buscar secundario
-    const secondary = await Product.findOne({
-      _id: { $ne: primary._id },
-      $or: [
-        { id: q2 },
-        {
-          modelo: {
-            $regex: new RegExp(q2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"),
-          },
-        },
-      ],
-    });
+    const secondary = await findProductSmart(q2);
+    if (primary?.id === secondary?.id)
+      return { success: false, message: "Selecciona dos productos distintos" };
 
     if (!secondary) {
       return {
@@ -780,12 +787,15 @@ export async function executeFusionarProductos(params: {
     }
 
     if (
+      productCategory(primary.categoria) !==
+        productCategory(secondary.categoria) ||
       primary.marca !== secondary.marca ||
       primary.calidad !== secondary.calidad
     )
       return {
         success: false,
-        message: "No se pueden fusionar marcas o calidades diferentes.",
+        message:
+          "No se pueden fusionar categorías, marcas o calidades diferentes.",
       };
     const { calculateDuplicateScore } = await import("@/lib/duplicateDetector");
     if (calculateDuplicateScore(primary as any, secondary as any).score < 95)
@@ -883,6 +893,7 @@ export async function executeNormalizarCatalogoExistente() {
     const logs: string[] = [];
 
     for (const prod of candidates) {
+      if (productCategory(prod.categoria) !== "DISPLAY") continue;
       const { modelo: cleanMod, calidad: cleanCal } = cleanModelAndQuality(
         prod.modelo,
         prod.calidad,
@@ -892,6 +903,7 @@ export async function executeNormalizarCatalogoExistente() {
       // Verificar si ya existe otro registro con ese modelo y calidad limpios
       const existing = await Product.findOne({
         _id: { $ne: prod._id },
+        ...categoryFilter(productCategory(prod.categoria)),
         marca: prod.marca,
         modelo: {
           $regex: new RegExp(

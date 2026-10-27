@@ -11,6 +11,17 @@ function load(file, mocks = {}) {
   m.filename = filename;
   m.paths = module.paths;
   const original = m.require.bind(m);
+  const sourcedRequire = (id) => {
+    const workspaceRoot = path.resolve(__dirname, "../..");
+    const source = id.startsWith(".")
+      ? path.resolve(path.dirname(filename), id + ".ts")
+      : id === "@/lib/categories"
+        ? path.join(workspaceRoot, "src/lib/categories.ts")
+        : null;
+    return source && fs.existsSync(source)
+      ? load(path.relative(workspaceRoot, source))
+      : original(id);
+  };
   m.require = (id) =>
     Object.hasOwn(mocks, id)
       ? mocks[id]
@@ -18,7 +29,7 @@ function load(file, mocks = {}) {
         ? { requireAdmin: async () => null }
         : id === "@/lib/security/atomic-response"
           ? { atomicResponse: async (run) => run() }
-          : original(id);
+          : sourcedRequire(id);
   m._compile(
     ts.transpileModule(fs.readFileSync(filename, "utf8"), {
       compilerOptions: {

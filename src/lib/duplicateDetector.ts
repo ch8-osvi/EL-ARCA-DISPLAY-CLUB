@@ -1,4 +1,5 @@
 import { Product } from "@/lib/types";
+import { productCategory } from "./categories";
 
 export interface DuplicatePair {
   pairId: string;
@@ -146,6 +147,8 @@ export function calculateDuplicateScore(
   a: Product,
   b: Product,
 ): { score: number; matchingTokens: string[]; reasons: string[] } {
+  if (productCategory(a.categoria) !== productCategory(b.categoria))
+    return { score: 0, matchingTokens: [], reasons: [] };
   const marcaA = (a.marca || "").toUpperCase().trim();
   const marcaB = (b.marca || "").toUpperCase().trim();
   if (marcaA !== marcaB) {

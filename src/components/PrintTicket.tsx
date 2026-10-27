@@ -1,6 +1,9 @@
-import React from 'react';
+import { escapePrintData } from "@/lib/printSafety";
+import { categoryLabel, type ProductCategory } from "@/lib/categories";
+import React from "react";
 
 export interface TicketItem {
+  categoria?: ProductCategory;
   productId: string;
   marca: string;
   modelo: string;
@@ -11,10 +14,11 @@ export interface TicketItem {
 }
 
 export interface TicketData {
+  businessPhone?: string;
   orderNumber: string;
   clientName?: string;
   items: TicketItem[];
-  currency: 'USD' | 'CUP';
+  currency: "USD" | "CUP";
   exchangeRate: number;
   subtotalUSD: number;
   totalUSD: number;
@@ -25,16 +29,18 @@ export interface TicketData {
 }
 
 export interface RefundItem {
-  marca:        string;
-  modelo:       string;
-  calidad:      string;
-  qty:          number;
-  refundUSD:    number;
-  refundCUP:    number;
-  destination?: 'stock' | 'merma';
+  categoria?: ProductCategory;
+  marca: string;
+  modelo: string;
+  calidad: string;
+  qty: number;
+  refundUSD: number;
+  refundCUP: number;
+  destination?: "stock" | "merma";
 }
 
 export interface RefundTicketData {
+  businessPhone?: string;
   orderNumber: string;
   clientName?: string;
   items: RefundItem[];
@@ -47,15 +53,15 @@ export interface RefundTicketData {
 
 /** Known standard Bluetooth Thermal Printer Service UUIDs */
 const PRINTER_SERVICES = [
-  '000018f0-0000-1000-8000-00805f9b34fb',
-  'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
-  '49535343-fe7d-4ae5-8fa9-9fafd205e455',
-  '0000e0ff-3c17-d293-8e48-14fe2e4da212',
-  '0000ff00-0000-1000-8000-00805f9b34fb',
-  '0000fff0-0000-1000-8000-00805f9b34fb',
-  '0000feea-0000-1000-8000-00805f9b34fb',
-  '000018f1-0000-1000-8000-00805f9b34fb',
-  '00001101-0000-1000-8000-00805f9b34fb', // Serial Port Profile
+  "000018f0-0000-1000-8000-00805f9b34fb",
+  "e7810a71-73ae-499d-8c15-faa9aef0c3f2",
+  "49535343-fe7d-4ae5-8fa9-9fafd205e455",
+  "0000e0ff-3c17-d293-8e48-14fe2e4da212",
+  "0000ff00-0000-1000-8000-00805f9b34fb",
+  "0000fff0-0000-1000-8000-00805f9b34fb",
+  "0000feea-0000-1000-8000-00805f9b34fb",
+  "000018f1-0000-1000-8000-00805f9b34fb",
+  "00001101-0000-1000-8000-00805f9b34fb", // Serial Port Profile
 ];
 
 /**
@@ -68,25 +74,25 @@ export function buildEscPosBytes(data: TicketData, copies = 1): Uint8Array {
   const add = (arr: number[]) => bytes.push(...arr);
   const text = (str: string) => {
     const sanitized = str
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^\x20-\x7E\n\r]/g, ' ');
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^\x20-\x7E\n\r]/g, " ");
     const encoded = encoder.encode(sanitized);
     for (let i = 0; i < encoded.length; i++) {
       bytes.push(encoded[i]);
     }
   };
 
-  const line = (str: string) => text(str + '\n');
-  const divider = () => line('--------------------------------');
+  const line = (str: string) => text(str + "\n");
+  const divider = () => line("--------------------------------");
 
-  const dateFormatted = new Date(data.createdAt).toLocaleString('es-CU', {
-    timeZone: 'America/Havana',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+  const dateFormatted = new Date(data.createdAt).toLocaleString("es-CU", {
+    timeZone: "America/Havana",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
     hour12: true,
   });
 
@@ -95,32 +101,35 @@ export function buildEscPosBytes(data: TicketData, copies = 1): Uint8Array {
     add([0x1b, 0x61, 0x01]); // Align Center
     add([0x1b, 0x45, 0x01]); // Bold ON
     add([0x1d, 0x21, 0x11]); // Double width & height
-    line('EL ARCA');
-    line('DISPLAY CLUB');
+    line("EL ARCA");
+    line("DISPLAY CLUB");
     add([0x1d, 0x21, 0x00]); // Normal size
     add([0x1b, 0x45, 0x00]); // Bold OFF
-    line('Venta de Repuestos & Displays');
-    line('WhatsApp: +53 5865-9856');
+    line("Venta de Repuestos & Displays");
+    if (data.businessPhone) line("WhatsApp: +" + data.businessPhone);
     divider();
 
     add([0x1b, 0x61, 0x00]); // Align Left
     line(`ORDEN:   #${data.orderNumber}`);
     line(`FECHA:   ${dateFormatted}`);
-    line(`CLIENTE: ${data.clientName || 'Consumidor Final'}`);
-    line(`ESTADO:  ${data.paid ? 'PAGADO [OK]' : 'PENDIENTE'}`);
+    line(`CLIENTE: ${data.clientName || "Consumidor Final"}`);
+    line(`ESTADO:  ${data.paid ? "PAGADO [OK]" : "PENDIENTE"}`);
     divider();
 
-    line('ARTICULO          CANT     TOTAL');
+    line("ARTICULO          CANT     TOTAL");
     divider();
 
     data.items.forEach((item) => {
       add([0x1b, 0x45, 0x01]);
-      line(`${item.marca} ${item.modelo}`);
+      line(`[${categoryLabel(item.categoria)}] ${item.marca} ${item.modelo}`);
       add([0x1b, 0x45, 0x00]);
 
-      const cal = item.calidad.substring(0, 12).padEnd(12, ' ');
-      const qtyStr = `x${item.qty}`.padStart(4, ' ');
-      const subtotal = `$${(item.precioUSD * item.qty).toFixed(2)}`.padStart(12, ' ');
+      const cal = item.calidad.substring(0, 12).padEnd(12, " ");
+      const qtyStr = `x${item.qty}`.padStart(4, " ");
+      const subtotal = `$${(item.precioUSD * item.qty).toFixed(2)}`.padStart(
+        12,
+        " ",
+      );
       line(`${cal}  ${qtyStr}  ${subtotal}`);
     });
 
@@ -130,7 +139,9 @@ export function buildEscPosBytes(data: TicketData, copies = 1): Uint8Array {
     add([0x1b, 0x45, 0x01]);
     add([0x1d, 0x21, 0x01]);
     line(`TOTAL USD: $${data.totalUSD.toFixed(2)} USD`);
-    line(`TOTAL CUP: ${data.totalCUP.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CUP`);
+    line(
+      `TOTAL CUP: ${data.totalCUP.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CUP`,
+    );
     add([0x1d, 0x21, 0x00]);
     add([0x1b, 0x45, 0x00]);
 
@@ -141,10 +152,10 @@ export function buildEscPosBytes(data: TicketData, copies = 1): Uint8Array {
 
     divider();
     add([0x1b, 0x61, 0x01]);
-    line('Gracias por su preferencia!');
-    line('Revise su mercancia al recibir.');
-    line('*** EL ARCA DISPLAY CLUB ***');
-    line('\n\n\n\n');
+    line("Gracias por su preferencia!");
+    line("Revise su mercancia al recibir.");
+    line("*** EL ARCA DISPLAY CLUB ***");
+    line("\n\n\n\n");
     add([0x1d, 0x56, 0x41, 0x10]);
   }
 
@@ -161,56 +172,59 @@ export function buildRefundEscPosBytes(data: RefundTicketData): Uint8Array {
   const add = (arr: number[]) => bytes.push(...arr);
   const text = (str: string) => {
     const sanitized = str
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^\x20-\x7E\n\r]/g, ' ');
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^\x20-\x7E\n\r]/g, " ");
     const encoded = encoder.encode(sanitized);
     for (let i = 0; i < encoded.length; i++) {
       bytes.push(encoded[i]);
     }
   };
 
-  const line = (str: string) => text(str + '\n');
-  const divider = () => line('--------------------------------');
+  const line = (str: string) => text(str + "\n");
+  const divider = () => line("--------------------------------");
 
-  const dateFormatted = new Date(data.createdAt).toLocaleString('es-CU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+  const dateFormatted = new Date(data.createdAt).toLocaleString("es-CU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 
   add([0x1b, 0x40]);
   add([0x1b, 0x61, 0x01]);
   add([0x1b, 0x45, 0x01]);
   add([0x1d, 0x21, 0x11]);
-  line('COMPROBANTE');
-  line('DE DEVOLUCION');
+  line("COMPROBANTE");
+  line("DE DEVOLUCION");
   add([0x1d, 0x21, 0x00]);
   add([0x1b, 0x45, 0x00]);
-  line('EL ARCA DISPLAY CLUB');
-  line('WhatsApp: +53 5865-9856');
+  line("EL ARCA DISPLAY CLUB");
+  if (data.businessPhone) line("WhatsApp: +" + data.businessPhone);
   divider();
 
   add([0x1b, 0x61, 0x00]);
   line(`ORDEN REF: #${data.orderNumber}`);
   line(`FECHA DEV: ${dateFormatted}`);
-  line(`CLIENTE:   ${data.clientName || 'Consumidor Final'}`);
+  line(`CLIENTE:   ${data.clientName || "Consumidor Final"}`);
   line(`MOTIVO:    ${data.reason}`);
   divider();
 
-  line('REPUESTO DEVUELTO  CANT  REEMBOLSO');
+  line("REPUESTO DEVUELTO  CANT  REEMBOLSO");
   divider();
 
   data.items.forEach((item) => {
     add([0x1b, 0x45, 0x01]);
-    const destTag = item.destination === 'merma' ? ' [MERMA/BAJA]' : ' [A STOCK]';
-    line(`${item.marca} ${item.modelo}${destTag}`);
+    const destTag =
+      item.destination === "merma" ? " [MERMA/BAJA]" : " [A STOCK]";
+    line(
+      `[${categoryLabel(item.categoria)}] ${item.marca} ${item.modelo}${destTag}`,
+    );
     add([0x1b, 0x45, 0x00]);
-    const cal = item.calidad.substring(0, 12).padEnd(12, ' ');
-    const qtyStr = `x${item.qty}`.padStart(4, ' ');
-    const refUSD = `$${item.refundUSD.toFixed(2)}`.padStart(12, ' ');
+    const cal = item.calidad.substring(0, 12).padEnd(12, " ");
+    const qtyStr = `x${item.qty}`.padStart(4, " ");
+    const refUSD = `$${item.refundUSD.toFixed(2)}`.padStart(12, " ");
     line(`${cal}  ${qtyStr}  ${refUSD}`);
   });
 
@@ -218,15 +232,17 @@ export function buildRefundEscPosBytes(data: RefundTicketData): Uint8Array {
 
   add([0x1b, 0x45, 0x01]);
   line(`REEMBOLSO USD: $${data.totalRefundUSD.toFixed(2)} USD`);
-  line(`REEMBOLSO CUP: ${data.totalRefundCUP.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CUP`);
+  line(
+    `REEMBOLSO CUP: ${data.totalRefundCUP.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CUP`,
+  );
   add([0x1b, 0x45, 0x00]);
 
   divider();
   add([0x1b, 0x61, 0x01]);
-  line('Comprobante de Devolucion Emitido');
-  line('Firma Cliente / Tecnico');
-  line('\n\n___________________________');
-  line('\n\n\n\n');
+  line("Comprobante de Devolucion Emitido");
+  line("Firma Cliente / Tecnico");
+  line("\n\n___________________________");
+  line("\n\n\n\n");
   add([0x1d, 0x56, 0x41, 0x10]);
 
   return new Uint8Array(bytes);
@@ -235,11 +251,14 @@ export function buildRefundEscPosBytes(data: RefundTicketData): Uint8Array {
 /**
  * Generic helper to send ESC/POS bytes via Bluetooth
  */
-async function sendBytesViaBluetooth(rawBytes: Uint8Array): Promise<{ success: boolean; error?: string }> {
-  if (typeof navigator === 'undefined' || !(navigator as any).bluetooth) {
+async function sendBytesViaBluetooth(
+  rawBytes: Uint8Array,
+): Promise<{ success: boolean; error?: string }> {
+  if (typeof navigator === "undefined" || !(navigator as any).bluetooth) {
     return {
       success: false,
-      error: 'Web Bluetooth no soportado en este navegador. Usa Chrome o Edge sobre HTTPS.',
+      error:
+        "Web Bluetooth no soportado en este navegador. Usa Chrome o Edge sobre HTTPS.",
     };
   }
 
@@ -250,7 +269,10 @@ async function sendBytesViaBluetooth(rawBytes: Uint8Array): Promise<{ success: b
     });
 
     if (!device || !device.gatt) {
-      return { success: false, error: 'No se seleccionó dispositivo Bluetooth.' };
+      return {
+        success: false,
+        error: "No se seleccionó dispositivo Bluetooth.",
+      };
     }
 
     const server = await device.gatt.connect();
@@ -290,7 +312,8 @@ async function sendBytesViaBluetooth(rawBytes: Uint8Array): Promise<{ success: b
     if (!targetChar) {
       return {
         success: false,
-        error: 'No se encontró canal de escritura en la impresora Bluetooth seleccionada.',
+        error:
+          "No se encontró canal de escritura en la impresora Bluetooth seleccionada.",
       };
     }
 
@@ -307,22 +330,28 @@ async function sendBytesViaBluetooth(rawBytes: Uint8Array): Promise<{ success: b
 
     return { success: true };
   } catch (err: any) {
-    if (err.name === 'NotFoundError') {
-      return { success: false, error: 'Selección de impresora cancelada.' };
+    if (err.name === "NotFoundError") {
+      return { success: false, error: "Selección de impresora cancelada." };
     }
-    console.error('Bluetooth error:', err);
-    return { success: false, error: err.message || 'Error al imprimir por Bluetooth.' };
+    console.error("Bluetooth error:", err);
+    return {
+      success: false,
+      error: err.message || "Error al imprimir por Bluetooth.",
+    };
   }
 }
 
 /**
  * Generic helper to send ESC/POS bytes via USB/Serial
  */
-async function sendBytesViaUsb(rawBytes: Uint8Array): Promise<{ success: boolean; error?: string }> {
-  if (typeof navigator === 'undefined' || !(navigator as any).serial) {
+async function sendBytesViaUsb(
+  rawBytes: Uint8Array,
+): Promise<{ success: boolean; error?: string }> {
+  if (typeof navigator === "undefined" || !(navigator as any).serial) {
     return {
       success: false,
-      error: 'Web Serial / USB no soportado en este navegador. Usa Chrome o Edge.',
+      error:
+        "Web Serial / USB no soportado en este navegador. Usa Chrome o Edge.",
     };
   }
 
@@ -335,11 +364,14 @@ async function sendBytesViaUsb(rawBytes: Uint8Array): Promise<{ success: boolean
     await port.close();
     return { success: true };
   } catch (err: any) {
-    if (err.name === 'NotFoundError') {
-      return { success: false, error: 'Selección de puerto USB cancelada.' };
+    if (err.name === "NotFoundError") {
+      return { success: false, error: "Selección de puerto USB cancelada." };
     }
-    console.error('USB error:', err);
-    return { success: false, error: err.message || 'Error al imprimir por USB.' };
+    console.error("USB error:", err);
+    return {
+      success: false,
+      error: err.message || "Error al imprimir por USB.",
+    };
   }
 }
 
@@ -363,10 +395,11 @@ export async function printRefundViaUsb(data: RefundTicketData) {
   return sendBytesViaUsb(rawBytes);
 }
 
-export function printRefundTicket(data: RefundTicketData) {
-  const printWindow = window.open('', '_blank', 'width=380,height=600');
+export function printRefundTicket(rawData: RefundTicketData) {
+  const data = escapePrintData(rawData);
+  const printWindow = window.open("", "_blank", "width=380,height=600");
   if (!printWindow) {
-    alert('Permita las ventanas emergentes para imprimir el comprobante.');
+    alert("Permita las ventanas emergentes para imprimir el comprobante.");
     return;
   }
 
@@ -375,13 +408,13 @@ export function printRefundTicket(data: RefundTicketData) {
       (item) => `
       <div style="margin-bottom: 5px; font-size: 11px;">
         <div style="font-weight: bold;">
-          ${item.marca} ${item.modelo}
+          [${categoryLabel(item.categoria)}] ${item.marca} ${item.modelo}
           <span style="font-size: 9px; padding: 1px 4px; border-radius: 4px; ${
-            item.destination === 'merma'
-              ? 'background: #fee2e2; color: #991b1b;'
-              : 'background: #dcfce7; color: #166534;'
+            item.destination === "merma"
+              ? "background: #fee2e2; color: #991b1b;"
+              : "background: #dcfce7; color: #166534;"
           }">
-            ${item.destination === 'merma' ? 'MERMA / BAJA' : 'A STOCK'}
+            ${item.destination === "merma" ? "MERMA / BAJA" : "A STOCK"}
           </span>
         </div>
         <div style="display: flex; justify-content: space-between; font-size: 10px; margin-top: 2px;">
@@ -390,17 +423,17 @@ export function printRefundTicket(data: RefundTicketData) {
           <span style="width: 30%; text-align: right; font-weight: bold; color: #b91c1c;">-$${item.refundUSD.toFixed(2)}</span>
         </div>
       </div>
-    `
+    `,
     )
-    .join('');
+    .join("");
 
-  const dateFormatted = new Date(data.createdAt).toLocaleString('es-CU', {
-    timeZone: 'America/Havana',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+  const dateFormatted = new Date(data.createdAt).toLocaleString("es-CU", {
+    timeZone: "America/Havana",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
     hour12: true,
   });
 
@@ -420,13 +453,13 @@ export function printRefundTicket(data: RefundTicketData) {
           <div style="text-align: center; margin-bottom: 8px;">
             <div style="font-size: 14px; font-weight: bold;">COMPROBANTE DE DEVOLUCIÓN</div>
             <div style="font-size: 11px; margin-top: 2px;">EL ARCA DISPLAY CLUB</div>
-            <div style="font-size: 10px;">WhatsApp: +53 5865-9856</div>
+            ${data.businessPhone ? `<div style="font-size: 10px;">WhatsApp: +${data.businessPhone}</div>` : ""}
             <div style="border-bottom: 1px dashed #000; margin: 6px 0;"></div>
           </div>
           <div style="font-size: 11px; margin-bottom: 6px;">
             <div><strong>ORDEN REF:</strong> #${data.orderNumber}</div>
             <div><strong>FECHA:</strong> ${dateFormatted}</div>
-            <div><strong>CLIENTE:</strong> ${data.clientName || 'Consumidor Final'}</div>
+            <div><strong>CLIENTE:</strong> ${data.clientName || "Consumidor Final"}</div>
             <div><strong>MOTIVO:</strong> ${data.reason}</div>
             <div style="border-bottom: 1px dashed #000; margin: 6px 0;"></div>
           </div>
@@ -438,7 +471,7 @@ export function printRefundTicket(data: RefundTicketData) {
           <div style="border-bottom: 1px dashed #000; margin: 6px 0;"></div>
           <div style="font-size: 11px; line-height: 1.4;">
             <div><strong>TOTAL REEMBOLSADO USD:</strong> $${data.totalRefundUSD.toFixed(2)} USD</div>
-            <div><strong>TOTAL REEMBOLSADO CUP:</strong> ${data.totalRefundCUP.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CUP</div>
+            <div><strong>TOTAL REEMBOLSADO CUP:</strong> ${data.totalRefundCUP.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CUP</div>
           </div>
           <div style="border-bottom: 1px dashed #000; margin: 6px 0;"></div>
           <div style="text-align: center; font-size: 9px; margin-top: 12px;">
@@ -459,10 +492,11 @@ export function printRefundTicket(data: RefundTicketData) {
   printWindow.document.close();
 }
 
-export function printTicket(data: TicketData, copies = 1) {
-  const printWindow = window.open('', '_blank', 'width=380,height=600');
+export function printTicket(rawData: TicketData, copies = 1) {
+  const data = escapePrintData(rawData);
+  const printWindow = window.open("", "_blank", "width=380,height=600");
   if (!printWindow) {
-    alert('Permita las ventanas emergentes para imprimir el ticket.');
+    alert("Permita las ventanas emergentes para imprimir el ticket.");
     return;
   }
 
@@ -470,24 +504,24 @@ export function printTicket(data: TicketData, copies = 1) {
     .map(
       (item) => `
       <div style="margin-bottom: 5px; font-size: 11px;">
-        <div style="font-weight: bold;">${item.marca} ${item.modelo}</div>
+        <div style="font-weight: bold;">[${categoryLabel(item.categoria)}] ${item.marca} ${item.modelo}</div>
         <div style="display: flex; justify-content: space-between; font-size: 10px;">
           <span style="width: 55%; color: #333;">${item.calidad}</span>
           <span style="width: 15%; text-align: center;">x${item.qty}</span>
           <span style="width: 30%; text-align: right; font-weight: bold;">$${(item.precioUSD * item.qty).toFixed(2)}</span>
         </div>
       </div>
-    `
+    `,
     )
-    .join('');
+    .join("");
 
-  const dateFormatted = new Date(data.createdAt).toLocaleString('es-CU', {
-    timeZone: 'America/Havana',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+  const dateFormatted = new Date(data.createdAt).toLocaleString("es-CU", {
+    timeZone: "America/Havana",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
     hour12: true,
   });
 
@@ -496,15 +530,15 @@ export function printTicket(data: TicketData, copies = 1) {
       <div style="text-align: center; margin-bottom: 8px;">
         <div style="font-size: 15px; font-weight: bold; letter-spacing: 1px;">EL ARCA DISPLAY CLUB</div>
         <div style="font-size: 10px; margin-top: 2px;">Venta de Repuestos & Displays</div>
-        <div style="font-size: 10px; margin-top: 1px;">WhatsApp: +53 5865-9856</div>
+        ${data.businessPhone ? `<div style="font-size: 10px; margin-top: 1px;">WhatsApp: +${data.businessPhone}</div>` : ""}
         <div style="border-bottom: 1px dashed #000; margin: 6px 0;"></div>
       </div>
 
       <div style="font-size: 11px; margin-bottom: 6px;">
         <div><strong>ORDEN:</strong> #${data.orderNumber}</div>
         <div><strong>FECHA:</strong> ${dateFormatted}</div>
-        <div><strong>CLIENTE:</strong> ${data.clientName || 'Consumidor Final'}</div>
-        <div><strong>ESTADO:</strong> ${data.paid ? 'PAGADO [OK]' : 'PENDIENTE'}</div>
+        <div><strong>CLIENTE:</strong> ${data.clientName || "Consumidor Final"}</div>
+        <div><strong>ESTADO:</strong> ${data.paid ? "PAGADO [OK]" : "PENDIENTE"}</div>
         <div style="border-bottom: 1px dashed #000; margin: 6px 0;"></div>
       </div>
 
@@ -530,7 +564,7 @@ export function printTicket(data: TicketData, copies = 1) {
         </div>
         <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: bold;">
           <span>TOTAL CUP:</span>
-          <span>${data.totalCUP.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CUP</span>
+          <span>${data.totalCUP.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CUP</span>
         </div>
       </div>
 
@@ -540,7 +574,7 @@ export function printTicket(data: TicketData, copies = 1) {
         <div style="border-bottom: 1px dashed #000; margin: 6px 0;"></div>
         <div style="font-size: 10px;"><strong>OBS:</strong> ${data.notes}</div>
       `
-          : ''
+          : ""
       }
 
       <div style="border-bottom: 1px dashed #000; margin: 6px 0;"></div>
@@ -552,7 +586,7 @@ export function printTicket(data: TicketData, copies = 1) {
     </div>
   `;
 
-  let fullHtml = '';
+  let fullHtml = "";
   for (let i = 0; i < copies; i++) {
     fullHtml += singleTicketHtml;
   }
@@ -583,6 +617,7 @@ export function printTicket(data: TicketData, copies = 1) {
 }
 
 export const TicketContent: React.FC<TicketData> = ({
+  businessPhone,
   orderNumber,
   clientName,
   items,
@@ -593,13 +628,13 @@ export const TicketContent: React.FC<TicketData> = ({
   notes,
   createdAt,
 }) => {
-  const dateFormatted = new Date(createdAt).toLocaleString('es-CU', {
-    timeZone: 'America/Havana',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+  const dateFormatted = new Date(createdAt).toLocaleString("es-CU", {
+    timeZone: "America/Havana",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
     hour12: true,
   });
 
@@ -608,82 +643,104 @@ export const TicketContent: React.FC<TicketData> = ({
       id="thermal-ticket-print"
       style={{
         fontFamily: "'Courier New', Courier, monospace",
-        fontSize: '12px',
-        lineHeight: '1.25',
-        color: '#000',
-        backgroundColor: '#fff',
-        width: '58mm',
-        maxWidth: '100%',
-        margin: '0 auto',
-        padding: '6px 4px',
-        textAlign: 'left',
+        fontSize: "12px",
+        lineHeight: "1.25",
+        color: "#000",
+        backgroundColor: "#fff",
+        width: "58mm",
+        maxWidth: "100%",
+        margin: "0 auto",
+        padding: "6px 4px",
+        textAlign: "left",
       }}
     >
-      <div style={{ textAlign: 'center', marginBottom: '8px' }}>
-        <div style={{ fontSize: '15px', fontWeight: 'bold', letterSpacing: '1px' }}>
+      <div style={{ textAlign: "center", marginBottom: "8px" }}>
+        <div
+          style={{ fontSize: "15px", fontWeight: "bold", letterSpacing: "1px" }}
+        >
           EL ARCA DISPLAY CLUB
         </div>
-        <div style={{ fontSize: '10px', marginTop: '2px' }}>
+        <div style={{ fontSize: "10px", marginTop: "2px" }}>
           Venta de Repuestos & Displays
         </div>
-        <div style={{ fontSize: '10px', marginTop: '1px' }}>
-          WhatsApp: +53 5865-9856
-        </div>
-        <div style={{ borderBottom: '1px dashed #000', margin: '6px 0' }} />
+        {businessPhone && (
+          <div style={{ fontSize: "10px", marginTop: "1px" }}>
+            WhatsApp: +{businessPhone}
+          </div>
+        )}
+        <div style={{ borderBottom: "1px dashed #000", margin: "6px 0" }} />
       </div>
 
-      <div style={{ fontSize: '11px', marginBottom: '6px' }}>
-        <div><strong>ORDEN:</strong> #{orderNumber}</div>
-        <div><strong>FECHA:</strong> {dateFormatted}</div>
-        <div><strong>CLIENTE:</strong> {clientName || 'Consumidor Final'}</div>
-        <div><strong>ESTADO:</strong> {paid ? 'PAGADO [OK]' : 'PENDIENTE'}</div>
-        <div style={{ borderBottom: '1px dashed #000', margin: '6px 0' }} />
+      <div style={{ fontSize: "11px", marginBottom: "6px" }}>
+        <div>
+          <strong>ORDEN:</strong> #{orderNumber}
+        </div>
+        <div>
+          <strong>FECHA:</strong> {dateFormatted}
+        </div>
+        <div>
+          <strong>CLIENTE:</strong> {clientName || "Consumidor Final"}
+        </div>
+        <div>
+          <strong>ESTADO:</strong> {paid ? "PAGADO [OK]" : "PENDIENTE"}
+        </div>
+        <div style={{ borderBottom: "1px dashed #000", margin: "6px 0" }} />
       </div>
 
       <div
         style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          fontWeight: 'bold',
-          fontSize: '10px',
-          marginBottom: '4px',
+          display: "flex",
+          justifyContent: "space-between",
+          fontWeight: "bold",
+          fontSize: "10px",
+          marginBottom: "4px",
         }}
       >
-        <span style={{ width: '55%' }}>ARTICULO</span>
-        <span style={{ width: '15%', textAlign: 'center' }}>CANT</span>
-        <span style={{ width: '30%', textAlign: 'right' }}>TOTAL</span>
+        <span style={{ width: "55%" }}>ARTICULO</span>
+        <span style={{ width: "15%", textAlign: "center" }}>CANT</span>
+        <span style={{ width: "30%", textAlign: "right" }}>TOTAL</span>
       </div>
-      <div style={{ borderBottom: '1px solid #000', marginBottom: '4px' }} />
+      <div style={{ borderBottom: "1px solid #000", marginBottom: "4px" }} />
 
       {items.map((item, idx) => (
-        <div key={idx} style={{ marginBottom: '5px', fontSize: '11px' }}>
-          <div style={{ fontWeight: 'bold' }}>
-            {item.marca} {item.modelo}
+        <div key={idx} style={{ marginBottom: "5px", fontSize: "11px" }}>
+          <div style={{ fontWeight: "bold" }}>
+            [{categoryLabel(item.categoria)}] {item.marca} {item.modelo}
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px' }}>
-            <span style={{ width: '55%', color: '#333' }}>{item.calidad}</span>
-            <span style={{ width: '15%', textAlign: 'center' }}>x{item.qty}</span>
-            <span style={{ width: '30%', textAlign: 'right', fontWeight: 'bold' }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              fontSize: "10px",
+            }}
+          >
+            <span style={{ width: "55%", color: "#333" }}>{item.calidad}</span>
+            <span style={{ width: "15%", textAlign: "center" }}>
+              x{item.qty}
+            </span>
+            <span
+              style={{ width: "30%", textAlign: "right", fontWeight: "bold" }}
+            >
               ${(item.precioUSD * item.qty).toFixed(2)}
             </span>
           </div>
         </div>
       ))}
 
-      <div style={{ borderBottom: '1px dashed #000', margin: '6px 0' }} />
+      <div style={{ borderBottom: "1px dashed #000", margin: "6px 0" }} />
 
-      <div style={{ fontSize: '11px', lineHeight: '1.4' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+      <div style={{ fontSize: "11px", lineHeight: "1.4" }}>
+        <div style={{ display: "flex", justifyContent: "space-between" }}>
           <span>TASA CUP:</span>
           <strong>1 USD = {exchangeRate} CUP</strong>
         </div>
         <div
           style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            fontSize: '13px',
-            fontWeight: 'bold',
-            marginTop: '3px',
+            display: "flex",
+            justifyContent: "space-between",
+            fontSize: "13px",
+            fontWeight: "bold",
+            marginTop: "3px",
           }}
         >
           <span>TOTAL USD:</span>
@@ -691,31 +748,41 @@ export const TicketContent: React.FC<TicketData> = ({
         </div>
         <div
           style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            fontSize: '12px',
-            fontWeight: 'bold',
+            display: "flex",
+            justifyContent: "space-between",
+            fontSize: "12px",
+            fontWeight: "bold",
           }}
         >
           <span>TOTAL CUP:</span>
-          <span>{totalCUP.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CUP</span>
+          <span>
+            {totalCUP.toLocaleString("en-US", {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}{" "}
+            CUP
+          </span>
         </div>
       </div>
 
       {notes && (
         <>
-          <div style={{ borderBottom: '1px dashed #000', margin: '6px 0' }} />
-          <div style={{ fontSize: '10px' }}>
+          <div style={{ borderBottom: "1px dashed #000", margin: "6px 0" }} />
+          <div style={{ fontSize: "10px" }}>
             <strong>OBS:</strong> {notes}
           </div>
         </>
       )}
 
-      <div style={{ borderBottom: '1px dashed #000', margin: '6px 0' }} />
-      <div style={{ textAlign: 'center', fontSize: '9px', marginTop: '6px' }}>
+      <div style={{ borderBottom: "1px dashed #000", margin: "6px 0" }} />
+      <div style={{ textAlign: "center", fontSize: "9px", marginTop: "6px" }}>
         <div>¡Gracias por su preferencia!</div>
-        <div style={{ marginTop: '2px' }}>Revise su mercancía antes de retirarse.</div>
-        <div style={{ marginTop: '2px', fontWeight: 'bold' }}>*** EL ARCA DISPLAY CLUB ***</div>
+        <div style={{ marginTop: "2px" }}>
+          Revise su mercancía antes de retirarse.
+        </div>
+        <div style={{ marginTop: "2px", fontWeight: "bold" }}>
+          *** EL ARCA DISPLAY CLUB ***
+        </div>
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+import { categoryLabel, productCategory } from "./categories";
 /**
  * Intelligent Fuzzy & Token Search Engine for EL ARCA DISPLAY CLUB
  * Handles phonetic typos, brand aliases, unspaced queries ("redminote11", "sansun a03", "ipon 11", "a04e"),
@@ -6,89 +7,89 @@
 
 export const BRAND_ALIASES: Record<string, string> = {
   // Common technician abbreviations
-  rm: 'redmi',
-  rn: 'redmi note',
-  sm: 'samsung',
-  sam: 'samsung',
-  ip: 'iphone',
-  iph: 'iphone',
-  mot: 'motorola',
-  moto: 'motorola',
-  alc: 'alcatel',
-  inf: 'infinix',
-  tec: 'tecno',
-  tek: 'tecno',
-  itl: 'itel',
-  hw: 'huawei',
-  hua: 'huawei',
-  hon: 'honor',
-  pco: 'poco',
-  rlm: 'realme',
-  zt: 'zte',
+  rm: "redmi",
+  rn: "redmi note",
+  sm: "samsung",
+  sam: "samsung",
+  ip: "iphone",
+  iph: "iphone",
+  mot: "motorola",
+  moto: "motorola",
+  alc: "alcatel",
+  inf: "infinix",
+  tec: "tecno",
+  tek: "tecno",
+  itl: "itel",
+  hw: "huawei",
+  hua: "huawei",
+  hon: "honor",
+  pco: "poco",
+  rlm: "realme",
+  zt: "zte",
 
   // Samsung variants & typos
-  sansun: 'samsung',
-  sansung: 'samsung',
-  samsun: 'samsung',
-  samsumg: 'samsung',
-  samsum: 'samsung',
-  samgun: 'samsung',
-  sammsung: 'samsung',
+  sansun: "samsung",
+  sansung: "samsung",
+  samsun: "samsung",
+  samsumg: "samsung",
+  samsum: "samsung",
+  samgun: "samsung",
+  sammsung: "samsung",
 
   // iPhone / Apple typos
-  ipon: 'iphone',
-  aifon: 'iphone',
-  ifon: 'iphone',
-  ifone: 'iphone',
-  iphon: 'iphone',
-  apple: 'iphone',
+  ipon: "iphone",
+  aifon: "iphone",
+  ifon: "iphone",
+  ifone: "iphone",
+  iphon: "iphone",
+  apple: "iphone",
 
   // Xiaomi / Redmi / Poco typos
-  redminote: 'redmi note',
-  redmi: 'redmi',
-  xaomi: 'xiaomi',
-  xiami: 'xiaomi',
-  xiomi: 'xiaomi',
+  redminote: "redmi note",
+  redmi: "redmi",
+  xaomi: "xiaomi",
+  xiami: "xiaomi",
+  xiomi: "xiaomi",
 
   // Motorola typos
-  motog: 'moto g',
-  motorla: 'motorola',
+  motog: "moto g",
+  motorla: "motorola",
 
   // Alcatel typos
-  alkatel: 'alcatel',
-  alcater: 'alcatel',
+  alkatel: "alcatel",
+  alcater: "alcatel",
 
   // Tecno / Infinix / Itel typos
-  tekno: 'tecno',
-  tecn: 'tecno',
-  infonix: 'infinix',
-  infiniks: 'infinix',
-  itell: 'itel',
+  tekno: "tecno",
+  tecn: "tecno",
+  infonix: "infinix",
+  infiniks: "infinix",
+  itell: "itel",
 
   // Huawei & Honor typos
-  juawei: 'huawei',
-  huawuei: 'huawei',
-  hawei: 'huawei',
-  onor: 'honor',
+  juawei: "huawei",
+  huawuei: "huawei",
+  hawei: "huawei",
+  onor: "honor",
 
   // Realme & ZTE typos
-  relme: 'realme',
-  ztte: 'zte',
+  relme: "realme",
+  ztte: "zte",
 };
 
 /** Normalize text by lowercasing, stripping diacritics/accents, and trimming */
 export function normalizeSearchText(str: string | null | undefined): string {
-  if (!str) return '';
+  if (!str) return "";
   return str
     .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .trim();
 }
 
 /** Strips all spaces, slashes and punctuation, keeping only letters and digits */
 export function compactSearchText(str: string | null | undefined): string {
-  return normalizeSearchText(str).replace(/[^a-z0-9]/g, '');
+  return normalizeSearchText(str).replace(/[^a-z0-9]/g, "");
 }
 
 /** Compute Levenshtein distance between two strings */
@@ -103,7 +104,10 @@ export function levenshteinDistance(a: string, b: string): number {
   for (let i = 1; i <= a.length; i++) {
     let prev = i;
     for (let j = 1; j <= b.length; j++) {
-      const val = a[i - 1] === b[j - 1] ? row[j - 1] : Math.min(row[j - 1], prev, row[j]) + 1;
+      const val =
+        a[i - 1] === b[j - 1]
+          ? row[j - 1]
+          : Math.min(row[j - 1], prev, row[j]) + 1;
       row[j - 1] = prev;
       prev = val;
     }
@@ -119,13 +123,14 @@ export function levenshteinDistance(a: string, b: string): number {
  */
 export function fuzzyMatchProduct(
   product: {
+    categoria?: string;
     marca: string;
     modelo: string;
     calidad?: string;
     precio?: number;
     id?: string;
   },
-  query: string
+  query: string,
 ): { match: boolean; score: number } {
   const trimmed = query.trim();
   if (!trimmed) return { match: true, score: 0 };
@@ -134,7 +139,7 @@ export function fuzzyMatchProduct(
   const compQ = compactSearchText(trimmed);
 
   const fullText = normalizeSearchText(
-    `${product.marca} ${product.modelo} ${product.calidad || ''} ${product.precio || ''} ${product.id || ''}`
+    `${categoryLabel(product.categoria)} ${productCategory(product.categoria)} ${product.marca} ${product.modelo} ${product.calidad || ""} ${product.precio || ""} ${product.id || ""}`,
   );
   const compTarget = compactSearchText(fullText);
 
@@ -148,16 +153,16 @@ export function fuzzyMatchProduct(
   let expandedQuery = rawQ;
 
   // Prefixes joined to numbers (e.g. motog22 -> motorola g 22, rn11 -> redmi note 11, rm9a -> redmi 9a, sm03 -> samsung 03)
-  expandedQuery = expandedQuery.replace(/\bmotog(\d+)/g, 'motorola g $1');
-  expandedQuery = expandedQuery.replace(/\brm(\d+)/g, 'redmi $1');
-  expandedQuery = expandedQuery.replace(/\brn(\d+)/g, 'redmi note $1');
-  expandedQuery = expandedQuery.replace(/\bsm(\d+)/g, 'samsung $1');
-  expandedQuery = expandedQuery.replace(/\bip(\d+)/g, 'iphone $1');
-  expandedQuery = expandedQuery.replace(/\bmoto(\d+)/g, 'motorola $1');
-  expandedQuery = expandedQuery.replace(/\bredminote/g, 'redmi note ');
+  expandedQuery = expandedQuery.replace(/\bmotog(\d+)/g, "motorola g $1");
+  expandedQuery = expandedQuery.replace(/\brm(\d+)/g, "redmi $1");
+  expandedQuery = expandedQuery.replace(/\brn(\d+)/g, "redmi note $1");
+  expandedQuery = expandedQuery.replace(/\bsm(\d+)/g, "samsung $1");
+  expandedQuery = expandedQuery.replace(/\bip(\d+)/g, "iphone $1");
+  expandedQuery = expandedQuery.replace(/\bmoto(\d+)/g, "motorola $1");
+  expandedQuery = expandedQuery.replace(/\bredminote/g, "redmi note ");
 
   for (const [alias, rep] of Object.entries(BRAND_ALIASES)) {
-    const regex = new RegExp(`\\b${alias}\\b`, 'g');
+    const regex = new RegExp(`\\b${alias}\\b`, "g");
     expandedQuery = expandedQuery.replace(regex, rep);
   }
 
@@ -233,7 +238,7 @@ export function fuzzyMatchProduct(
  */
 export function fuzzyMatchGeneric(
   fields: (string | number | undefined | null)[],
-  query: string
+  query: string,
 ): boolean {
   const trimmed = query.trim();
   if (!trimmed) return true;
@@ -241,7 +246,7 @@ export function fuzzyMatchGeneric(
   const rawQ = normalizeSearchText(trimmed);
   const compQ = compactSearchText(trimmed);
 
-  const fullText = normalizeSearchText(fields.filter(Boolean).join(' '));
+  const fullText = normalizeSearchText(fields.filter(Boolean).join(" "));
   const compTarget = compactSearchText(fullText);
 
   // Unspaced match
@@ -251,16 +256,16 @@ export function fuzzyMatchGeneric(
 
   // Tokenize & expand aliases
   let expandedQuery = rawQ;
-  expandedQuery = expandedQuery.replace(/\bmotog(\d+)/g, 'motorola g $1');
-  expandedQuery = expandedQuery.replace(/\brm(\d+)/g, 'redmi $1');
-  expandedQuery = expandedQuery.replace(/\brn(\d+)/g, 'redmi note $1');
-  expandedQuery = expandedQuery.replace(/\bsm(\d+)/g, 'samsung $1');
-  expandedQuery = expandedQuery.replace(/\bip(\d+)/g, 'iphone $1');
-  expandedQuery = expandedQuery.replace(/\bmoto(\d+)/g, 'motorola $1');
-  expandedQuery = expandedQuery.replace(/\bredminote/g, 'redmi note ');
+  expandedQuery = expandedQuery.replace(/\bmotog(\d+)/g, "motorola g $1");
+  expandedQuery = expandedQuery.replace(/\brm(\d+)/g, "redmi $1");
+  expandedQuery = expandedQuery.replace(/\brn(\d+)/g, "redmi note $1");
+  expandedQuery = expandedQuery.replace(/\bsm(\d+)/g, "samsung $1");
+  expandedQuery = expandedQuery.replace(/\bip(\d+)/g, "iphone $1");
+  expandedQuery = expandedQuery.replace(/\bmoto(\d+)/g, "motorola $1");
+  expandedQuery = expandedQuery.replace(/\bredminote/g, "redmi note ");
 
   for (const [alias, rep] of Object.entries(BRAND_ALIASES)) {
-    const regex = new RegExp(`\\b${alias}\\b`, 'g');
+    const regex = new RegExp(`\\b${alias}\\b`, "g");
     expandedQuery = expandedQuery.replace(regex, rep);
   }
 
@@ -278,7 +283,11 @@ export function fuzzyMatchGeneric(
     let matchedToken = false;
 
     for (const tToken of targetTokens) {
-      if (tToken === qToken || tToken.includes(qToken) || qToken.includes(tToken)) {
+      if (
+        tToken === qToken ||
+        tToken.includes(qToken) ||
+        qToken.includes(tToken)
+      ) {
         matchedToken = true;
         break;
       }
@@ -308,7 +317,10 @@ export function fuzzyMatchGeneric(
  * Rounds to the nearest multiple of 100 for practical Cuban cash handling.
  * E.g.: 9,550 -> 9,600 | 9,540 -> 9,500 | 9,800 -> 9,800 | 9,890 -> 9,900
  */
-export function roundCupPrice(priceUSD: number, rate: number | null | undefined): number {
+export function roundCupPrice(
+  priceUSD: number,
+  rate: number | null | undefined,
+): number {
   if (!rate || !Number.isFinite(rate) || rate < 1) return NaN;
   if (!priceUSD) return 0;
   const rawCUP = priceUSD * rate;

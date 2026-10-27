@@ -6,6 +6,12 @@ import { Product } from "@/lib/models/Product";
 import { StockHistory } from "@/lib/models/StockHistory";
 import { Sale } from "@/lib/models/Sale";
 import seedProducts from "@/data/products_seed.json";
+import {
+  productCategory,
+  categoryFilter,
+  assertProductNumbers,
+} from "@/lib/categories";
+import { importCatalog } from "@/lib/catalogImport";
 
 export const dynamic = "force-dynamic"; // Evita que Next.js guarde la respuesta en caché
 
@@ -19,9 +25,25 @@ async function handleGET(request: Request) {
 
     // Por defecto solo repuestos activos con stock > 0 (para catálogo comercial y /admin)
     // Los agotados viven en /admin/pos/inventario
-    const queryFilter = includeEmpty
+    const baseFilter = includeEmpty
       ? { isHidden: false }
       : { isHidden: false, stock: { $gt: 0 } };
+    let queryFilter: any = baseFilter;
+    if (searchParams.has("categoria")) {
+      try {
+        queryFilter = {
+          $and: [
+            baseFilter,
+            categoryFilter(productCategory(searchParams.get("categoria"))),
+          ],
+        };
+      } catch {
+        return NextResponse.json(
+          { success: false, error: "Categoría inválida" },
+          { status: 400 },
+        );
+      }
+    }
 
     // Fetch active products
     const [activeProducts, deletedCount, topSales] = await Promise.all([
@@ -52,6 +74,7 @@ async function handleGET(request: Request) {
 
     const enrichedProducts = activeProducts.map((p) => ({
       ...p,
+      categoria: productCategory(p.categoria),
       salesCount: topSoldMap.get(p.id) || 0,
       isTopSeller: topSoldMap.has(p.id),
     }));
@@ -80,6 +103,27 @@ async function handlePOST(request: Request) {
 
     const body = await request.json();
     const { action, id, product, initialList } = body;
+    try {
+      if (action === "add" && product) {
+        product.categoria = productCategory(product.categoria);
+        assertProductNumbers(product.precio ?? 0, product.stock ?? 1);
+        if (!String(product.modelo || "").trim())
+          throw new Error("Modelo obligatorio");
+      }
+      if (["update", "unhide"].includes(action)) {
+        assertProductNumbers(body.precio ?? 0, body.stock ?? 0);
+        if (body.categoria !== undefined)
+          body.categoria = productCategory(body.categoria);
+      }
+    } catch (error) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: error instanceof Error ? error.message : "Datos inválidos",
+        },
+        { status: 400 },
+      );
+    }
 
     // -----------------------------------------
     // ACTION: DELETE (SOFT DELETE)
@@ -113,7 +157,23 @@ async function handlePOST(request: Request) {
         updateData.stock = Math.max(0, Number(body.stock));
       }
 
+      const previous = await Product.findOne({ id });
+      if (!previous)
+        return NextResponse.json(
+          { success: false, error: "Producto no encontrado" },
+          { status: 404 },
+        );
       await Product.findOneAndUpdate({ id }, { $set: updateData });
+      if (updateData.stock !== undefined && updateData.stock !== previous.stock)
+        await StockHistory.create({
+          productId: id,
+          productName: `[${productCategory(previous.categoria)}] ${previous.marca} ${previous.modelo} ${previous.calidad}`,
+          type: updateData.stock > previous.stock ? "entrada" : "salida",
+          qty: Math.abs(updateData.stock - previous.stock),
+          stockBefore: previous.stock,
+          stockAfter: updateData.stock,
+          reason: "Ajuste al recuperar producto oculto",
+        });
 
       const activeProducts = await Product.find({ isHidden: false })
         .sort({ createdAt: -1 })
@@ -136,8 +196,19 @@ async function handlePOST(request: Request) {
     // ACTION: DELETE-PERMANENT (Hard delete)
     // -----------------------------------------
     if (action === "delete-permanent" && id) {
+      if (
+        (await Sale.exists({ "items.productId": id })) ||
+        (await StockHistory.exists({ productId: id }))
+      )
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Este producto tiene historial. Ocúltalo para conservar la trazabilidad.",
+          },
+          { status: 409 },
+        );
       await Product.findOneAndDelete({ id });
-      await StockHistory.deleteMany({ productId: id });
 
       const deletedCount = await Product.countDocuments({
         isHidden: true,
@@ -155,6 +226,15 @@ async function handlePOST(request: Request) {
     // ACTION: RESTORE (Reset to Seed)
     // -----------------------------------------
     if (action === "restore") {
+      if ((await Sale.exists({})) || (await StockHistory.exists({})))
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "No se puede reiniciar un catálogo con movimientos o ventas. Usa la importación para actualizarlo.",
+          },
+          { status: 409 },
+        );
       // Clear entire collection
       await Product.deleteMany({});
 
@@ -189,11 +269,12 @@ async function handlePOST(request: Request) {
       const marcaUp = (product.marca || "VARIOS").toUpperCase().trim();
       const modeloUp = (product.modelo || "NUEVO MODELO").toUpperCase().trim();
       const calidadUp = (product.calidad || "ORIGINAL").toUpperCase().trim();
-      const newStock = Math.max(0, Number(product.stock) || 1);
+      const newStock = product.stock ?? 1;
       const newPrecio = Math.max(0, Number(product.precio) || 0);
 
       // Check if product already exists (including hidden or stock 0 ones)
       const existingProduct = await Product.findOne({
+        ...categoryFilter(product.categoria),
         marca: marcaUp,
         modelo: {
           $regex: new RegExp(
@@ -234,6 +315,7 @@ async function handlePOST(request: Request) {
       } else {
         const customId = `display-custom-${Date.now()}`;
         savedProduct = await Product.create({
+          categoria: product.categoria,
           id: customId,
           marca: marcaUp,
           modelo: modeloUp,
@@ -267,7 +349,7 @@ async function handlePOST(request: Request) {
       return NextResponse.json({
         success: true,
         message: wasUpdated
-          ? `Producto existente reconocido: se sumaron +${newStock} uds al stock (Total: ${savedProduct.stock} uds) y se reactivó en el catálogo activo.`
+          ? `Producto existente reconocido: se sumaron +${newStock} uds al stock (Total: ${savedProduct.stock} uds) conservando su visibilidad actual.`
           : "Nuevo producto agregado globalmente a la base de datos",
         product: savedProduct,
         wasUpdated,
@@ -294,19 +376,58 @@ async function handlePOST(request: Request) {
         updateData.modelo = String(body.modelo).toUpperCase().trim();
       if (body.marca)
         updateData.marca = String(body.marca).toUpperCase().trim();
+      if (body.categoria !== undefined) updateData.categoria = body.categoria;
+
+      const previous = await Product.findOne({ id });
+      if (!previous)
+        return NextResponse.json(
+          { success: false, error: "Producto no encontrado" },
+          { status: 404 },
+        );
+      const identity = {
+        marca: updateData.marca ?? previous.marca,
+        modelo: updateData.modelo ?? previous.modelo,
+        calidad: updateData.calidad ?? previous.calidad,
+      };
+      const collision = await Product.exists({
+        id: { $ne: id },
+        ...identity,
+        ...categoryFilter(
+          productCategory(updateData.categoria ?? previous.categoria),
+        ),
+      });
+      if (collision)
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Ya existe ese modelo y calidad en la categoría elegida",
+          },
+          { status: 409 },
+        );
 
       const updatedDoc = await Product.findOneAndUpdate(
         { id },
         { $set: updateData },
-        { new: true },
+        { returnDocument: "after", runValidators: true },
       );
 
       if (!updatedDoc) {
         return NextResponse.json(
-          { success: false, error: "Display no encontrado para actualizar" },
+          { success: false, error: "Producto no encontrado para actualizar" },
           { status: 404 },
         );
       }
+
+      if (updateData.stock !== undefined && updateData.stock !== previous.stock)
+        await StockHistory.create({
+          productId: id,
+          productName: `[${productCategory(updatedDoc.categoria)}] ${updatedDoc.marca} ${updatedDoc.modelo} ${updatedDoc.calidad}`,
+          type: updateData.stock > previous.stock ? "entrada" : "salida",
+          qty: Math.abs(updateData.stock - previous.stock),
+          stockBefore: previous.stock,
+          stockAfter: updateData.stock,
+          reason: "Ajuste desde edición de producto",
+        });
 
       const activeProducts = await Product.find({ isHidden: false })
         .sort({ createdAt: -1 })
@@ -318,7 +439,7 @@ async function handlePOST(request: Request) {
 
       return NextResponse.json({
         success: true,
-        message: `Display ${updatedDoc.modelo} actualizado correctamente en la base de datos`,
+        message: `Producto ${updatedDoc.modelo} actualizado correctamente en la base de datos`,
         product: updatedDoc,
         count: activeProducts.length,
         deletedCount,
@@ -330,18 +451,17 @@ async function handlePOST(request: Request) {
     // ACTION: SYNC (Upload new Excel)
     // -----------------------------------------
     if (action === "sync" && Array.isArray(initialList)) {
-      // Hard delete old database to completely refresh catalog based on Excel
-      await Product.deleteMany({});
-
-      // Prepare mapping enforcing uppercase
-      const toInsert = initialList.map((p) => ({
-        ...p,
-        marca: (p.marca || "VARIOS").toUpperCase().trim(),
-        modelo: (p.modelo || "").toUpperCase().trim(),
-        calidad: (p.calidad || "ORIGINAL").toUpperCase().trim(),
-        isHidden: (p.stock || 0) === 0 ? false : false,
-      }));
-      await Product.insertMany(toInsert);
+      try {
+        await importCatalog(initialList);
+      } catch (error) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: error instanceof Error ? error.message : "Archivo inválido",
+          },
+          { status: 400 },
+        );
+      }
 
       const activeProducts = await Product.find({ isHidden: false })
         .sort({ createdAt: -1 })
@@ -351,7 +471,7 @@ async function handlePOST(request: Request) {
         success: true,
         message: "Catálogo sincronizado exitosamente con el Excel en la BD",
         count: activeProducts.length,
-        deletedCount: 0,
+        deletedCount: await Product.countDocuments({ isHidden: true }),
         products: activeProducts,
       });
     }

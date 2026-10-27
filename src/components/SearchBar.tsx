@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import React from 'react';
-import { Search, X, ArrowUpDown, Filter } from 'lucide-react';
-import { SortOption } from '@/lib/types';
+import React from "react";
+import { Search, X, ArrowUpDown, Filter } from "lucide-react";
+import { SortOption } from "@/lib/types";
 
 interface SearchBarProps {
   searchTerm: string;
@@ -35,13 +35,13 @@ export default function SearchBar({
           type="text"
           value={searchTerm}
           onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Buscar display por modelo, repuesto, código o marca... (ej. A02, OLED, Samsung)"
+          placeholder="Buscar por modelo, repuesto, código o marca…"
           className="w-full pl-11 pr-10 py-3.5 bg-[#10131E] border border-[#D4AF37]/25 rounded-2xl text-white placeholder-gray-400 text-sm focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition-all duration-200 shadow-inner"
         />
         {searchTerm && (
           <button
             id="btn-clear-search"
-            onClick={() => onSearchChange('')}
+            onClick={() => onSearchChange("")}
             className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-400 hover:text-white transition-colors"
             title="Limpiar búsqueda"
           >

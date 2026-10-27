@@ -37,7 +37,7 @@ async function handlePOST(req: NextRequest) {
     await IgnoredDuplicate.findOneAndUpdate(
       { pairId },
       { pairId, productAId, productBId, ignoredAt: new Date() },
-      { upsert: true, new: true },
+      { upsert: true, returnDocument: "after" },
     );
 
     return NextResponse.json({ success: true });

@@ -1,6 +1,8 @@
 "use client";
+import { categoryLabel } from "@/lib/categories";
 import { useWhatsAppPhone } from "@/lib/useWhatsAppPhone";
 
+import { CategoryBadge } from "./CategoryFilter";
 import React, { useMemo } from "react";
 import { Product, Currency } from "@/lib/types";
 import {
@@ -56,13 +58,13 @@ export default function ProductCard({
     ? cupPrice.toLocaleString("es-CU")
     : "No disponible";
   const whatsappText = encodeURIComponent(
-    `Hola! Deseo consultar la disponibilidad del display: ${product.marca} ${product.modelo} (${product.calidad}) - $${product.precio} USD (${formattedCUP} CUP) en EL ARCA DISPLAY CLUB.`,
+    `Hola! Deseo consultar la disponibilidad de ${categoryLabel(product.categoria).toLowerCase()}: ${product.marca} ${product.modelo} (${product.calidad}) - $${product.precio} USD (${formattedCUP} CUP) en EL ARCA DISPLAY CLUB.`,
   );
   const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${whatsappText}`;
 
   // Google Images Search Link (Lupa)
   const googleSearchQuery = encodeURIComponent(
-    `display ${product.marca} ${product.modelo} ${product.calidad}`,
+    `${categoryLabel(product.categoria)} ${product.marca} ${product.modelo} ${product.calidad}`,
   );
   const googleSearchUrl = `https://www.google.com/search?tbm=isch&q=${googleSearchQuery}`;
 
@@ -73,7 +75,7 @@ export default function ProductCard({
 
       <div>
         {/* Header: Brand & Quality + Google Search Lupa Button */}
-        <div className="flex items-center justify-between gap-2 mb-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
           <span className="px-2.5 py-1 rounded-lg bg-[#171B2B] border border-white/10 text-[11px] font-bold tracking-wide text-[#E5C158] uppercase flex items-center gap-1.5">
             <Tag className="w-3 h-3 text-[#D4AF37]" />
             {product.marca}
@@ -92,7 +94,7 @@ export default function ProductCard({
               target="_blank"
               rel="noopener noreferrer"
               className="p-1.5 rounded-lg bg-[#171B2B] hover:bg-[#22273D] border border-[#D4AF37]/30 text-[#D4AF37] hover:text-white transition-all duration-200"
-              title="Ver fotos de este display en Google Imagenes"
+              title="Ver fotos de este repuesto en Google Imágenes"
             >
               <Search className="w-3.5 h-3.5" />
             </a>
@@ -124,6 +126,9 @@ export default function ProductCard({
         )}
 
         {/* Model Title */}
+        <div className="mb-2">
+          <CategoryBadge category={product.categoria} />
+        </div>
         <h3 className="text-base font-bold text-white group-hover:text-[#F3E0A9] transition-colors leading-snug mb-3 flex items-start gap-2">
           <Smartphone className="w-4 h-4 text-gray-400 mt-1 shrink-0 group-hover:text-[#D4AF37] transition-colors" />
           <span>{product.modelo}</span>
@@ -131,7 +136,7 @@ export default function ProductCard({
       </div>
 
       {/* Footer: Price & WhatsApp Action */}
-      <div className="pt-3.5 mt-2 border-t border-white/5 flex items-center justify-between gap-2">
+      <div className="pt-3.5 mt-2 border-t border-white/5 flex flex-wrap items-center justify-between gap-2">
         <div>
           <span className="text-[10px] uppercase font-semibold text-gray-400 block tracking-wider">
             {currency === "CUP" ? "Precio CUP" : "Precio USD"}

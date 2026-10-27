@@ -1,4 +1,7 @@
 "use client";
+import RouteLoading from "./loading";
+import { categoryLabel, type ProductCategory } from "@/lib/categories";
+import { useWhatsAppPhone } from "@/lib/useWhatsAppPhone";
 import { checkAdminSession, loginAdmin } from "@/lib/auth-client";
 
 import React, { useState, useEffect, useMemo } from "react";
@@ -48,6 +51,7 @@ import {
 import { fuzzyMatchGeneric } from "@/lib/searchUtils";
 
 interface SaleItem {
+  categoria?: ProductCategory;
   productId: string;
   marca: string;
   modelo: string;
@@ -59,6 +63,7 @@ interface SaleItem {
 }
 
 interface SaleRefundLog {
+  categoria?: ProductCategory;
   productId: string;
   marca: string;
   modelo: string;
@@ -91,7 +96,9 @@ interface SaleRecord {
 }
 
 export default function SalesHistoryPage() {
+  const businessPhone = useWhatsAppPhone();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [sales, setSales] = useState<SaleRecord[]>([]);
   const [daily, setDaily] = useState<any>({
     todayTotalUSD: 0,
@@ -150,7 +157,10 @@ export default function SalesHistoryPage() {
   };
 
   useEffect(() => {
-    void checkAdminSession().then(setIsAuthenticated);
+    void checkAdminSession().then((value) => {
+      setIsAuthenticated(value);
+      setCheckingSession(false);
+    });
   }, []);
 
   const fetchSales = async () => {
@@ -205,6 +215,7 @@ export default function SalesHistoryPage() {
     mode: "bluetooth" | "usb" | "system" = "bluetooth",
   ) => {
     const ticketData = {
+      businessPhone,
       orderNumber: sale.orderNumber,
       clientName: sale.clientName,
       items: sale.items,
@@ -340,9 +351,11 @@ export default function SalesHistoryPage() {
       // Print Refund Receipt if requested
       if (refundModal.printOption !== "none") {
         const refundTicketData: RefundTicketData = {
+          businessPhone,
           orderNumber: refundModal.sale.orderNumber,
           clientName: refundModal.sale.clientName,
           items: data.refundLogs.map((log: any) => ({
+            categoria: log.categoria,
             marca: log.marca,
             modelo: log.modelo,
             calidad: log.calidad,
@@ -547,6 +560,8 @@ export default function SalesHistoryPage() {
     return { totalUSD, totalCUP, itemsCount, stockCount, mermaCount };
   }, [refundModal]);
 
+  if (checkingSession) return <RouteLoading />;
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-[#090A0F] text-white flex flex-col justify-center items-center p-4">
@@ -658,7 +673,7 @@ export default function SalesHistoryPage() {
                             {item.marca}
                           </span>
                           <h4 className="text-xs font-bold text-white truncate">
-                            {item.modelo}
+                            [{categoryLabel(item.categoria)}] {item.modelo}
                           </h4>
                           <div className="flex items-center gap-2 text-[11px] text-gray-400 mt-0.5">
                             <span>{item.calidad}</span>
@@ -1572,6 +1587,7 @@ export default function SalesHistoryPage() {
                                     {item.marca}
                                   </span>
                                   <span className="font-bold text-white block">
+                                    [{categoryLabel(item.categoria)}]{" "}
                                     {item.modelo}
                                   </span>
                                   <span className="text-[10px] text-gray-400">

@@ -17,6 +17,10 @@ const num = (minimum = 0): Field => ({
 });
 const qty: Field = { type: "integer", minimum: 0, maximum: 10000 };
 const product = {
+  categoria: {
+    type: "string",
+    enum: ["DISPLAY", "BATERIA", "TAPA", "ACCESORIO"],
+  } as Field,
   marca: str("Marca exacta"),
   modelo: str("Modelo exacto"),
   calidad: str("Calidad y marco explícitos"),
@@ -92,7 +96,10 @@ export const actionSchemas: Record<
     properties: { nuevaTasa: { ...num(1) } },
     required: ["nuevaTasa"],
   },
-  AGREGAR_PRODUCTO: { properties: product, required: Object.keys(product) },
+  AGREGAR_PRODUCTO: {
+    properties: product,
+    required: Object.keys(product).filter((k) => k !== "categoria"),
+  },
   AGREGAR_LOTE: {
     properties: {
       productos: {
@@ -100,7 +107,7 @@ export const actionSchemas: Record<
         items: {
           type: "object",
           properties: product,
-          required: Object.keys(product),
+          required: Object.keys(product).filter((k) => k !== "categoria"),
           additionalProperties: false,
         },
       },

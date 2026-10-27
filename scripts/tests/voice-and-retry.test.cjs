@@ -12,7 +12,19 @@ function load(file, mocks = {}) {
   m.filename = filename;
   m.paths = module.paths;
   const original = m.require.bind(m);
-  m.require = (id) => (Object.hasOwn(mocks, id) ? mocks[id] : original(id));
+  const sourcedRequire = (id) => {
+    const workspaceRoot = path.resolve(__dirname, "../..");
+    const source = id.startsWith(".")
+      ? path.resolve(path.dirname(filename), id + ".ts")
+      : id === "@/lib/categories"
+        ? path.join(workspaceRoot, "src/lib/categories.ts")
+        : null;
+    return source && fs.existsSync(source)
+      ? load(path.relative(workspaceRoot, source))
+      : original(id);
+  };
+  m.require = (id) =>
+    Object.hasOwn(mocks, id) ? mocks[id] : sourcedRequire(id);
   m._compile(
     ts.transpileModule(fs.readFileSync(filename, "utf8"), {
       compilerOptions: {
@@ -171,6 +183,8 @@ function serviceFixture({
   blocked = false,
   transcript = "¿Tienes pantalla Samsung A12?",
   admin = false,
+  history = [],
+  categories = ["DISPLAY"],
 } = {}) {
   const calls = [],
     logs = [],
@@ -179,16 +193,16 @@ function serviceFixture({
     "@/lib/mongoose": { __esModule: true, default: async () => {} },
     "@/lib/models/Product": {
       Product: {
-        aggregate: async () => [
-          {
+        aggregate: async () =>
+          categories.map((categoria) => ({
+            categoria,
             id: "a12",
             marca: "SAMSUNG",
             modelo: "A12",
             calidad: "INCELL",
             precio: 15,
             stock: 3,
-          },
-        ],
+          })),
         findOne: () => ({ lean: async () => null }),
       },
     },
@@ -208,7 +222,7 @@ function serviceFixture({
     },
     "@/lib/models/BotState": {
       BotConversation: {
-        findById: () => ({ lean: async () => ({ paused, turns: [] }) }),
+        findById: () => ({ lean: async () => ({ paused, turns: history }) }),
         updateOne: async () => {},
       },
       BotPending: {},
@@ -326,4 +340,40 @@ test("confirmar por audio exige código escrito; audio ininteligible pide aclara
     /No pude entender/,
   );
   assert.equal(unclear.calls.length, 1);
+});
+
+test("cliente: saludo y agradecimiento no consumen IA ni repiten dirección", async () => {
+  const f = serviceFixture();
+  assert.match(
+    await f.service.processWhatsAppAiMessage("Hola", "5350000001"),
+    /repuesto/,
+  );
+  assert.equal(
+    await f.service.processWhatsAppAiMessage("Gracias", "5350000001"),
+    "¡Con gusto!",
+  );
+  assert.equal(f.calls.length, 0);
+});
+test("cliente: modelo multicategoría pide una aclaración fundada sin inventar tapas", async () => {
+  const f = serviceFixture({ categories: ["DISPLAY", "BATERIA"] });
+  const result = await f.service.processWhatsAppAiMessage(
+    "Precio del Samsung A12",
+    "5350000001",
+  );
+  assert.match(result, /pantallas, baterías/);
+  assert.doesNotMatch(result, /tapas|dirección/);
+  assert.equal(f.calls.length, 0);
+});
+test("cliente: prompt limita repeticiones y mantiene herramientas de escritura desactivadas", async () => {
+  const f = serviceFixture({
+    history: [
+      { sender: "user", text: "Pantalla Samsung A12" },
+      { sender: "model", text: "Respuesta anterior" },
+    ],
+  });
+  await f.service.processWhatsAppAiMessage("¿Con marco?", "5350000001");
+  assert.equal(f.calls[0].tools, false);
+  assert.match(f.calls[0].system, /No menciones dirección/);
+  assert.match(f.calls[0].system, /sin repetir saludos/);
+  assert.doesNotMatch(f.logs[0].botReply, /Asistente automático/);
 });

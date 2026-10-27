@@ -56,7 +56,7 @@ export async function proposeActions(actor: string, input: Action[]) {
     ])
     .filter(Boolean);
   const snapshot = await Product.find({ id: { $in: ids } })
-    .select("id marca modelo calidad precio stock isHidden")
+    .select("id marca modelo calidad categoria precio stock isHidden")
     .lean();
   const rate = await getActiveExchangeRate();
   let totals = "";
@@ -140,9 +140,14 @@ export async function confirmActions(actor: string, code: string) {
           const current = await Product.findOne({ id: original.id }).lean();
           if (
             !current ||
-            ["marca", "modelo", "calidad", "precio", "isHidden"].some(
-              (k) => (current as any)[k] !== original[k],
-            )
+            [
+              "marca",
+              "modelo",
+              "calidad",
+              "categoria",
+              "precio",
+              "isHidden",
+            ].some((k) => (current as any)[k] !== original[k])
           )
             throw new Error(
               "El producto o su precio cambió desde la propuesta. Solicita una propuesta actualizada.",

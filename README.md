@@ -2,6 +2,8 @@
 
 Catálogo, inventario, ventas y asistente de WhatsApp. La aplicación funciona en Vercel; el puente WhatsApp se ejecuta en la PC del negocio y consulta una cola segura en la nube. No requiere publicar puertos de la PC.
 
+**Entrega del 27/10/2026:** [Informe de mejoras, multicategoría, IA de clientes y verificación](docs/README-mejoras-2026-10-27.md). Incluye el plan ejecutado, errores corregidos y cómo revisar cada cambio.
+
 ## Empezar
 
 ```powershell
@@ -63,20 +65,20 @@ Una cotización o lista pegada sin esa intención no se ejecuta directamente. De
 
 ## Configuración
 
-| Variable                 | Uso                                                                    |
-| ------------------------ | ---------------------------------------------------------------------- |
-| `MONGODB_URI`            | Base del negocio; mantenida sin rotación                               |
-| `ADMIN_PASSWORD`         | Contraseña administrativa de al menos 8 caracteres                     |
-| `ADMIN_SESSION_SECRET`   | Firma de sesiones; al menos 32 caracteres aleatorios                   |
-| `ADMIN_PHONE_NUMBER`     | Teléfono completo del propietario; comparación exacta                  |
-| `WHATSAPP_BRIDGE_SECRET` | Firma de las peticiones de la PC a Vercel                              |
-| `BRIDGE_SECRET`          | Mismo secreto, en `whatsapp-bridge/.env`                               |
+| Variable                 | Uso                                                                        |
+| ------------------------ | -------------------------------------------------------------------------- |
+| `MONGODB_URI`            | Base del negocio; mantenida sin rotación                                   |
+| `ADMIN_PASSWORD`         | Contraseña administrativa de al menos 8 caracteres                         |
+| `ADMIN_SESSION_SECRET`   | Firma de sesiones; al menos 32 caracteres aleatorios                       |
+| `ADMIN_PHONE_NUMBER`     | Teléfono completo del propietario; comparación exacta                      |
+| `WHATSAPP_BRIDGE_SECRET` | Firma de las peticiones de la PC a Vercel                                  |
+| `BRIDGE_SECRET`          | Mismo secreto, en `whatsapp-bridge/.env`                                   |
 | `SCAN_ACCESS_KEY`        | Clave privada del QR local, al menos 8 caracteres; nunca se publica en Git |
-| `WHATSAPP_PROVIDER`      | `bridge` para esta instalación                                         |
-| `GEMINI_API_KEY`         | Credencial de Google, solo en servidor                                 |
-| `GEMINI_MODELS`          | Lista de hasta dos modelos para fallback controlado                    |
-| `BOT_DAILY_TOKEN_LIMIT`  | Tope de tokens en las últimas 24 horas; predeterminado 200000          |
-| `BOT_BUSINESS_INFO`      | Dirección, horario, pagos, garantía e información comercial verificada |
+| `WHATSAPP_PROVIDER`      | `bridge` para esta instalación                                             |
+| `GEMINI_API_KEY`         | Credencial de Google, solo en servidor                                     |
+| `GEMINI_MODELS`          | Lista de hasta dos modelos para fallback controlado                        |
+| `BOT_DAILY_TOKEN_LIMIT`  | Tope de tokens en las últimas 24 horas; predeterminado 200000              |
+| `BOT_BUSINESS_INFO`      | Dirección, horario, pagos, garantía e información comercial verificada     |
 
 Si no se configura información comercial, el bot pide confirmar esos detalles con una persona. No promete instalación, pagos, envío ni garantía inventados. Los modelos se validan contra la disponibilidad real de Google; las cuotas y costes dependen de la cuenta.
 

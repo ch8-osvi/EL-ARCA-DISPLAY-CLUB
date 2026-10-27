@@ -8,7 +8,13 @@ import SearchBar from "@/components/SearchBar";
 import BrandFilter from "@/components/BrandFilter";
 import ProductCard from "@/components/ProductCard";
 import ProductTable from "@/components/ProductTable";
-import seedProducts from "@/data/products_seed.json";
+
+import CategoryFilter, { CategoryBadge } from "@/components/CategoryFilter";
+import {
+  CATEGORIES,
+  productCategory,
+  type ProductCategory,
+} from "@/lib/categories";
 import { Product, ViewMode, SortOption, Currency } from "@/lib/types";
 import {
   Sparkles,
@@ -29,8 +35,18 @@ import { fuzzyMatchProduct } from "@/lib/searchUtils";
 export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState("");
+  const [retryLoad, setRetryLoad] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedBrand, setSelectedBrand] = useState("ALL");
+  const [selectedCategory, setSelectedCategory] = useState<
+    ProductCategory | "ALL"
+  >("ALL");
+  const changeCategory = (value: ProductCategory | "ALL") => {
+    setSelectedCategory(value);
+    setSelectedBrand("ALL");
+    setSelectedQuality("ALL");
+  };
   const [selectedQuality, setSelectedQuality] = useState("ALL");
   const [sortOption, setSortOption] = useState<SortOption>("default");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
@@ -41,9 +57,11 @@ export default function Home() {
   const whatsappGroupUrl =
     "https://chat.whatsapp.com/EJLkGTDLoDX15fyILvOge6?s=cl&p=i&ilr=2&amv=1";
 
-  // Load products from API with fallback to localStorage / seed
+  // Use cached products only when the live catalog cannot be verified.
   useEffect(() => {
     async function loadData() {
+      setLoading(true);
+      setCatalogError("");
       try {
         const res = await fetch("/api/products");
         if (res.ok) {
@@ -55,27 +73,30 @@ export default function Home() {
           }
         }
       } catch (err) {
-        console.warn("API error, loading local seed fallback", err);
+        console.warn("API error, loading cached catalog");
       }
 
-      // Check local storage
-      const local = localStorage.getItem("el_arca_products");
-      if (local) {
-        try {
-          setProducts(JSON.parse(local));
-        } catch {
-          setProducts(seedProducts as Product[]);
-        }
-      } else {
-        setProducts(seedProducts as Product[]);
+      try {
+        const cached = JSON.parse(
+          localStorage.getItem("el_arca_products") || "[]",
+        );
+        setProducts(Array.isArray(cached) ? cached : []);
+      } catch {
+        setProducts([]);
       }
+      setCatalogError(
+        "No pudimos verificar el catálogo en este momento. Si ves productos guardados, confirma precio y disponibilidad por WhatsApp.",
+      );
       setLoading(false);
     }
 
     loadData();
 
     // Load saved currency preference and live exchange rate
-    const savedCurrency = localStorage.getItem("el_arca_currency");
+    let savedCurrency: string | null = null;
+    try {
+      savedCurrency = localStorage.getItem("el_arca_currency");
+    } catch {}
     if (savedCurrency === "USD" || savedCurrency === "CUP") {
       setCurrency(savedCurrency as Currency);
     }
@@ -88,24 +109,37 @@ export default function Home() {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [retryLoad]);
 
   const handleCurrencyChange = (c: Currency) => {
     setCurrency(c);
-    localStorage.setItem("el_arca_currency", c);
+    try {
+      localStorage.setItem("el_arca_currency", c);
+    } catch {}
   };
 
   // Sync state to local storage for offline fallback
   useEffect(() => {
-    if (products.length > 0) {
-      localStorage.setItem("el_arca_products", JSON.stringify(products));
+    if (!loading && !catalogError) {
+      try {
+        localStorage.setItem("el_arca_products", JSON.stringify(products));
+      } catch {}
     }
-  }, [products]);
+  }, [products, loading, catalogError]);
 
   // Only displays with stock > 0 are shown to public clients
-  const availableProducts = useMemo(() => {
+  const allAvailableProducts = useMemo(() => {
     return products.filter((p) => (p.stock ?? 0) > 0);
   }, [products]);
+  const availableProducts = useMemo(
+    () =>
+      allAvailableProducts.filter(
+        (p) =>
+          selectedCategory === "ALL" ||
+          productCategory(p.categoria) === selectedCategory,
+      ),
+    [allAvailableProducts, selectedCategory],
+  );
 
   // Extract brand frequencies
   const brandCounts = useMemo(() => {
@@ -203,13 +237,13 @@ export default function Home() {
             </div>
 
             <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white leading-tight">
-              Encuentra el Display Exacto para tu Celular en{" "}
+              Encuentra el repuesto para tu celular en{" "}
               <span className="gold-gradient-text">EL ARCA</span>
             </h1>
 
             <p className="text-gray-300 text-sm sm:text-base leading-relaxed">
-              Explora nuestra lista actualizada de repuestos pantallas en
-              calidad{" "}
+              Explora pantallas y repuestos organizados por categoría. En
+              pantallas encontrarás calidad{" "}
               <strong className="text-[#F3E0A9]">
                 Original, InCell, OLED y Con Marco (C/M)
               </strong>
@@ -248,12 +282,32 @@ export default function Home() {
           </div>
         </section>
 
+        {catalogError && (
+          <div
+            role="alert"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 text-xs leading-relaxed text-amber-200"
+          >
+            <p className="max-w-3xl">{catalogError}</p>
+            <button
+              onClick={() => setRetryLoad((n) => n + 1)}
+              className="rounded-xl border border-amber-400/30 px-3 py-2 font-bold"
+            >
+              Reintentar
+            </button>
+          </div>
+        )}
         {/* Search & Filter Controls */}
         <section className="space-y-4">
           {loading ? (
             <div className="space-y-4">
               {/* Skeleton para SearchBar */}
               <div className="h-14 sm:h-16 bg-[#171B2B]/50 border border-white/5 rounded-2xl animate-pulse w-full"></div>
+              <CategoryFilter
+                loading
+                products={[]}
+                value="ALL"
+                onChange={() => {}}
+              />
               {/* Skeleton para BrandFilter */}
               <div className="h-12 sm:h-14 bg-[#171B2B]/50 border border-white/5 rounded-2xl animate-pulse w-full"></div>
             </div>
@@ -269,12 +323,18 @@ export default function Home() {
                 qualities={qualities}
               />
 
+              <CategoryFilter
+                products={allAvailableProducts}
+                value={selectedCategory}
+                onChange={changeCategory}
+                publicCatalog
+              />
               <BrandFilter
                 brands={brands}
                 selectedBrand={selectedBrand}
                 onBrandSelect={setSelectedBrand}
                 brandCounts={brandCounts}
-                totalCount={products.length}
+                totalCount={availableProducts.length}
               />
             </>
           )}
@@ -290,11 +350,13 @@ export default function Home() {
               modelos
             </span>
             {(searchTerm ||
+              selectedCategory !== "ALL" ||
               selectedBrand !== "ALL" ||
               selectedQuality !== "ALL") && (
               <button
                 onClick={() => {
                   setSearchTerm("");
+                  setSelectedCategory("ALL");
                   setSelectedBrand("ALL");
                   setSelectedQuality("ALL");
                 }}

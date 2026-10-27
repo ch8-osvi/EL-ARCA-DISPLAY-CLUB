@@ -1,4 +1,12 @@
 "use client";
+import RouteLoading from "./loading";
+import {
+  productCategory,
+  CATEGORIES,
+  type ProductCategory,
+} from "@/lib/categories";
+import CategoryFilter from "@/components/CategoryFilter";
+import { parseCatalogNumber } from "@/lib/catalogNumbers";
 import { checkAdminSession, loginAdmin } from "@/lib/auth-client";
 
 import { useActiveExchangeRate } from "@/lib/useActiveExchangeRate";
@@ -6,7 +14,6 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import AdminProductCard from "@/components/AdminProductCard";
-import seedProducts from "@/data/products_seed.json";
 import { Product } from "@/lib/types";
 import {
   Lock,
@@ -75,6 +82,7 @@ const SkeletonProductCard = () => (
 
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [passwordInput, setPasswordInput] = useState("");
   const [loginError, setLoginError] = useState(false);
 
@@ -82,6 +90,11 @@ export default function AdminPage() {
   const [deletedCount, setDeletedCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<
+    ProductCategory | "ALL"
+  >("ALL");
+  const [newCategory, setNewCategory] = useState<ProductCategory>("DISPLAY");
+  const [savingProduct, setSavingProduct] = useState(false);
   const [selectedBrand, setSelectedBrand] = useState("ALL");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -113,7 +126,10 @@ export default function AdminPage() {
 
   // Check login session
   useEffect(() => {
-    void checkAdminSession().then(setIsAuthenticated);
+    void checkAdminSession().then((value) => {
+      setIsAuthenticated(value);
+      setCheckingSession(false);
+    });
   }, []);
 
   // Fetch product list
@@ -151,12 +167,15 @@ export default function AdminPage() {
       try {
         setProducts(JSON.parse(local));
       } catch {
-        setProducts(seedProducts as Product[]);
+        setProducts([]);
       }
     } else {
-      setProducts(seedProducts as Product[]);
+      setProducts([]);
     }
     setLoading(false);
+    triggerToast(
+      "No pudimos verificar el catálogo. Los datos guardados pueden estar desactualizados.",
+    );
   };
 
   useEffect(() => {
@@ -271,146 +290,95 @@ export default function AdminPage() {
     }, durationMs);
   };
 
-  // Delete product globally & locally
+  // Render mutations only after the server has committed them.
+  const mutateCatalog = async (body: unknown) => {
+    const res = await fetch("/api/products", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success)
+      throw new Error(data.error || "No se guardó la operación");
+    if (Array.isArray(data.products)) {
+      setProducts(data.products);
+      setDeletedCount(data.deletedCount || 0);
+      try {
+        localStorage.setItem("el_arca_products", JSON.stringify(data.products));
+        localStorage.setItem("el_arca_deleted", String(data.deletedCount || 0));
+      } catch {
+        /* Storage is optional. */
+      }
+    }
+    return data;
+  };
   const handleDeleteProduct = async (id: string) => {
-    const updated = products.filter((p) => p.id !== id);
-    setProducts(updated);
-    const newDeleted = deletedCount + 1;
-    setDeletedCount(newDeleted);
-    localStorage.setItem("el_arca_products", JSON.stringify(updated));
-    localStorage.setItem("el_arca_deleted", newDeleted.toString());
-
     try {
-      await fetch("/api/products", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "delete", id }),
-      });
-      triggerToast("Producto eliminado del catálogo global en Vercel");
+      await mutateCatalog({ action: "delete", id });
+      triggerToast("Producto archivado correctamente");
+      return true;
     } catch (err) {
-      triggerToast("Producto eliminado en modo local");
+      triggerToast(err instanceof Error ? err.message : "No se pudo archivar");
+      return false;
     }
   };
-
-  // Restore Catalog
   const handleRestoreCatalog = async () => {
     if (
       !confirm(
-        "¿Deseas restaurar la lista completa de 163 repuestos originales del Excel?",
+        "¿Restaurar el catálogo inicial? Esta opción solo está disponible cuando no hay ventas ni movimientos de inventario.",
       )
-    ) {
+    )
       return;
-    }
-
-    const original = seedProducts as Product[];
-    setProducts(original);
-    setDeletedCount(0);
-    localStorage.setItem("el_arca_products", JSON.stringify(original));
-    localStorage.setItem("el_arca_deleted", "0");
-
     try {
-      await fetch("/api/products", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "restore" }),
-      });
-      triggerToast("Catálogo restaurado a los 163 productos del Excel");
-    } catch {
-      triggerToast("Catálogo restaurado localmente");
+      await mutateCatalog({ action: "restore" });
+      triggerToast("Catálogo inicial restaurado");
+    } catch (err) {
+      triggerToast(err instanceof Error ? err.message : "No se pudo restaurar");
     }
   };
-
-  // Add New Single Product
   const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newModelo || !newPrecio) return;
-
-    const finalCalidad =
+    if (savingProduct) return;
+    const calidad =
       newCalidadSelect === "CUSTOM"
-        ? newCalidadCustom.trim().toUpperCase() || "ORIGINAL C/M"
-        : newCalidadSelect.trim().toUpperCase();
-
-    const marcaTrimmed = (newMarca || "VARIOS").toUpperCase().trim();
-    const modeloTrimmed = newModelo.toUpperCase().trim();
-    const parsedStock = Math.max(0, parseInt(newStock, 10) || 1);
-    const parsedPrecio = parseFloat(newPrecio) || 0;
-
-    // Check if duplicate exists in local state
-    const existingIndex = products.findIndex(
-      (p) =>
-        p.marca.toUpperCase() === marcaTrimmed &&
-        p.modelo.toUpperCase() === modeloTrimmed &&
-        p.calidad.toUpperCase() === finalCalidad,
-    );
-
-    let updated: Product[];
-    if (existingIndex !== -1) {
-      const existing = products[existingIndex];
-      const newTotalStock = (existing.stock || 0) + parsedStock;
-      const updatedProduct = {
-        ...existing,
-        stock: newTotalStock,
-        precio: parsedPrecio > 0 ? parsedPrecio : existing.precio,
-      };
-      updated = [...products];
-      updated[existingIndex] = updatedProduct;
-    } else {
-      const newProd: Product = {
-        id: `prod-custom-${Date.now()}`,
-        marca: marcaTrimmed,
-        modelo: modeloTrimmed,
-        calidad: finalCalidad,
-        precio: parsedPrecio,
-        stock: parsedStock,
-      };
-      updated = [newProd, ...products];
+        ? newCalidadCustom.trim().toUpperCase()
+        : newCalidadSelect;
+    if (
+      !newModelo.trim() ||
+      !calidad ||
+      !Number.isSafeInteger(Number(newStock)) ||
+      Number(newStock) < 0
+    ) {
+      triggerToast("Revisa el modelo, la calidad y el stock entero (mínimo 0)");
+      return;
     }
-
-    setProducts(updated);
-    localStorage.setItem("el_arca_products", JSON.stringify(updated));
-
+    setSavingProduct(true);
     try {
-      const res = await fetch("/api/products", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "add",
-          product: {
-            marca: marcaTrimmed,
-            modelo: modeloTrimmed,
-            calidad: finalCalidad,
-            precio: parsedPrecio,
-            stock: parsedStock,
-          },
-        }),
+      const data = await mutateCatalog({
+        action: "add",
+        product: {
+          categoria: newCategory,
+          marca: (newMarca || "VARIOS").trim().toUpperCase(),
+          modelo: newModelo.trim().toUpperCase(),
+          calidad,
+          precio: Number(newPrecio),
+          stock: Number(newStock),
+        },
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        if (data.wasUpdated) {
-          triggerToast(
-            `Producto existente reconocido: se sumaron +${parsedStock} uds al stock (Total: ${data.product.stock} uds)`,
-          );
-        } else {
-          triggerToast("Nuevo producto agregado con éxito");
-        }
-      } else {
-        triggerToast(data.message || "Producto procesado");
-      }
-    } catch {
+      triggerToast(data.message || "Producto guardado");
+      setNewMarca("");
+      setNewModelo("");
+      setNewCalidadCustom("");
+      setNewPrecio("");
+      setNewStock("1");
+      setShowAddModal(false);
+    } catch (err) {
       triggerToast(
-        existingIndex !== -1
-          ? "Stock sumado localmente"
-          : "Producto agregado localmente",
+        err instanceof Error ? err.message : "No se guardó el producto",
       );
+    } finally {
+      setSavingProduct(false);
     }
-
-    setNewMarca("");
-    setNewModelo("");
-    setNewCalidadSelect("ORIGINAL C/M");
-    setNewCalidadCustom("");
-    setNewPrecio("");
-    setNewStock("1");
-    setShowAddModal(false);
   };
 
   // Export current product list to Excel — with full professional styling
@@ -452,7 +420,7 @@ export default function AdminPage() {
         numFmt: "$#,##0.00",
       });
 
-      const COLS = ["A", "B", "C", "D", "E", "F", "G"];
+      const COLS = ["A", "B", "C", "D", "E", "F", "G", "H", "I"];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const ws: Record<string, any> = {};
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -480,6 +448,8 @@ export default function AdminPage() {
         "",
         "",
         "UNIDADES",
+        "CATEGORIA",
+        "ID",
       ];
       headers.forEach((h, ci) => {
         ws[`${COLS[ci]}${row + 1}`] = {
@@ -544,12 +514,18 @@ export default function AdminPage() {
           ws[`D${row + 1}`] = { v: p.precio, t: "n", s: PRICE_DATA };
           ws[`E${row + 1}`] = { v: "", t: "s", s: DATA };
           ws[`F${row + 1}`] = { v: "", t: "s", s: DATA };
+          ws[`I${row + 1}`] = { v: p.id, t: "s", s: DATA };
+          ws[`H${row + 1}`] = {
+            v: productCategory(p.categoria),
+            t: "s",
+            s: DATA,
+          };
           ws[`G${row + 1}`] = { v: Number(p.stock) || 0, t: "n", s: DATA };
           row++;
         });
       });
 
-      ws["!ref"] = `A1:G${row}`;
+      ws["!ref"] = `A1:I${row}`;
       ws["!merges"] = merges;
       ws["!cols"] = [
         { wch: 15 }, // A: MARCA
@@ -559,11 +535,13 @@ export default function AdminPage() {
         { wch: 5 }, // E
         { wch: 5 }, // F
         { wch: 12 }, // G: UNIDADES
+        { wch: 18 }, // H: CATEGORIA
+        { wch: 42 }, // I: ID estable
       ];
       // No ws['!rows'] so Excel auto-fits the row heights for multi-line wrapped text
 
       const wb = XLSXStyle.utils.book_new();
-      XLSXStyle.utils.book_append_sheet(wb, ws, "DISPLAYS");
+      XLSXStyle.utils.book_append_sheet(wb, ws, "CATALOGO");
       const fileName = `EL_ARCA_DISPLAY_CLUB_${new Date().toISOString().slice(0, 10)}.xlsx`;
       XLSXStyle.writeFile(wb, fileName);
       triggerToast(`Catálogo exportado con formato: ${fileName}`);
@@ -625,12 +603,7 @@ export default function AdminPage() {
             : "";
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const toNum = (val: any): number => {
-          if (typeof val === "number") return val;
-          if (typeof val === "string")
-            return parseFloat(val.replace(/[^0-9.]/g, "")) || 0;
-          return 0;
-        };
+        const toNum = parseCatalogNumber;
 
         // -----------------------------------------------------------------
         // Step 1: Find which row is the header row (has MARCA/MODELO/PRECIO)
@@ -639,6 +612,8 @@ export default function AdminPage() {
         let colMarca = 0;
         let colModelo = 1;
         let colCalidad = 2;
+        let colCategoria = -1;
+        let colId = -1;
         let colPrecio = 3;
         let colStock = 6; // Column G default (UNIDADES)
         let headerRowIdx = -1;
@@ -649,12 +624,16 @@ export default function AdminPage() {
           let foundHeader = false;
           row.forEach((cell, idx) => {
             const s = cleanStr(cell).toUpperCase();
-            if (s === "MARCA") {
+            if (s === "ID") {
+              colId = idx;
+            } else if (s === "MARCA") {
               colMarca = idx;
               foundHeader = true;
             } else if (s === "MODELO") {
               colModelo = idx;
               foundHeader = true;
+            } else if (s === "CATEGORIA" || s === "CATEGORÍA") {
+              colCategoria = idx;
             } else if (s === "CALIDAD") {
               colCalidad = idx;
             }
@@ -685,7 +664,9 @@ export default function AdminPage() {
         // Brand section headers (e.g. row with MODELO="SAMSUNG" and no price)
         // are used to fill in the currentBrand for rows that lack MARCA.
         // -----------------------------------------------------------------
-        const parsedProducts: Product[] = [];
+        const parsedProducts: Array<
+          Omit<Product, "stock"> & { stock?: number }
+        > = [];
         let currentBrand = "VARIOS";
         let skippedNoPriceCount = 0;
         let zeroStockCount = 0;
@@ -762,10 +743,13 @@ export default function AdminPage() {
 
           // ------ PRICE ------
           const priceNum = toNum(rawPrecio);
-          if (priceNum <= 0) {
+          if (noPriceCell) {
             if (rawModelo) skippedNoPriceCount++; // only count real product rows
             continue;
           }
+
+          if (!Number.isFinite(priceNum) || priceNum < 0)
+            throw new Error(`Fila ${i + 1}: precio inválido`);
 
           // ------ STOCK ------
           let stockNum = 0;
@@ -775,7 +759,11 @@ export default function AdminPage() {
             String(rawStock).trim() !== ""
           ) {
             const s = toNum(rawStock);
-            stockNum = Math.max(0, Math.floor(s));
+            if (!Number.isSafeInteger(s) || s < 0 || s > 10000)
+              throw new Error(
+                `Fila ${i + 1}: stock debe ser un entero entre 0 y 10.000`,
+              );
+            stockNum = s;
           }
 
           if (stockNum > 0) {
@@ -790,12 +778,21 @@ export default function AdminPage() {
           const finalModel = rawModelo.toUpperCase().trim();
 
           parsedProducts.push({
-            id: `display-excel-${String(parsedProducts.length + 1).padStart(3, "0")}`,
+            id:
+              colId >= 0 && cleanStr(row[colId])
+                ? cleanStr(row[colId])
+                : `import-${crypto.randomUUID()}`,
             marca: finalBrand,
+            categoria: productCategory(
+              colCategoria >= 0 ? cleanStr(row[colCategoria]) : undefined,
+            ),
             modelo: finalModel,
             calidad: (rawCalidad || "ORIGINAL").toUpperCase().trim(),
             precio: priceNum,
-            stock: stockNum,
+            stock:
+              row[colStock] == null || cleanStr(row[colStock]) === ""
+                ? undefined
+                : stockNum,
           });
         }
 
@@ -808,29 +805,21 @@ export default function AdminPage() {
           return;
         }
 
-        // Update Products globally and locally
-        setProducts(parsedProducts);
-        setDeletedCount(0);
+        const response = await fetch("/api/products", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "sync", initialList: parsedProducts }),
+        });
+        const imported = await response.json();
+        if (!response.ok || !imported.success)
+          throw new Error(imported.error || "No se pudo importar el archivo");
+        setProducts(imported.products);
+        setDeletedCount(imported.deletedCount || 0);
         localStorage.setItem(
           "el_arca_products",
-          JSON.stringify(parsedProducts),
+          JSON.stringify(imported.products),
         );
-        localStorage.setItem("el_arca_deleted", "0");
-
-        try {
-          await fetch("/api/products", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "sync",
-              initialList: parsedProducts,
-            }),
-          });
-        } catch {
-          console.warn("Sync server call failed, saved locally");
-        }
-
-        let summaryMsg = `✅ ¡Catálogo importado con ${parsedProducts.length} productos! (${withStockCount} con stock disponible, ${zeroStockCount} con stock 0).`;
+        let summaryMsg = `✅ ${parsedProducts.length} productos sincronizados. Los productos ausentes se conservan; el stock en blanco mantiene su valor anterior (1 para altas nuevas).`;
         if (skippedNoPriceCount > 0) {
           summaryMsg += `\n⚠️ Se omitieron ${skippedNoPriceCount} filas por no tener precio.`;
         }
@@ -839,7 +828,9 @@ export default function AdminPage() {
       } catch (err) {
         console.error("Error procesando Excel:", err);
         triggerToast(
-          "❌ Error al leer el archivo Excel. Revisa el formato e intenta nuevamente.",
+          err instanceof Error
+            ? `❌ ${err.message}`
+            : "No se pudo importar el archivo.",
           6000,
         );
       } finally {
@@ -854,8 +845,13 @@ export default function AdminPage() {
   // In /admin, only active products with stock > 0 are shown!
   // Products with stock <= 0 (agotados) belong strictly in /admin/pos/inventario
   const availableProducts = useMemo(() => {
-    return products.filter((p) => (p.stock ?? 0) > 0);
-  }, [products]);
+    return products.filter(
+      (p) =>
+        (p.stock ?? 0) > 0 &&
+        (selectedCategory === "ALL" ||
+          productCategory(p.categoria) === selectedCategory),
+    );
+  }, [products, selectedCategory]);
 
   // Brand frequencies (most products first)
   const brandCounts = useMemo(() => {
@@ -904,6 +900,8 @@ export default function AdminPage() {
   }, [availableProducts, selectedBrand, searchTerm, brandCounts]);
 
   // Login Screen Render
+  if (checkingSession) return <RouteLoading />;
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-[#090A0F] text-white flex flex-col justify-center items-center p-4">
@@ -1290,6 +1288,16 @@ export default function AdminPage() {
           </Link>
         </div>
 
+        <CategoryFilter
+          loading={loading}
+          products={products.filter((p) => (p.stock ?? 0) > 0)}
+          value={selectedCategory}
+          onChange={(c) => {
+            setSelectedCategory(c);
+            setSelectedBrand("ALL");
+          }}
+        />
+
         {/* Search filter and Brand pills for Admin */}
         <div className="space-y-3">
           <div className="relative w-full">
@@ -1449,15 +1457,34 @@ export default function AdminPage() {
             </button>
 
             <div className="space-y-1">
-              <h3 className="text-xl font-bold text-white">
-                Agregar Nuevo Display
-              </h3>
+              <h3 className="text-xl font-bold text-white">Agregar producto</h3>
               <p className="text-xs text-gray-400">
                 Añade un repuesto individual al catálogo público en tiempo real.
               </p>
             </div>
 
             <form onSubmit={handleAddProduct} className="space-y-4">
+              <label className="block text-xs font-semibold text-gray-300">
+                Categoría
+                <select
+                  aria-label="Categoría del nuevo producto"
+                  value={newCategory}
+                  onChange={(e) => {
+                    const c = e.target.value as ProductCategory;
+                    setNewCategory(c);
+                    setNewCalidadSelect(
+                      CATEGORIES.find((x) => x.id === c)!.qualities[0],
+                    );
+                  }}
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-[#10131E] p-3 text-white"
+                >
+                  {CATEGORIES.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <div>
                 <label className="text-xs font-semibold text-gray-300 block mb-1">
                   Marca
@@ -1486,28 +1513,23 @@ export default function AdminPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 [&>div:first-child]:col-span-2 sm:[&>div:first-child]:col-span-1">
                 <div>
                   <label className="text-xs font-semibold text-gray-300 block mb-1">
-                    Calidad del Display
+                    Calidad
                   </label>
                   <select
                     value={newCalidadSelect}
                     onChange={(e) => setNewCalidadSelect(e.target.value)}
                     className="w-full px-3 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-xs focus:border-[#D4AF37] focus:outline-none cursor-pointer"
                   >
-                    <option value="ORIGINAL C/M">
-                      ORIGINAL C/M (Con Marco)
-                    </option>
-                    <option value="INCELL C/M">INCELL C/M (Con Marco)</option>
-                    <option value="OLED C/M">OLED C/M (Con Marco)</option>
-                    <option value="ORIGINAL">ORIGINAL S/M (Sin Marco)</option>
-                    <option value="INCELL">INCELL S/M (Sin Marco)</option>
-                    <option value="OLED">OLED S/M (Sin Marco)</option>
-                    <option value="OLED SOFT">OLED SOFT (Gama Alta)</option>
-                    <option value="AMOLED C/M">AMOLED C/M</option>
-                    <option value="MECHANIC">MECHANIC (Especial)</option>
-                    <option value="AAA">AAA</option>
+                    {CATEGORIES.find(
+                      (c) => c.id === newCategory,
+                    )!.qualities.map((q) => (
+                      <option key={q} value={q}>
+                        {q}
+                      </option>
+                    ))}
                     <option value="CUSTOM">-- Personalizada --</option>
                   </select>
                 </div>
@@ -1573,7 +1595,7 @@ export default function AdminPage() {
                   type="submit"
                   className="px-5 py-2.5 rounded-xl gold-gradient-bg text-black text-xs font-extrabold shadow-gold-glow"
                 >
-                  Guardar Display
+                  Guardar producto
                 </button>
               </div>
             </form>

@@ -4,6 +4,8 @@ Esta entrega prepara El Arca para vender pantallas, baterías, tapas traseras y 
 
 ## Ajustes visuales posteriores: buscador, categorías y marcas
 
+**Segunda revisión del zoom, Chrome de iPhone:** el usuario confirmó que el primer ajuste no resolvía su caso. Se verificó que producción entregaba la regla de 16 px. El catálogo ahora declara 18 px directamente y tiene una regla específica sin media queries, sin el anterior `text-sm` y sin animaciones de métricas al enfocar. Se conserva el viewport ampliable. La validación en un iPhone físico sigue pendiente: una prueba con ventana móvil de Chrome de escritorio no reproduce el teclado de iOS ni basta para dar el fallo por resuelto.
+
 - Los campos de texto en móvil utilizan 16 px para evitar el zoom de enfoque de iPhone. Se conserva el zoom manual: no se añadieron restricciones al viewport.
 - La categoría de producto deja de ser una píldora amarilla. Ahora es una línea neutra con icono de acento frío y texto legible, sin fondo ni borde. En la tarjeta pública se elimina el icono de teléfono duplicado junto al modelo.
 - «Todas las marcas» y las marcas seleccionadas ya no se agrandan dentro del contenedor. Tienen separación lateral, tamaño estable y desplazamiento horizontal sin la barra dorada.

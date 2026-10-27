@@ -33,10 +33,12 @@ export default function SearchBar({
         <input
           id="input-search-catalog"
           type="text"
+          aria-label="Buscar repuesto, modelo o marca"
+          enterKeyHint="search"
           value={searchTerm}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Buscar por modelo, repuesto, código o marca…"
-          className="w-full pl-11 pr-10 py-3.5 bg-[#10131E] border border-[#D4AF37]/25 rounded-2xl text-white placeholder-gray-400 text-sm focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition-all duration-200 shadow-inner"
+          className="w-full pl-11 pr-10 py-3.5 bg-[#10131E] border border-[#D4AF37]/25 rounded-2xl text-white placeholder-gray-400 text-[18px] leading-normal focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition-colors duration-200 shadow-inner"
         />
         {searchTerm && (
           <button

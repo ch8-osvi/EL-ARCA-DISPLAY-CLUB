@@ -920,7 +920,7 @@ export default function AdminPage() {
               Acceso Administrativo
             </h1>
             <p className="text-xs text-gray-400">
-              Prototipo de Gestión - EL ARCA DISPLAY CLUB
+              EL ARCA DISPLAY CLUB
             </p>
           </div>
 

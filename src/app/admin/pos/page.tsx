@@ -730,36 +730,37 @@ export default function PosPage() {
                       />
                     </div>
 
-                    <div className="mt-3 pt-2.5 border-t border-white/5 flex flex-wrap items-center justify-between gap-3">
-                      <div className="w-full min-w-0">
-                        <span className="text-[10px] text-gray-400 block mb-0.5">
-                          Stock:{" "}
-                          <strong className="text-gray-200">
-                            {availableAfterCart}
-                          </strong>
-                        </span>
+                    <div className="mt-3 pt-2.5 border-t border-white/5">
+                      <span className="text-[10px] text-gray-400 block mb-1.5">
+                        Stock:{" "}
+                        <strong className="text-gray-200">
+                          {availableAfterCart}
+                        </strong>
+                      </span>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <ProductPrice
                           priceUSD={prod.precio}
                           exchangeRate={exchangeRate}
                           primaryCurrency={currency}
                           compact
+                          inlineAction
                         />
-                      </div>
 
-                      <button
-                        onClick={() => addToCart(prod)}
-                        disabled={availableAfterCart <= 0}
-                        className={`ml-auto px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
-                          availableAfterCart <= 0
-                            ? "bg-gray-800 text-gray-500 cursor-not-allowed"
-                            : "gold-gradient-bg text-black shadow-gold-glow hover:scale-105 active:scale-95"
-                        }`}
-                      >
-                        <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                        <span>
-                          {inCart ? `Agregar (${inCart.qty})` : "Vender"}
-                        </span>
-                      </button>
+                        <button
+                          onClick={() => addToCart(prod)}
+                          disabled={availableAfterCart <= 0}
+                          className={`ml-auto shrink-0 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+                            availableAfterCart <= 0
+                              ? "bg-gray-800 text-gray-500 cursor-not-allowed"
+                              : "gold-gradient-bg text-black shadow-gold-glow hover:scale-105 active:scale-95"
+                          }`}
+                        >
+                          <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                          <span>
+                            {inCart ? `Agregar (${inCart.qty})` : "Vender"}
+                          </span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );

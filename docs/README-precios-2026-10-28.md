@@ -18,3 +18,7 @@
 - Compilación de producción con validación de tipos.
 
 Este ajuste sustituye la presentación de la tasa en dos líneas descrita en `README-ajustes-ui-2026-10-28.md`.
+
+## Limpieza posterior de tarjetas de administración
+
+En `/admin` se retiran los distintivos «Más vendido» y «Bajo stock». Se conservan marca, calidad, categoría y cantidad de stock como información de trabajo. El catálogo público mantiene sus distintivos de venta, novedades y disponibilidad; no cambian los datos ni las reglas que los calculan.

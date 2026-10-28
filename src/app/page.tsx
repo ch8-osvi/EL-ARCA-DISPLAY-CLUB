@@ -50,7 +50,7 @@ export default function Home() {
   const [selectedQuality, setSelectedQuality] = useState("ALL");
   const [sortOption, setSortOption] = useState<SortOption>("default");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
-  const [currency, setCurrency] = useState<Currency>("USD");
+  const currency: Currency = "CUP";
   const [exchangeRate, setExchangeRate] = useActiveExchangeRate();
 
   const whatsappNumber = useWhatsAppPhone();
@@ -92,15 +92,7 @@ export default function Home() {
 
     loadData();
 
-    // Load saved currency preference and live exchange rate
-    let savedCurrency: string | null = null;
-    try {
-      savedCurrency = localStorage.getItem("el_arca_currency");
-    } catch {}
-    if (savedCurrency === "USD" || savedCurrency === "CUP") {
-      setCurrency(savedCurrency as Currency);
-    }
-
+    // Refresh the rate used by both the header and product equivalents.
     fetch("/api/exchange-rate")
       .then((r) => r.json())
       .then((d) => {
@@ -110,13 +102,6 @@ export default function Home() {
       })
       .catch(() => {});
   }, [retryLoad]);
-
-  const handleCurrencyChange = (c: Currency) => {
-    setCurrency(c);
-    try {
-      localStorage.setItem("el_arca_currency", c);
-    } catch {}
-  };
 
   // Sync state to local storage for offline fallback
   useEffect(() => {
@@ -220,8 +205,6 @@ export default function Home() {
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         totalProducts={loading ? null : filteredProducts.length}
-        currency={currency}
-        onCurrencyChange={handleCurrencyChange}
         exchangeRate={exchangeRate}
       />
 

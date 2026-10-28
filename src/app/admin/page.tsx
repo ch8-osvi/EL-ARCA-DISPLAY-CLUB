@@ -1140,7 +1140,7 @@ export default function AdminPage() {
                 href="/admin/whatsapp"
                 className="h-11 px-4 rounded-xl bg-gradient-to-r from-purple-600/25 to-indigo-600/25 hover:from-purple-600/40 hover:to-indigo-600/40 text-purple-200 border border-purple-500/45 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-[1.02] shadow-sm shadow-purple-950/40"
               >
-                <MessageSquare className="w-4 h-4 text-purple-300 shrink-0" />
+                <MessageSquare className="w-4 h-4 text-purple-300 motion-safe:animate-pulse shrink-0" />
                 <span>IA WhatsApp</span>
               </Link>
 
@@ -1150,7 +1150,7 @@ export default function AdminPage() {
                 href="/admin/etiquetas"
                 className="h-11 px-4 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-[1.02] shadow-sm"
               >
-                <Tag className="w-4 h-4 text-amber-400 shrink-0" />
+                <Tag className="w-4 h-4 text-amber-400 motion-safe:animate-pulse shrink-0" />
                 <span>Etiquetador</span>
               </Link>
 
@@ -1160,7 +1160,7 @@ export default function AdminPage() {
                 onClick={handleExportExcel}
                 className="h-11 px-4 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-[1.02] shadow-sm"
               >
-                <Download className="w-4 h-4 text-emerald-400 shrink-0" />
+                <Download className="w-4 h-4 text-emerald-400 motion-safe:animate-pulse shrink-0" />
                 <span>Exportar Excel</span>
               </button>
             </div>
@@ -1173,7 +1173,7 @@ export default function AdminPage() {
                 href="/admin/ia"
                 className="h-11 px-4 rounded-xl bg-gradient-to-r from-indigo-600/25 to-violet-600/25 hover:from-indigo-600/40 hover:to-violet-600/40 text-indigo-200 border border-indigo-500/45 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-[1.02] shadow-sm shadow-indigo-950/40"
               >
-                <Sparkles className="w-4 h-4 text-indigo-300 animate-pulse shrink-0" />
+                <Sparkles className="w-4 h-4 text-indigo-300 motion-safe:animate-pulse shrink-0" />
                 <span>Asistente IA</span>
               </Link>
 
@@ -1183,7 +1183,7 @@ export default function AdminPage() {
                 href="/admin/duplicados"
                 className="h-11 px-4 rounded-xl bg-[#D4AF37]/15 hover:bg-[#D4AF37]/25 text-[#E5C158] border border-[#D4AF37]/45 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-[1.02] shadow-sm"
               >
-                <GitMerge className="w-4 h-4 text-[#D4AF37] shrink-0" />
+                <GitMerge className="w-4 h-4 text-[#D4AF37] motion-safe:animate-pulse shrink-0" />
                 <span>Unir Duplicados</span>
               </Link>
 
@@ -1193,7 +1193,7 @@ export default function AdminPage() {
                 onClick={() => setShowExcelModal(true)}
                 className="h-11 px-4 rounded-xl bg-teal-600/20 hover:bg-teal-600/30 text-teal-300 border border-teal-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-[1.02] shadow-sm"
               >
-                <FileSpreadsheet className="w-4 h-4 text-teal-400 shrink-0" />
+                <FileSpreadsheet className="w-4 h-4 text-teal-400 motion-safe:animate-pulse shrink-0" />
                 <span>Cargar Excel</span>
               </button>
             </div>

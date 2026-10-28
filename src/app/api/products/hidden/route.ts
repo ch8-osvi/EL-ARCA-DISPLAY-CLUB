@@ -1,3 +1,4 @@
+import { catalogProduct } from "@/lib/categories";
 import { requireAdmin } from "@/lib/security/admin";
 import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/mongoose";
@@ -20,7 +21,7 @@ async function handleGET() {
     return NextResponse.json({
       success: true,
       count: hiddenProducts.length,
-      products: hiddenProducts,
+      products: hiddenProducts.map(catalogProduct),
     });
   } catch (error) {
     console.error("API GET hidden Error:", error);

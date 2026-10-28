@@ -33,6 +33,89 @@ function load(file) {
 }
 const categories = load("src/lib/categories.ts"),
   customer = load("src/lib/whatsapp/customer.ts");
+
+test("catálogo plano: cuatro categorías, sin tipos ni subcategorías visibles", () => {
+  assert.deepEqual(categories.CATEGORY_IDS, [
+    "DISPLAY",
+    "BATERIA",
+    "REPUESTO",
+    "ACCESORIO",
+  ]);
+  assert.deepEqual(
+    categories.CATEGORIES.map((c) => c.label),
+    ["Pantallas", "Baterías", "Repuestos", "Accesorios y herramientas"],
+  );
+  for (const alias of [
+    "TAPA",
+    "Tapas traseras",
+    "Regiones",
+    "Flex",
+    "Tablillas de carga",
+    "Centros de carga",
+  ])
+    assert.equal(categories.productCategory(alias), "REPUESTO");
+  for (const alias of [
+    "Herramientas",
+    "Accesorios",
+    "Accesorios y herramientas",
+  ])
+    assert.equal(categories.productCategory(alias), "ACCESORIO");
+  assert.equal(categories.categoryLabel("TAPA"), "Repuestos");
+  assert.ok(categories.STORED_CATEGORY_IDS.includes("TAPA"));
+  assert.ok(!categories.CATEGORY_IDS.includes("TAPA"));
+});
+
+test("tapas antiguas: se conserva la identidad de la pieza sin otra categoría", () => {
+  const original = {
+    id: "old",
+    categoria: "TAPA",
+    modelo: "A50",
+    precio: 5,
+    stock: 2,
+  };
+  const normalized = categories.catalogProduct(original);
+  assert.equal(normalized.categoria, "REPUESTO");
+  assert.equal(normalized.modelo, "TAPA TRASERA A50");
+  assert.equal(original.modelo, "A50");
+  assert.equal(normalized.id, original.id);
+  assert.equal(normalized.stock, original.stock);
+  assert.equal(
+    categories.productDisplayModel("TAPA TRASERA A50", "TAPA"),
+    "TAPA TRASERA A50",
+  );
+  assert.equal(
+    categories.productDisplayModel("A50", "Regiones"),
+    "CENTRO DE CARGA A50",
+  );
+  assert.equal(categories.productDisplayModel("A50", "Flex"), "FLEX A50");
+});
+
+test("cliente: región, módulo de carga y flex son repuestos; herramientas comparten accesorios", () => {
+  for (const text of [
+    "región A50",
+    "módulo de carga A50",
+    "tablilla de carga A50",
+    "flex A50",
+    "flex de batería A50",
+    "flex de pantalla A50",
+    "tapa y flex A50",
+  ])
+    assert.equal(customer.detectCategoryIntent(text), "REPUESTO", text);
+  for (const text of [
+    "destornillador",
+    "pinza de precisión",
+    "accesorios y herramientas",
+    "protector de pantalla",
+  ])
+    assert.equal(customer.detectCategoryIntent(text), "ACCESORIO", text);
+  assert.match(
+    customer.customerSearchText("A50", [
+      { sender: "user", text: "Busco un flex" },
+    ]),
+    /flex/i,
+  );
+  assert.equal(customer.detectCategoryIntent("pantalla y flex A50"), undefined);
+});
 test("devoluciones: un producto retirado nunca se etiqueta como repuesto a stock", () => {
   const { refundDestinationLabel } = load("src/lib/refundDestinations.ts");
   assert.equal(refundDestinationLabel("retirado"), "Fuera de inventario");
@@ -51,7 +134,7 @@ test("categorías: compatibilidad heredada, alias en español y rechazo de valor
   for (const value of [undefined, null, "", "Pantallas"])
     assert.equal(categories.productCategory(value), "DISPLAY");
   assert.equal(categories.productCategory("Baterías"), "BATERIA");
-  assert.equal(categories.productCategory("Tapas traseras"), "TAPA");
+  assert.equal(categories.productCategory("Tapas traseras"), "REPUESTO");
   assert.equal(categories.productCategory("Accesorios"), "ACCESORIO");
   assert.throws(() => categories.productCategory("OTRO"));
   assert.ok(
@@ -69,6 +152,56 @@ test("inventario: cero válido; rechaza fracciones, negativos y números no fini
     assert.throws(() => categories.assertProductNumbers(10, stock));
   for (const price of [-1, Infinity, NaN, "12"])
     assert.throws(() => categories.assertProductNumbers(price, 2));
+});
+
+test("repuestos y accesorios: compartir categoría no convierte piezas diferentes en duplicados", () => {
+  const { calculateDuplicateScore } = load("src/lib/duplicateDetector.ts");
+  const common = {
+    id: "x",
+    categoria: "REPUESTO",
+    marca: "SAMSUNG",
+    calidad: "ORIGINAL",
+    stock: 2,
+    precio: 5,
+  };
+  const tapa = { ...common, modelo: "TAPA TRASERA A32 / A50 / A70" };
+  const flex = { ...common, id: "y", modelo: "FLEX DE CARGA A32 / A50 / A70" };
+  assert.equal(calculateDuplicateScore(tapa, flex).score, 0);
+  assert.equal(
+    calculateDuplicateScore(
+      { ...common, categoria: "TAPA", modelo: "A50" },
+      { ...common, modelo: "TAPA TRASERA A50" },
+    ).score,
+    100,
+  );
+});
+
+test("IA: solo propone cuatro categorías y mantiene compatibilidad con altas antiguas de tapas", () => {
+  const { validateActions, functionDeclarations } = load(
+    "src/lib/ai/contracts.ts",
+  );
+  const [action] = validateActions([
+    {
+      type: "AGREGAR_PRODUCTO",
+      payload: {
+        categoria: "TAPA",
+        marca: "SAMSUNG",
+        modelo: "A50",
+        calidad: "ORIGINAL",
+        precio: 5,
+        stock: 1,
+      },
+    },
+  ]);
+  assert.equal(action.payload.categoria, "REPUESTO");
+  assert.equal(action.payload.modelo, "TAPA TRASERA A50");
+  const declaration = functionDeclarations.find(
+    (f) => f.name === "AGREGAR_PRODUCTO",
+  );
+  assert.deepEqual(
+    declaration.parametersJsonSchema.properties.categoria.enum,
+    categories.CATEGORY_IDS,
+  );
 });
 test("cliente: usa el último modelo del usuario y conserva la aclaración de categoría", () => {
   const history = [

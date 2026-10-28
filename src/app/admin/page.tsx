@@ -2,6 +2,7 @@
 import RouteLoading from "./loading";
 import {
   productCategory,
+  productDisplayModel,
   CATEGORIES,
   type ProductCategory,
 } from "@/lib/categories";
@@ -784,7 +785,10 @@ export default function AdminPage() {
             categoria: productCategory(
               colCategoria >= 0 ? cleanStr(row[colCategoria]) : undefined,
             ),
-            modelo: finalModel,
+            modelo: productDisplayModel(
+              finalModel,
+              colCategoria >= 0 ? cleanStr(row[colCategoria]) : undefined,
+            ),
             calidad: (rawCalidad || "ORIGINAL").toUpperCase().trim(),
             precio: priceNum,
             stock:
@@ -1476,13 +1480,19 @@ export default function AdminPage() {
 
               <div>
                 <label className="text-xs font-semibold text-gray-300 block mb-1">
-                  Modelo / Código
+                  Producto / modelo
                 </label>
                 <input
                   type="text"
                   value={newModelo}
                   onChange={(e) => setNewModelo(e.target.value.toUpperCase())}
-                  placeholder="ej. GALAXY A55 5G / A556"
+                  placeholder={
+                    newCategory === "REPUESTO"
+                      ? "Ej. Flex de carga Samsung A50"
+                      : newCategory === "ACCESORIO"
+                        ? "Ej. Pinza de precisión / Cable USB-C"
+                        : "Ej. Samsung A50 / A505"
+                  }
                   className="w-full px-4 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-sm focus:border-[#D4AF37] focus:outline-none uppercase font-mono"
                   required
                 />

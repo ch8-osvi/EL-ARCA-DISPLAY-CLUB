@@ -2,6 +2,8 @@
 
 Catálogo, inventario, ventas y asistente de WhatsApp. La aplicación funciona en Vercel; el puente WhatsApp se ejecuta en la PC del negocio y consulta una cola segura en la nube. No requiere publicar puertos de la PC.
 
+**Categorías planas (28/10/2026):** [Pantallas, Baterías, Repuestos y Accesorios y herramientas](docs/README-categorias-planas-2026-10-28.md), sin subcategorías y con un solo icono por categoría.
+
 **Auditoría del 28/10/2026:** [Informe integral: badges, ventas, devoluciones, IA y recuperación](docs/README-auditoria-integral-2026-10-28.md). Incluye los fallos corregidos, 53 pruebas unitarias, integración en bases temporales y límites de la entrega.
 
 **Entrega del 27/10/2026:** [Informe de mejoras, multicategoría, IA de clientes y verificación](docs/README-mejoras-2026-10-27.md). Incluye el plan ejecutado, errores corregidos y cómo revisar cada cambio.

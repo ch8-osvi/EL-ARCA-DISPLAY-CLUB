@@ -1,14 +1,23 @@
 import { randomUUID } from "node:crypto";
 import { Product } from "./models/Product";
 import { StockHistory } from "./models/StockHistory";
-import { assertProductNumbers, productCategory } from "./categories";
+import {
+  assertProductNumbers,
+  productCategory,
+  productDisplayModel,
+} from "./categories";
 export async function importCatalog(rows: any[]) {
   if (!rows.length || rows.length > 10000)
     throw new Error("Importa entre 1 y 10.000 productos");
   const existing = await Product.find({}).lean();
   const byId = new Map(existing.map((p) => [p.id, p]));
   const identity = (p: any) =>
-    [productCategory(p.categoria), p.marca, p.modelo, p.calidad].join("|");
+    [
+      productCategory(p.categoria),
+      p.marca,
+      productDisplayModel(p.modelo, p.categoria),
+      p.calidad,
+    ].join("|");
   const byIdentity = new Map<string, (typeof existing)[number]>();
   const ambiguous = new Set<string>();
   for (const p of existing) {
@@ -28,9 +37,10 @@ export async function importCatalog(rows: any[]) {
       marca: String(row.marca || "VARIOS")
         .trim()
         .toUpperCase(),
-      modelo: String(row.modelo || "")
-        .trim()
-        .toUpperCase(),
+      modelo: productDisplayModel(
+        String(row.modelo || ""),
+        row.categoria ?? old?.categoria,
+      ).toUpperCase(),
       calidad: String(row.calidad || "ORIGINAL")
         .trim()
         .toUpperCase(),

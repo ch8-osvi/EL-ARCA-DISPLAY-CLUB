@@ -1,3 +1,8 @@
+import {
+  CATEGORY_IDS,
+  productCategory,
+  productDisplayModel,
+} from "../categories";
 export type Action = { type: string; payload: Record<string, any> };
 type Field = {
   type: string;
@@ -19,7 +24,9 @@ const qty: Field = { type: "integer", minimum: 0, maximum: 10000 };
 const product = {
   categoria: {
     type: "string",
-    enum: ["DISPLAY", "BATERIA", "TAPA", "ACCESORIO"],
+    enum: [...CATEGORY_IDS],
+    description:
+      "Una de cuatro categorías planas. REPUESTO incluye tapas, centros de carga/regiones y flex. ACCESORIO incluye accesorios y herramientas. Nombra la pieza en modelo; no crees subcategorías.",
   } as Field,
   marca: str("Marca exacta"),
   modelo: str("Modelo exacto"),
@@ -185,6 +192,18 @@ export function validateActions(actions: Action[]) {
   for (const action of actions) {
     const schema = actionSchemas[action.type];
     if (!schema) throw new Error("Acción no permitida");
+    const legacyProducts =
+      action.type === "AGREGAR_LOTE" && Array.isArray(action.payload?.productos)
+        ? action.payload.productos
+        : action.type === "AGREGAR_PRODUCTO" && action.payload
+          ? [action.payload]
+          : [];
+    for (const item of legacyProducts)
+      if (item && typeof item.categoria === "string") {
+        if (typeof item.modelo === "string")
+          item.modelo = productDisplayModel(item.modelo, item.categoria);
+        item.categoria = productCategory(item.categoria);
+      }
     validate(action.payload, { type: "object", ...schema }, action.type);
     if (
       action.type === "AJUSTAR_STOCK" &&

@@ -3,7 +3,11 @@ import {
   type RefundDestination,
 } from "@/lib/refundDestinations";
 import { escapePrintData } from "@/lib/printSafety";
-import { categoryLabel, type ProductCategory } from "@/lib/categories";
+import {
+  categoryLabel,
+  productDisplayModel,
+  type ProductCategory,
+} from "@/lib/categories";
 import React from "react";
 
 export interface TicketItem {
@@ -125,7 +129,9 @@ export function buildEscPosBytes(data: TicketData, copies = 1): Uint8Array {
 
     data.items.forEach((item) => {
       add([0x1b, 0x45, 0x01]);
-      line(`[${categoryLabel(item.categoria)}] ${item.marca} ${item.modelo}`);
+      line(
+        `[${categoryLabel(item.categoria)}] ${item.marca} ${productDisplayModel(item.modelo, item.categoria)}`,
+      );
       add([0x1b, 0x45, 0x00]);
 
       const cal = item.calidad.substring(0, 12).padEnd(12, " ");
@@ -222,7 +228,7 @@ export function buildRefundEscPosBytes(data: RefundTicketData): Uint8Array {
     add([0x1b, 0x45, 0x01]);
     const destTag = ` [${refundDestinationLabel(item.destination).toUpperCase()}]`;
     line(
-      `[${categoryLabel(item.categoria)}] ${item.marca} ${item.modelo}${destTag}`,
+      `[${categoryLabel(item.categoria)}] ${item.marca} ${productDisplayModel(item.modelo, item.categoria)}${destTag}`,
     );
     add([0x1b, 0x45, 0x00]);
     const cal = item.calidad.substring(0, 12).padEnd(12, " ");
@@ -411,7 +417,7 @@ export function printRefundTicket(rawData: RefundTicketData) {
       (item) => `
       <div style="margin-bottom: 5px; font-size: 11px;">
         <div style="font-weight: bold;">
-          [${categoryLabel(item.categoria)}] ${item.marca} ${item.modelo}
+          [${categoryLabel(item.categoria)}] ${item.marca} ${productDisplayModel(item.modelo, item.categoria)}
           <span style="font-size: 9px; padding: 1px 4px; border-radius: 4px; ${
             item.destination === "merma"
               ? "background: #fee2e2; color: #991b1b;"
@@ -509,7 +515,7 @@ export function printTicket(rawData: TicketData, copies = 1) {
     .map(
       (item) => `
       <div style="margin-bottom: 5px; font-size: 11px;">
-        <div style="font-weight: bold;">[${categoryLabel(item.categoria)}] ${item.marca} ${item.modelo}</div>
+        <div style="font-weight: bold;">[${categoryLabel(item.categoria)}] ${item.marca} ${productDisplayModel(item.modelo, item.categoria)}</div>
         <div style="display: flex; justify-content: space-between; font-size: 10px;">
           <span style="width: 55%; color: #333;">${item.calidad}</span>
           <span style="width: 15%; text-align: center;">x${item.qty}</span>
@@ -710,7 +716,8 @@ export const TicketContent: React.FC<TicketData> = ({
       {items.map((item, idx) => (
         <div key={idx} style={{ marginBottom: "5px", fontSize: "11px" }}>
           <div style={{ fontWeight: "bold" }}>
-            [{categoryLabel(item.categoria)}] {item.marca} {item.modelo}
+            [{categoryLabel(item.categoria)}] {item.marca}{" "}
+            {productDisplayModel(item.modelo, item.categoria)}
           </div>
           <div
             style={{

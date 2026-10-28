@@ -1219,6 +1219,164 @@ async function main() {
     console.log(
       "PASS: analítica limita entradas y rechaza origen externo sin cerrar el catálogo",
     );
+    // Four flat categories: compatibility, inventory identity, AI search and historical snapshots.
+    const flatLegacy = {
+      id: "flat-old-tapa",
+      categoria: "TAPA",
+      marca: "QA",
+      modelo: "A32",
+      calidad: "ORIGINAL",
+      precio: 5,
+      stock: 3,
+      isHidden: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    await Product.collection.insertOne(flatLegacy);
+    const flatRows = await (
+      await productRoute.GET(
+        new Request("https://elarca.test/api/products?categoria=REPUESTO"),
+      )
+    ).json();
+    const oldRow = flatRows.products.find((p) => p.id === "flat-old-tapa");
+    assert.equal(oldRow.categoria, "REPUESTO");
+    assert.equal(oldRow.modelo, "TAPA TRASERA A32");
+    assert.equal(
+      (await Product.collection.findOne({ id: "flat-old-tapa" })).categoria,
+      "TAPA",
+    );
+    const flatDuplicate = await productRoute.POST(
+      apiRequest("/api/products", {
+        action: "add",
+        product: {
+          categoria: "REPUESTO",
+          marca: "QA",
+          modelo: "TAPA TRASERA A32",
+          calidad: "ORIGINAL",
+          precio: 5,
+          stock: 1,
+        },
+      }),
+    );
+    assert.equal(flatDuplicate.status, 200);
+    const flatDuplicateBody = await flatDuplicate.json();
+    assert.equal(flatDuplicateBody.product.id, "flat-old-tapa");
+    assert.equal(flatDuplicateBody.product.stock, 4);
+    const flatFlex = await productRoute.POST(
+      apiRequest("/api/products", {
+        action: "add",
+        product: {
+          categoria: "REPUESTO",
+          marca: "QA",
+          modelo: "FLEX DE CARGA A32",
+          calidad: "ORIGINAL",
+          precio: 6,
+          stock: 2,
+        },
+      }),
+    );
+    assert.equal(flatFlex.status, 200);
+    const flatFlexBody = await flatFlex.json();
+    assert.notEqual(flatFlexBody.product.id, "flat-old-tapa");
+    const flatCharge = await productRoute.POST(
+      apiRequest("/api/products", {
+        action: "add",
+        product: {
+          categoria: "Regiones",
+          marca: "QA",
+          modelo: "A32",
+          calidad: "ORIGINAL",
+          precio: 7,
+          stock: 2,
+        },
+      }),
+    );
+    assert.equal(flatCharge.status, 200);
+    const flatChargeBody = await flatCharge.json();
+    assert.equal(flatChargeBody.product.categoria, "REPUESTO");
+    assert.equal(flatChargeBody.product.modelo, "CENTRO DE CARGA A32");
+    const flatTool = await productRoute.POST(
+      apiRequest("/api/products", {
+        action: "add",
+        product: {
+          categoria: "Herramientas",
+          marca: "QA",
+          modelo: "PINZA DE PRECISION",
+          calidad: "ORIGINAL",
+          precio: 4,
+          stock: 2,
+        },
+      }),
+    );
+    assert.equal(flatTool.status, 200);
+    assert.equal((await flatTool.json()).product.categoria, "ACCESORIO");
+    const smart = load("src/lib/whatsapp/tools.ts");
+    assert.equal(
+      (await smart.findProductSmart("región QA A32")).id,
+      flatChargeBody.product.id,
+    );
+    assert.equal(
+      (await smart.findProductSmart("flex de carga QA A32")).id,
+      flatFlexBody.product.id,
+    );
+    assert.equal(
+      (await smart.findProductSmart("tapa QA A32")).id,
+      "flat-old-tapa",
+    );
+    const flatImport = await productRoute.POST(
+      apiRequest("/api/products", {
+        action: "sync",
+        initialList: [
+          {
+            id: "flat-old-tapa",
+            categoria: "TAPA",
+            marca: "QA",
+            modelo: "A32",
+            calidad: "ORIGINAL",
+            precio: 8,
+            stock: 4,
+          },
+        ],
+      }),
+    );
+    assert.equal(flatImport.status, 200);
+    assert.equal(
+      (await Product.findOne({ id: "flat-old-tapa" })).modelo,
+      "TAPA TRASERA A32",
+    );
+    const oldSale = await Sale.create({
+      ...historyRow("LEGACY-TAPA", "flat-old-tapa", 1, 0),
+      items: [
+        {
+          productId: "flat-old-tapa",
+          categoria: "TAPA",
+          marca: "QA",
+          modelo: "A32",
+          calidad: "ORIGINAL",
+          qty: 1,
+          returnedQty: 0,
+          precioUSD: 5,
+          subtotalUSD: 5,
+        },
+      ],
+      subtotalUSD: 5,
+      totalUSD: 5,
+      totalCUP: 4175,
+    });
+    const oldRefund = await saleRoute.POST(
+      apiRequest("/api/sales", {
+        action: "refund",
+        saleId: String(oldSale._id),
+        returns: [{ productId: "flat-old-tapa", qty: 1 }],
+        reason: "Legacy category verification",
+      }),
+    );
+    assert.equal(oldRefund.status, 200);
+    assert.equal((await Sale.findById(oldSale._id)).items[0].categoria, "TAPA");
+    assert.equal((await Product.findOne({ id: "flat-old-tapa" })).stock, 5);
+    console.log(
+      "PASS: cuatro categorías planas, tapas heredadas conservadas, Excel compatible y región/flex/tapa se distinguen por nombre sin subcategorías",
+    );
     console.log(
       "Integración completa en base aislada; no se cambiaron permisos del negocio.",
     );

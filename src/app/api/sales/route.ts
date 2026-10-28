@@ -3,7 +3,7 @@ import { roundCupPrice } from "@/lib/searchUtils";
 import { requestFingerprint } from "@/lib/security/request-fingerprint";
 import { dailySalesPipeline, EMPTY_DAILY_SALES } from "@/lib/salesSummary";
 import type { RefundDestination } from "@/lib/refundDestinations";
-import { productCategory } from "@/lib/categories";
+import { productCategory, productDisplayModel } from "@/lib/categories";
 import { atomicResponse } from "@/lib/security/atomic-response";
 import { requireAdmin } from "@/lib/security/admin";
 import { getActiveExchangeRate } from "@/lib/exchangeRate";
@@ -247,7 +247,7 @@ async function handlePOST(req: Request) {
         processedItems.push({
           productId,
           marca: product.marca,
-          modelo: product.modelo,
+          modelo: productDisplayModel(product.modelo, product.categoria),
           calidad: product.calidad,
           categoria: productCategory(product.categoria),
           qty,

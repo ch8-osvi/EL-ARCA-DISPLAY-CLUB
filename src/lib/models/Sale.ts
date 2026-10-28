@@ -2,7 +2,7 @@ import {
   REFUND_DESTINATIONS,
   type RefundDestination,
 } from "../refundDestinations";
-import { CATEGORY_IDS, type ProductCategory } from "../categories";
+import { STORED_CATEGORY_IDS, type ProductCategory } from "../categories";
 import mongoose, { Schema, Document, Model } from "mongoose";
 
 export interface ISaleRefund {
@@ -58,7 +58,7 @@ const SaleRefundSchema = new Schema<ISaleRefund>(
   {
     requestId: { type: String, maxlength: 100 },
     requestHash: { type: String, maxlength: 64 },
-    categoria: { type: String, enum: CATEGORY_IDS, default: "DISPLAY" },
+    categoria: { type: String, enum: STORED_CATEGORY_IDS, default: "DISPLAY" },
     productId: { type: String, required: true },
     marca: { type: String, required: true },
     modelo: { type: String, required: true },
@@ -75,7 +75,7 @@ const SaleRefundSchema = new Schema<ISaleRefund>(
 
 const SaleItemSchema = new Schema<ISaleItem>(
   {
-    categoria: { type: String, enum: CATEGORY_IDS, default: "DISPLAY" },
+    categoria: { type: String, enum: STORED_CATEGORY_IDS, default: "DISPLAY" },
     productId: { type: String, required: true },
     marca: { type: String, required: true },
     modelo: { type: String, required: true },

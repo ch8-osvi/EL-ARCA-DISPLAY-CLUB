@@ -1,3 +1,4 @@
+import { catalogProduct } from "@/lib/categories";
 import { requireAdmin } from "@/lib/security/admin";
 import { atomicResponse } from "@/lib/security/atomic-response";
 import { executeFusionarProductos } from "@/lib/ai/adminTools";
@@ -31,7 +32,9 @@ export async function POST(req: Request) {
     return Response.json({
       ...result,
       product: await Product.findOne({ id: b.primaryId }).lean(),
-      products: await Product.find({ isHidden: false }).lean(),
+      products: (await Product.find({ isHidden: false }).lean()).map(
+        catalogProduct,
+      ),
       deletedCount: await Product.countDocuments({ isHidden: true }),
     });
   });

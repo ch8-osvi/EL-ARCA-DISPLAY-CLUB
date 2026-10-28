@@ -647,13 +647,19 @@ export default function InventoryPage() {
 
               <div>
                 <label className="text-xs font-semibold text-gray-300 block mb-1">
-                  Modelo / Código
+                  Producto / modelo
                 </label>
                 <input
                   type="text"
                   value={newModelo}
                   onChange={(e) => setNewModelo(e.target.value)}
-                  placeholder="ej. Galaxy A55 5G / A556"
+                  placeholder={
+                    newCategory === "REPUESTO"
+                      ? "Ej. Flex de carga Samsung A50"
+                      : newCategory === "ACCESORIO"
+                        ? "Ej. Pinza de precisión / Cable USB-C"
+                        : "Ej. Samsung A50 / A505"
+                  }
                   className="w-full px-4 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-sm focus:border-[#D4AF37] focus:outline-none"
                   required
                 />
@@ -1049,7 +1055,7 @@ export default function InventoryPage() {
               </div>
               <h3 className="text-xl font-bold text-white">Editar producto</h3>
               <p className="text-xs text-gray-400">
-                Ajusta el precio, stock o datos técnicos del display en tiempo
+                Ajusta el precio, stock o datos técnicos del producto en tiempo
                 real.
               </p>
             </div>
@@ -1091,13 +1097,19 @@ export default function InventoryPage() {
 
               <div>
                 <label className="text-xs font-semibold text-gray-300 block mb-1">
-                  Modelo / Código
+                  Producto / modelo
                 </label>
                 <input
                   type="text"
                   value={editModelo}
                   onChange={(e) => setEditModelo(e.target.value.toUpperCase())}
-                  placeholder="ej. GALAXY A02 / A022"
+                  placeholder={
+                    editCategory === "REPUESTO"
+                      ? "Ej. Flex de carga Samsung A50"
+                      : editCategory === "ACCESORIO"
+                        ? "Ej. Pinza de precisión / Cable USB-C"
+                        : "Ej. Samsung A50 / A505"
+                  }
                   className="w-full px-4 py-3 bg-[#10131E] border border-white/10 rounded-xl text-white text-sm focus:border-[#D4AF37] focus:outline-none uppercase font-mono"
                   required
                 />

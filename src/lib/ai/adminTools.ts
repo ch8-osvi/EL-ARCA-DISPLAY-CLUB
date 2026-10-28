@@ -1,5 +1,10 @@
 import { roundCupPrice } from "@/lib/searchUtils";
-import { productCategory, categoryFilter } from "@/lib/categories";
+import {
+  productCategory,
+  categoryFilter,
+  productDisplayModel,
+  productIdentityFilter,
+} from "@/lib/categories";
 import { escapeRegex } from "@/lib/security/validation";
 import {
   getActiveExchangeRate,
@@ -62,7 +67,10 @@ export async function executeAgregarProducto(input: {
       categoria === "DISPLAY"
         ? cleanModelAndQuality(input.modelo, input.calidad)
         : {
-            modelo: input.modelo.trim().toUpperCase(),
+            modelo: productDisplayModel(
+              input.modelo,
+              input.categoria,
+            ).toUpperCase(),
             calidad: input.calidad.trim().toUpperCase(),
           };
     const modeloUp = modeloClean;
@@ -79,17 +87,14 @@ export async function executeAgregarProducto(input: {
     const precio = Math.max(0, input.precio || 0);
 
     // ━ Check if product already exists (including hidden / agotados)
-    const existing = await Product.findOne({
-      ...categoryFilter(categoria),
-      marca: marcaUp,
-      modelo: {
-        $regex: new RegExp(
-          `^${modeloUp.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
-          "i",
-        ),
-      },
-      calidad: calidadUp,
-    });
+    const existing = await Product.findOne(
+      productIdentityFilter({
+        categoria,
+        marca: marcaUp,
+        modelo: modeloUp,
+        calidad: calidadUp,
+      }),
+    );
 
     if (existing) {
       const stockBefore = existing.stock || 0;
@@ -195,7 +200,10 @@ export async function executeAgregarProductosLote(
       productCategory(item.categoria) === "DISPLAY"
         ? cleanModelAndQuality(item.modelo, item.calidad)
         : {
-            modelo: item.modelo.trim().toUpperCase(),
+            modelo: productDisplayModel(
+              item.modelo,
+              item.categoria,
+            ).toUpperCase(),
             calidad: item.calidad.trim().toUpperCase(),
           };
     const normalized = {
@@ -529,7 +537,7 @@ export async function executeCrearOrdenMulti(input: {
       resolvedItems.push({
         productId: product.id,
         marca: product.marca,
-        modelo: product.modelo,
+        modelo: productDisplayModel(product.modelo, product.categoria),
         calidad: product.calidad,
         categoria: productCategory(product.categoria),
         qty: item.qty,

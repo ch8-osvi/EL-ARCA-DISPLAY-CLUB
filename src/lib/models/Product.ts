@@ -1,5 +1,10 @@
 import mongoose, { Schema, Document, Model } from "mongoose";
-import { CATEGORY_IDS, type ProductCategory } from "../categories";
+import {
+  STORED_CATEGORY_IDS,
+  productCategory,
+  productDisplayModel,
+  type ProductCategory,
+} from "../categories";
 
 export interface IProduct extends Document {
   categoria: ProductCategory;
@@ -14,7 +19,7 @@ export interface IProduct extends Document {
 
 const ProductSchema = new Schema<IProduct>(
   {
-    categoria: { type: String, enum: CATEGORY_IDS, default: "DISPLAY" },
+    categoria: { type: String, enum: STORED_CATEGORY_IDS, default: "DISPLAY" },
     id: {
       type: String,
       required: true,
@@ -71,6 +76,8 @@ const ProductSchema = new Schema<IProduct>(
 
 // Pre-save hook: guarantee uppercase
 ProductSchema.pre("save", function () {
+  this.modelo = productDisplayModel(this.modelo, this.categoria);
+  this.categoria = productCategory(this.categoria);
   if (this.marca) this.marca = this.marca.toUpperCase().trim();
   if (this.modelo) this.modelo = this.modelo.toUpperCase().trim();
   if (this.calidad) this.calidad = this.calidad.toUpperCase().trim();

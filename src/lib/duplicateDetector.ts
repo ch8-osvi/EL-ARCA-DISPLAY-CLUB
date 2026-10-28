@@ -1,5 +1,5 @@
 import { Product } from "@/lib/types";
-import { productCategory } from "./categories";
+import { productCategory, productDisplayModel } from "./categories";
 
 export interface DuplicatePair {
   pairId: string;
@@ -149,6 +149,8 @@ export function calculateDuplicateScore(
 ): { score: number; matchingTokens: string[]; reasons: string[] } {
   if (productCategory(a.categoria) !== productCategory(b.categoria))
     return { score: 0, matchingTokens: [], reasons: [] };
+  a = { ...a, modelo: productDisplayModel(a.modelo, a.categoria) };
+  b = { ...b, modelo: productDisplayModel(b.modelo, b.categoria) };
   const marcaA = (a.marca || "").toUpperCase().trim();
   const marcaB = (b.marca || "").toUpperCase().trim();
   if (marcaA !== marcaB) {
@@ -157,6 +159,11 @@ export function calculateDuplicateScore(
 
   const compactA = cleanCompactString(a.modelo);
   const compactB = cleanCompactString(b.modelo);
+  if (
+    ["REPUESTO", "ACCESORIO"].includes(productCategory(a.categoria)) &&
+    compactA !== compactB
+  )
+    return { score: 0, matchingTokens: [], reasons: [] };
   const reasons: string[] = [];
 
   const calA = (a.calidad || "").toUpperCase().trim();

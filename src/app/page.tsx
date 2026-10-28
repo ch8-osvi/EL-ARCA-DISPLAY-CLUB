@@ -99,9 +99,10 @@ export default function Home() {
                       Number.isSafeInteger(p.stock) &&
                       p.stock >= 0 &&
                       !p.isHidden &&
-                      CATEGORIES.some(
-                        (c) => c.id === (p.categoria || "DISPLAY"),
-                      ),
+                      (p.categoria === "TAPA" ||
+                        CATEGORIES.some(
+                          (c) => c.id === (p.categoria || "DISPLAY"),
+                        )),
                   )
                 : [],
             );

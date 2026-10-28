@@ -1,5 +1,9 @@
 import { CATEGORY_ICONS } from "./CategoryIcon";
-import { CATEGORIES, productCategory } from "@/lib/categories";
+import {
+  CATEGORIES,
+  productCategory,
+  productDisplayModel,
+} from "@/lib/categories";
 
 function categoryIdentity(category: unknown) {
   const id = productCategory(category);
@@ -60,7 +64,7 @@ export default function ProductIdentity({
         <Title
           className={`font-bold leading-snug text-white [overflow-wrap:anywhere] ${titleClassName}`}
         >
-          {model}
+          {productDisplayModel(model, category)}
         </Title>
       </div>
     </div>

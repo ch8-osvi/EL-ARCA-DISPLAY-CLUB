@@ -8,6 +8,8 @@ import { StockHistory } from "@/lib/models/StockHistory";
 import { getHavanaMonthDay } from "@/lib/dateUtils";
 import {
   categoryFilter,
+  productDisplayModel,
+  partNameFilter,
   productCategory,
   type ProductCategory,
 } from "@/lib/categories";
@@ -46,8 +48,9 @@ export async function findProductSmart(
     .replace(/\b(SAM|SM)\b/g, "SAMSUNG")
     .replace(/\b(IP|IPH)\b/g, "IPHONE")
     .replace(/\bMOTO\b/g, "MOTOROLA")
+    .replace(/REGI[OÓ]N(?:ES)?|TABLILLAS?/g, "CARGA")
     .replace(
-      /\b(PANTALLAS?|DISPLAYS?|BATER[IÍ]AS?|TAPAS?|TRASERAS?|ACCESORIOS?|DE|LA|EL|PARA)\b/g,
+      /\b(PANTALLAS?|DISPLAYS?|BATER[IÍ]AS?|TAPAS?|TRASERAS?|CENTROS?|ACCESORIOS?|HERRAMIENTAS?|REPUESTOS?|Y|DE|LA|EL|PARA)\b/g,
       " ",
     )
     .trim();
@@ -55,14 +58,19 @@ export async function findProductSmart(
   if (!tokens.length) return null;
   const candidates = await Product.find({
     ...(selectedCategory ? categoryFilter(selectedCategory) : {}),
-    $and: tokens.map((t) => ({
-      $or: ["modelo", "marca", "calidad", "id"].map((field) => ({
-        [field]: new RegExp(
-          "(^|[^A-Z0-9])" + escapeRegex(t) + "($|[^A-Z0-9])",
-          "i",
-        ),
+    $and: [
+      ...(selectedCategory === "REPUESTO" && partNameFilter(query)
+        ? [partNameFilter(query)!]
+        : []),
+      ...tokens.map((t) => ({
+        $or: ["modelo", "marca", "calidad", "id"].map((field) => ({
+          [field]: new RegExp(
+            "(^|[^A-Z0-9])" + escapeRegex(t) + "($|[^A-Z0-9])",
+            "i",
+          ),
+        })),
       })),
-    })),
+    ],
   }).limit(10);
   if (candidates.length > 1)
     throw new Error(
@@ -389,7 +397,7 @@ export async function executeRegistrarVentaRapida(args: {
         {
           productId: product.id,
           marca: product.marca,
-          modelo: product.modelo,
+          modelo: productDisplayModel(product.modelo, product.categoria),
           calidad: product.calidad,
           qty,
           returnedQty: 0,

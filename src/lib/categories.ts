@@ -1,10 +1,12 @@
 export const CATEGORY_IDS = [
   "DISPLAY",
   "BATERIA",
-  "TAPA",
+  "REPUESTO",
   "ACCESORIO",
 ] as const;
 export type ProductCategory = (typeof CATEGORY_IDS)[number];
+// Historical sales and unedited products may still carry the former category.
+export const STORED_CATEGORY_IDS = [...CATEGORY_IDS, "TAPA"] as const;
 export const CATEGORIES: {
   id: ProductCategory;
   label: string;
@@ -34,17 +36,17 @@ export const CATEGORIES: {
     qualities: ["ORIGINAL", "COMPATIBLE", "GENÉRICA AAA"],
   },
   {
-    id: "TAPA",
-    label: "Tapas traseras",
-    singular: "Tapa trasera",
-    description: "Tapas y cubiertas de repuesto",
+    id: "REPUESTO",
+    label: "Repuestos",
+    singular: "Repuestos",
+    description: "Tapas, centros de carga, flex y otras piezas",
     qualities: ["ORIGINAL", "COMPATIBLE"],
   },
   {
     id: "ACCESORIO",
-    label: "Accesorios",
-    singular: "Accesorio",
-    description: "Accesorios y complementos",
+    label: "Accesorios y herramientas",
+    singular: "Accesorios y herramientas",
+    description: "Complementos y herramientas de reparación",
     qualities: ["ORIGINAL", "COMPATIBLE", "GENÉRICA"],
   },
 ];
@@ -60,10 +62,30 @@ export function productCategory(value?: unknown): ProductCategory {
     PANTALLAS: "DISPLAY",
     DISPLAYS: "DISPLAY",
     BATERIAS: "BATERIA",
-    TAPAS: "TAPA",
-    "TAPA TRASERA": "TAPA",
-    "TAPAS TRASERAS": "TAPA",
+    TAPA: "REPUESTO",
+    TAPAS: "REPUESTO",
+    "TAPA TRASERA": "REPUESTO",
+    "TAPAS TRASERAS": "REPUESTO",
+    REPUESTOS: "REPUESTO",
+    PIEZA: "REPUESTO",
+    PIEZAS: "REPUESTO",
+    TABLILLA: "REPUESTO",
+    TABLILLAS: "REPUESTO",
+    REGION: "REPUESTO",
+    REGIONES: "REPUESTO",
+    FLEX: "REPUESTO",
+    FLEXES: "REPUESTO",
+    CARGA: "REPUESTO",
+    "CENTRO DE CARGA": "REPUESTO",
+    "CENTROS DE CARGA": "REPUESTO",
+    "TABLILLA DE CARGA": "REPUESTO",
+    "TABLILLAS DE CARGA": "REPUESTO",
+    "PLACA DE CARGA": "REPUESTO",
+    "PLACAS DE CARGA": "REPUESTO",
     ACCESORIOS: "ACCESORIO",
+    HERRAMIENTA: "ACCESORIO",
+    HERRAMIENTAS: "ACCESORIO",
+    "ACCESORIOS Y HERRAMIENTAS": "ACCESORIO",
   };
   const category = aliases[key] || key;
   if (!(CATEGORY_IDS as readonly string[]).includes(category))
@@ -72,19 +94,111 @@ export function productCategory(value?: unknown): ProductCategory {
 }
 export const categoryLabel = (value?: unknown) =>
   CATEGORIES.find((c) => c.id === productCategory(value))!.label;
-export const categoryFilter = (
-  category: ProductCategory,
-): Record<string, any> =>
-  category === "DISPLAY"
-    ? {
-        $or: [
-          { categoria: "DISPLAY" },
-          { categoria: { $exists: false } },
-          { categoria: null },
-          { categoria: "" },
-        ],
-      }
-    : { categoria: category };
+export function categoryFilter(category: unknown): Record<string, any> {
+  const normalized = productCategory(category);
+  if (normalized === "DISPLAY")
+    return {
+      $or: [
+        { categoria: "DISPLAY" },
+        { categoria: { $exists: false } },
+        { categoria: null },
+        { categoria: "" },
+      ],
+    };
+  return normalized === "REPUESTO"
+    ? { categoria: { $in: ["REPUESTO", "TAPA"] } }
+    : { categoria: normalized };
+}
+
+/** This is a product name, never a hidden subtype/category. Retain what an old label told the buyer. */
+export function productDisplayModel(model: string, category?: unknown): string {
+  const key = String(category || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase();
+  const name = model.trim();
+  if (/^TAPAS?(?: TRASERAS?)?$/.test(key) && !/\btapas?\b/i.test(name))
+    return `TAPA TRASERA ${name}`;
+  if (/^FLEX(?:ES)?$/.test(key) && !/\bflex\b/i.test(name))
+    return `FLEX ${name}`;
+  if (
+    /^(REGION(?:ES)?|CARGA|CENTROS? DE CARGA|TABLILLAS? DE CARGA|PLACAS? DE CARGA)$/.test(
+      key,
+    ) &&
+    !/carga|tablilla|regi[oó]n/i.test(name)
+  )
+    return `CENTRO DE CARGA ${name}`;
+  return name;
+}
+export function catalogProduct<
+  T extends { modelo: string; categoria?: unknown },
+>(product: T) {
+  return {
+    ...product,
+    modelo: productDisplayModel(product.modelo, product.categoria),
+    categoria: productCategory(product.categoria),
+  };
+}
+/** Match exact product identity without treating an old bare-model tapa as an unrelated new part. */
+export function productIdentityFilter(product: {
+  marca: string;
+  modelo: string;
+  calidad: string;
+  categoria?: unknown;
+}): Record<string, any> {
+  const p = catalogProduct(product);
+  const exact = (model: string) =>
+    new RegExp("^" + model.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$", "i");
+  if (p.categoria !== "REPUESTO")
+    return {
+      ...categoryFilter(p.categoria),
+      marca: p.marca,
+      modelo: exact(p.modelo),
+      calidad: p.calidad,
+    };
+  const variants: Record<string, unknown>[] = [
+    { categoria: "REPUESTO", modelo: exact(p.modelo) },
+  ];
+  if (/^TAPA TRASERA\s+/i.test(p.modelo))
+    variants.push(
+      {
+        categoria: "TAPA",
+        modelo: exact(p.modelo.replace(/^TAPA TRASERA\s+/i, "")),
+      },
+      { categoria: "TAPA", modelo: exact(p.modelo) },
+    );
+  if (/^TAPAS?\b/i.test(p.modelo) && !/^TAPA TRASERA\s+/i.test(p.modelo))
+    variants.push({ categoria: "TAPA", modelo: exact(p.modelo) });
+  return { marca: p.marca, calidad: p.calidad, $or: variants };
+}
+/** Free-text part words constrain search results; they do not introduce another category. */
+export function partNameFilter(text: string): Record<string, any> | undefined {
+  const parts: Record<string, any>[] = [];
+  if (/\btapas?\b|carcasa|cubierta trasera/i.test(text))
+    parts.push({
+      $or: [
+        { categoria: "TAPA" },
+        { modelo: /tapa|carcasa|cubierta trasera/i },
+      ],
+    });
+  if (/\bflex\b/i.test(text)) parts.push({ modelo: /\bflex\b/i });
+  if (
+    /centro(?:s)? de carga|tablilla|regi[oó]n(?:es)?|placa(?:s)? de carga|m[oó]dulo(?:s)? de carga|conector(?:es)? de carga/i.test(
+      text,
+    )
+  )
+    parts.push({
+      $and: [
+        {
+          modelo:
+            /(?:centro|placa|m[oó]dulo|conector).*carga|tablilla|regi[oó]n/i,
+        },
+        { modelo: { $not: /\bflex\b/i } },
+      ],
+    });
+  return parts.length > 1 ? { $or: parts } : parts[0];
+}
 export function assertProductNumbers(price: unknown, stock: unknown) {
   if (
     typeof price !== "number" ||

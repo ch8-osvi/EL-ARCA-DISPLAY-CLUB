@@ -1,3 +1,4 @@
+import { catalogProduct } from "@/lib/categories";
 import { atomicResponse } from "@/lib/security/atomic-response";
 import { requireAdmin } from "@/lib/security/admin";
 import { NextResponse } from "next/server";
@@ -41,7 +42,10 @@ async function handleGET(req: Request) {
     const products = await Product.find({})
       .sort({ marca: 1, modelo: 1 })
       .lean();
-    return NextResponse.json({ success: true, products });
+    return NextResponse.json({
+      success: true,
+      products: products.map(catalogProduct),
+    });
   } catch (err) {
     console.error("[stock GET]", err);
     return NextResponse.json(

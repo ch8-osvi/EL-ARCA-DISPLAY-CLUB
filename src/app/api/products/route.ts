@@ -9,6 +9,9 @@ import { Sale } from "@/lib/models/Sale";
 import seedProducts from "@/data/products_seed.json";
 import {
   productCategory,
+  catalogProduct,
+  productDisplayModel,
+  productIdentityFilter,
   categoryFilter,
   assertProductNumbers,
 } from "@/lib/categories";
@@ -102,8 +105,7 @@ async function handleGET(request: Request) {
     }
 
     const enrichedProducts = activeProducts.map((p) => ({
-      ...p,
-      categoria: productCategory(p.categoria),
+      ...catalogProduct(p),
       salesCount: topSoldMap.get(p.id) || 0,
       isTopSeller: topSoldMap.has(p.id),
     }));
@@ -162,6 +164,10 @@ async function handlePOST(request: Request) {
       );
     try {
       if (action === "add" && product) {
+        product.modelo = productDisplayModel(
+          String(product.modelo || ""),
+          product.categoria,
+        );
         product.categoria = productCategory(product.categoria);
         assertProductNumbers(product.precio ?? 0, product.stock ?? 1);
         if (!String(product.modelo || "").trim())
@@ -169,8 +175,11 @@ async function handlePOST(request: Request) {
       }
       if (["update", "unhide"].includes(action)) {
         assertProductNumbers(body.precio ?? 0, body.stock ?? 0);
-        if (body.categoria !== undefined)
+        if (body.categoria !== undefined) {
+          if (typeof body.modelo === "string")
+            body.modelo = productDisplayModel(body.modelo, body.categoria);
           body.categoria = productCategory(body.categoria);
+        }
       }
     } catch (error) {
       return NextResponse.json(
@@ -201,7 +210,7 @@ async function handlePOST(request: Request) {
         message: "Producto ocultado en la base de datos globalmente",
         count: activeProducts.length,
         deletedCount,
-        products: activeProducts,
+        products: activeProducts.map(catalogProduct),
       });
     }
 
@@ -245,7 +254,7 @@ async function handlePOST(request: Request) {
         message: "Producto restaurado al catálogo activo",
         count: activeProducts.length,
         deletedCount,
-        products: activeProducts,
+        products: activeProducts.map(catalogProduct),
       });
     }
 
@@ -335,7 +344,7 @@ async function handlePOST(request: Request) {
           "Catálogo restaurado al estado original en la base de datos (con marcas y modelos en mayúsculas)",
         count: activeProducts.length,
         deletedCount: 0,
-        products: activeProducts,
+        products: activeProducts.map(catalogProduct),
       });
     }
 
@@ -350,17 +359,14 @@ async function handlePOST(request: Request) {
       const newPrecio = Math.max(0, Number(product.precio) || 0);
 
       // Check if product already exists (including hidden or stock 0 ones)
-      const existingProduct = await Product.findOne({
-        ...categoryFilter(product.categoria),
-        marca: marcaUp,
-        modelo: {
-          $regex: new RegExp(
-            `^${modeloUp.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
-            "i",
-          ),
-        },
-        calidad: calidadUp,
-      });
+      const existingProduct = await Product.findOne(
+        productIdentityFilter({
+          categoria: product.categoria,
+          marca: marcaUp,
+          modelo: modeloUp,
+          calidad: calidadUp,
+        }),
+      );
 
       let savedProduct;
       let wasUpdated = false;
@@ -432,7 +438,7 @@ async function handlePOST(request: Request) {
         wasUpdated,
         count: activeProducts.length,
         deletedCount,
-        products: activeProducts,
+        products: activeProducts.map(catalogProduct),
       });
     }
 
@@ -461,17 +467,21 @@ async function handlePOST(request: Request) {
           { success: false, error: "Producto no encontrado" },
           { status: 404 },
         );
+      if (
+        String(previous.categoria) === "TAPA" &&
+        (updateData.modelo === undefined ||
+          updateData.modelo === previous.modelo)
+      )
+        updateData.modelo = productDisplayModel(previous.modelo, "TAPA");
       const identity = {
         marca: updateData.marca ?? previous.marca,
         modelo: updateData.modelo ?? previous.modelo,
         calidad: updateData.calidad ?? previous.calidad,
+        categoria: updateData.categoria ?? previous.categoria,
       };
       const collision = await Product.exists({
         id: { $ne: id },
-        ...identity,
-        ...categoryFilter(
-          productCategory(updateData.categoria ?? previous.categoria),
-        ),
+        ...productIdentityFilter(identity),
       });
       if (collision)
         return NextResponse.json(
@@ -520,7 +530,7 @@ async function handlePOST(request: Request) {
         product: updatedDoc,
         count: activeProducts.length,
         deletedCount,
-        products: activeProducts,
+        products: activeProducts.map(catalogProduct),
       });
     }
 
@@ -549,7 +559,7 @@ async function handlePOST(request: Request) {
         message: "Catálogo sincronizado exitosamente con el Excel en la BD",
         count: activeProducts.length,
         deletedCount: await Product.countDocuments({ isHidden: true }),
-        products: activeProducts,
+        products: activeProducts.map(catalogProduct),
       });
     }
 
@@ -602,7 +612,7 @@ async function handleDELETE(request: Request) {
       message: `Producto ${id} ocultado`,
       count: activeProducts.length,
       deletedCount,
-      products: activeProducts,
+      products: activeProducts.map(catalogProduct),
     });
   } catch (error) {
     console.error("API DELETE Error:", error);

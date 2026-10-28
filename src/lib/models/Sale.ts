@@ -6,6 +6,8 @@ import { CATEGORY_IDS, type ProductCategory } from "../categories";
 import mongoose, { Schema, Document, Model } from "mongoose";
 
 export interface ISaleRefund {
+  requestId?: string;
+  requestHash?: string;
   categoria?: ProductCategory;
   productId: string;
   marca: string;
@@ -32,6 +34,8 @@ export interface ISaleItem {
 }
 
 export interface ISale extends Document {
+  requestId?: string;
+  requestHash?: string;
   orderNumber: string;
   clientName: string;
   items: ISaleItem[];
@@ -52,6 +56,8 @@ export interface ISale extends Document {
 
 const SaleRefundSchema = new Schema<ISaleRefund>(
   {
+    requestId: { type: String, maxlength: 100 },
+    requestHash: { type: String, maxlength: 64 },
     categoria: { type: String, enum: CATEGORY_IDS, default: "DISPLAY" },
     productId: { type: String, required: true },
     marca: { type: String, required: true },
@@ -84,6 +90,8 @@ const SaleItemSchema = new Schema<ISaleItem>(
 
 const SaleSchema = new Schema<ISale>(
   {
+    requestId: { type: String, maxlength: 100 },
+    requestHash: { type: String, maxlength: 64 },
     orderNumber: { type: String, required: true, unique: true },
     clientName: { type: String, default: "" },
     items: {
@@ -112,6 +120,9 @@ const SaleSchema = new Schema<ISale>(
   },
   { timestamps: true },
 );
+
+SaleSchema.index({ createdAt: -1 });
+SaleSchema.index({ requestId: 1 }, { unique: true, sparse: true });
 
 export const Sale: Model<ISale> =
   mongoose.models.Sale || mongoose.model<ISale>("Sale", SaleSchema);

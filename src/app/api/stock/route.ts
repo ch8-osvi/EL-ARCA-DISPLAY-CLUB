@@ -62,9 +62,13 @@ async function handlePOST(req: Request) {
     const { action, productId, qty, reason } = await req.json();
 
     if (action === "add") {
-      const qtyNum = Number(qty);
+      const qtyNum = qty;
       if (
-        !productId ||
+        typeof productId !== "string" ||
+        !productId.trim() ||
+        productId.length > 200 ||
+        (reason !== undefined &&
+          (typeof reason !== "string" || reason.length > 1000)) ||
         !Number.isSafeInteger(qtyNum) ||
         qtyNum < 1 ||
         qtyNum > 10000

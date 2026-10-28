@@ -15,8 +15,8 @@ function load(file, mocks = {}) {
     const workspaceRoot = path.resolve(__dirname, "../..");
     const source = id.startsWith(".")
       ? path.resolve(path.dirname(filename), id + ".ts")
-      : id === "@/lib/categories"
-        ? path.join(workspaceRoot, "src/lib/categories.ts")
+      : id.startsWith("@/")
+        ? path.join(workspaceRoot, "src", id.slice(2) + ".ts")
         : null;
     return source && fs.existsSync(source)
       ? load(path.relative(workspaceRoot, source))
@@ -208,7 +208,7 @@ test("una venta con tasa ausente o diferente se rechaza antes de tocar stock", a
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       action: "create",
-      items: [{ productId: "test", qty: 1 }],
+      items: [{ productId: "test", qty: 1, precioUSD: 10 }],
       exchangeRate: 800,
     }),
   });

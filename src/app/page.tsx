@@ -51,56 +51,89 @@ export default function Home() {
   const [sortOption, setSortOption] = useState<SortOption>("default");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const currency: Currency = "CUP";
-  const [exchangeRate, setExchangeRate] = useActiveExchangeRate();
+  const [exchangeRate] = useActiveExchangeRate();
 
   const whatsappNumber = useWhatsAppPhone();
   const whatsappGroupUrl =
     "https://chat.whatsapp.com/EJLkGTDLoDX15fyILvOge6?s=cl&p=i&ilr=2&amv=1";
 
-  // Use cached products only when the live catalog cannot be verified.
+  // Revalidate quietly so stock and promotions do not remain stale in an open tab.
   useEffect(() => {
-    async function loadData() {
-      setLoading(true);
-      setCatalogError("");
+    let active = true;
+    let controller: AbortController | undefined;
+    async function loadData(quiet = false) {
+      if (controller) return;
+      const request = new AbortController();
+      controller = request;
+      const timeout = setTimeout(() => request.abort(), 12000);
+      if (!quiet) setLoading(true);
       try {
-        const res = await fetch("/api/products");
-        if (res.ok) {
-          const data = await res.json();
-          if (data.products && Array.isArray(data.products)) {
-            setProducts(data.products);
-            setLoading(false);
-            return;
+        const res = await fetch("/api/products", {
+          cache: "no-store",
+          signal: request.signal,
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success || !Array.isArray(data.products))
+          throw new Error("Unverified catalog");
+        if (!active) return;
+        setProducts(data.products);
+        setCatalogError("");
+      } catch {
+        if (!active) return;
+        if (!quiet) {
+          try {
+            const cached = JSON.parse(
+              localStorage.getItem("el_arca_products") || "[]",
+            );
+            setProducts(
+              Array.isArray(cached)
+                ? cached.filter(
+                    (p) =>
+                      p &&
+                      typeof p.id === "string" &&
+                      typeof p.marca === "string" &&
+                      typeof p.modelo === "string" &&
+                      typeof p.calidad === "string" &&
+                      Number.isFinite(p.precio) &&
+                      p.precio >= 0 &&
+                      Number.isSafeInteger(p.stock) &&
+                      p.stock >= 0 &&
+                      !p.isHidden &&
+                      CATEGORIES.some(
+                        (c) => c.id === (p.categoria || "DISPLAY"),
+                      ),
+                  )
+                : [],
+            );
+          } catch {
+            setProducts([]);
           }
         }
-      } catch (err) {
-        console.warn("API error, loading cached catalog");
-      }
-
-      try {
-        const cached = JSON.parse(
-          localStorage.getItem("el_arca_products") || "[]",
+        setCatalogError(
+          "No pudimos verificar el catálogo en este momento. Los datos mostrados pueden estar desactualizados; confirma precio y disponibilidad por WhatsApp.",
         );
-        setProducts(Array.isArray(cached) ? cached : []);
-      } catch {
-        setProducts([]);
+      } finally {
+        clearTimeout(timeout);
+        if (controller === request) controller = undefined;
+        if (active) setLoading(false);
       }
-      setCatalogError(
-        "No pudimos verificar el catálogo en este momento. Si ves productos guardados, confirma precio y disponibilidad por WhatsApp.",
-      );
-      setLoading(false);
     }
-
-    loadData();
-
-    // Refresh the rate used by both the header and product equivalents.
-    fetch("/api/exchange-rate")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.success && d.rate) {
-          setExchangeRate(d.rate);
-        }
-      })
-      .catch(() => {});
+    void loadData();
+    const refresh = () => {
+      if (!document.hidden) void loadData(true);
+    };
+    const interval = setInterval(refresh, 60000);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("online", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      active = false;
+      controller?.abort();
+      clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("online", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
   }, [retryLoad]);
 
   // Sync state to local storage for offline fallback
@@ -248,7 +281,10 @@ export default function Home() {
                 className="px-5 py-3 rounded-2xl bg-gradient-to-r from-[#E5C158] to-[#D4AF37] text-black font-extrabold text-sm shadow-gold-glow hover:scale-105 active:scale-95 transition-all duration-200 flex items-center gap-2"
               >
                 <MessageSquare className="w-4 h-4 text-black stroke-[2.5]" />
-                <span>Contactar por WhatsApp (+53 52031972)</span>
+                <span>
+                  Contactar por WhatsApp
+                  {whatsappNumber ? ` (+${whatsappNumber})` : ""}
+                </span>
               </a>
 
               {/* WhatsApp Group Button */}
@@ -470,7 +506,10 @@ export default function Home() {
             <p>© 2026 EL ARCA DISPLAY CLUB. Todos los derechos reservados.</p>
             <p className="text-gray-500">
               Atención WhatsApp:{" "}
-              <strong className="text-[#E5C158]">+53 52031972</strong> |{" "}
+              <strong className="text-[#E5C158]">
+                {whatsappNumber ? `+${whatsappNumber}` : "No disponible"}
+              </strong>{" "}
+              |{" "}
               <a
                 href={whatsappGroupUrl}
                 target="_blank"

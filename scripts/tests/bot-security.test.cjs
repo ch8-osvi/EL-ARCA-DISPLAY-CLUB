@@ -15,8 +15,8 @@ function load(file, mocks = {}) {
     const workspaceRoot = path.resolve(__dirname, "../..");
     const source = id.startsWith(".")
       ? path.resolve(path.dirname(filename), id + ".ts")
-      : id === "@/lib/categories"
-        ? path.join(workspaceRoot, "src/lib/categories.ts")
+      : id.startsWith("@/")
+        ? path.join(workspaceRoot, "src", id.slice(2) + ".ts")
         : null;
     return source && fs.existsSync(source)
       ? load(path.relative(workspaceRoot, source))

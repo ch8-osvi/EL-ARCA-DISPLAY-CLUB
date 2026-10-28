@@ -4,7 +4,7 @@ import { useWhatsAppPhone } from "@/lib/useWhatsAppPhone";
 import { checkAdminSession, loginAdmin } from "@/lib/auth-client";
 
 import { useActiveExchangeRate } from "@/lib/useActiveExchangeRate";
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -60,6 +60,9 @@ interface CartItem {
 }
 
 export default function PosPage() {
+  const checkoutAttempt = useRef<{ fingerprint: string; id: string } | null>(
+    null,
+  );
   const businessPhone = useWhatsAppPhone();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
@@ -291,6 +294,7 @@ export default function PosPage() {
   };
 
   const clearCart = () => {
+    checkoutAttempt.current = null;
     setCart([]);
     setClientName("");
     setNotes("");
@@ -298,7 +302,14 @@ export default function PosPage() {
 
   // Calculations
   const subtotalUSD = useMemo(() => {
-    return cart.reduce((acc, item) => acc + item.precioUSD * item.qty, 0);
+    return Number(
+      cart
+        .reduce(
+          (acc, item) => acc + Number((item.precioUSD * item.qty).toFixed(2)),
+          0,
+        )
+        .toFixed(2),
+    );
   }, [cart]);
 
   const totalUSD = subtotalUSD;
@@ -358,6 +369,7 @@ export default function PosPage() {
 
   // Submit Order
   const handleCheckout = async (autoPrint = false) => {
+    if (isSubmitting) return;
     if (cart.length === 0) {
       triggerToast("El carrito está vacío", true);
       return;
@@ -382,10 +394,16 @@ export default function PosPage() {
         notes,
       };
 
+      const fingerprint = JSON.stringify(payload);
+      if (checkoutAttempt.current?.fingerprint !== fingerprint)
+        checkoutAttempt.current = { fingerprint, id: crypto.randomUUID() };
       const res = await fetch("/api/sales", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          ...payload,
+          requestId: checkoutAttempt.current.id,
+        }),
       });
 
       const data = await res.json();
@@ -395,6 +413,7 @@ export default function PosPage() {
         return;
       }
 
+      checkoutAttempt.current = null;
       const orderData = data.sale;
       setCompletedOrder(orderData);
       triggerToast(`¡Venta #${orderData.orderNumber} registrada con éxito!`);

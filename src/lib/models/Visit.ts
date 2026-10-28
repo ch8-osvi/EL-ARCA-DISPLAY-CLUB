@@ -1,4 +1,4 @@
-import mongoose, { Schema, Document, Model } from 'mongoose';
+import mongoose, { Schema, Document, Model } from "mongoose";
 
 export interface IVisit extends Document {
   visitorId: string;
@@ -10,11 +10,13 @@ export interface IVisit extends Document {
 const VisitSchema = new Schema<IVisit>(
   {
     visitorId: { type: String, required: true, index: true },
-    page: { type: String, default: '/' },
+    page: { type: String, default: "/" },
     referrer: { type: String },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
+VisitSchema.index({ createdAt: -1 });
+
 export const Visit: Model<IVisit> =
-  mongoose.models.Visit || mongoose.model<IVisit>('Visit', VisitSchema);
+  mongoose.models.Visit || mongoose.model<IVisit>("Visit", VisitSchema);

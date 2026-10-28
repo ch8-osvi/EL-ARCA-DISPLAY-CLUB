@@ -1,3 +1,7 @@
+import { refundAmounts } from "@/lib/refundAmounts";
+import { roundCupPrice } from "@/lib/searchUtils";
+import { requestFingerprint } from "@/lib/security/request-fingerprint";
+import { dailySalesPipeline, EMPTY_DAILY_SALES } from "@/lib/salesSummary";
 import type { RefundDestination } from "@/lib/refundDestinations";
 import { productCategory } from "@/lib/categories";
 import { atomicResponse } from "@/lib/security/atomic-response";
@@ -8,7 +12,7 @@ import connectToDatabase from "@/lib/mongoose";
 import { Sale } from "@/lib/models/Sale";
 import { Product } from "@/lib/models/Product";
 import { StockHistory } from "@/lib/models/StockHistory";
-import { getHavanaMonthDay, getHavanaDateKey } from "@/lib/dateUtils";
+import { getHavanaMonthDay } from "@/lib/dateUtils";
 
 export const dynamic = "force-dynamic";
 
@@ -30,75 +34,17 @@ async function handleGET() {
   try {
     await connectToDatabase();
 
-    // Solo traer las últimas 200 ventas para evitar OOM (Memory Leak)
-    const sales = await Sale.find({}).sort({ createdAt: -1 }).limit(200).lean();
-
-    // Daily summary (Cuba timezone today, excluding cancelled orders)
-    const havanaTodayKey = getHavanaDateKey();
-    const todaySales = sales.filter(
-      (s) =>
-        getHavanaDateKey(s.createdAt) === havanaTodayKey &&
-        s.status !== "CANCELLED",
-    );
-
-    // USD CASH DRAWER (Transactions paid in USD)
-    const todayUSDSales = todaySales.filter(
-      (s) => (s.currency || "USD") === "USD",
-    );
-    const todayPaidUSDSales = todayUSDSales.filter((s) => s.paid);
-    const todayGrossUSD = todayPaidUSDSales.reduce(
-      (acc, s) => acc + s.totalUSD,
-      0,
-    );
-    const todayRefundsUSD = todayUSDSales.reduce(
-      (acc, s) => acc + (s.totalRefundedUSD || 0),
-      0,
-    );
-    const todayNetUSD = parseFloat(
-      (todayGrossUSD - todayRefundsUSD).toFixed(2),
-    );
-    const todayPendingUSD = todayUSDSales
-      .filter((s) => !s.paid)
-      .reduce((acc, s) => acc + s.totalUSD, 0);
-
-    // CUP CASH DRAWER (Transactions paid in CUP)
-    const todayCUPSales = todaySales.filter((s) => s.currency === "CUP");
-    const todayPaidCUPSales = todayCUPSales.filter((s) => s.paid);
-    const todayGrossCUP = todayPaidCUPSales.reduce(
-      (acc, s) => acc + s.totalCUP,
-      0,
-    );
-    const todayRefundsCUP = todayCUPSales.reduce(
-      (acc, s) => acc + (s.totalRefundedCUP || 0),
-      0,
-    );
-    const todayNetCUP = parseFloat(
-      (todayGrossCUP - todayRefundsCUP).toFixed(2),
-    );
-    const todayPendingCUP = todayCUPSales
-      .filter((s) => !s.paid)
-      .reduce((acc, s) => acc + s.totalCUP, 0);
-
+    const [sales, daily, totalCount] = await Promise.all([
+      Sale.find({}).sort({ createdAt: -1, _id: -1 }).limit(201).lean(),
+      Sale.aggregate(dailySalesPipeline()),
+      Sale.countDocuments({}),
+    ]);
     return NextResponse.json({
       success: true,
-      sales,
-      daily: {
-        count: todaySales.length,
-        usdCount: todayUSDSales.length,
-        cupCount: todayCUPSales.length,
-
-        // USD Drawer
-        todayGrossUSD,
-        todayRefundsUSD,
-        todayNetUSD,
-        todayPendingUSD,
-
-        // CUP Drawer
-        todayGrossCUP,
-        todayRefundsCUP,
-        todayNetCUP,
-        todayPendingCUP,
-      },
+      sales: sales.slice(0, 200),
+      historyLimited: sales.length > 200,
+      totalCount,
+      daily: daily[0] || EMPTY_DAILY_SALES,
     });
   } catch (err) {
     console.error("[sales GET]", err);
@@ -120,7 +66,26 @@ async function handlePOST(req: Request) {
   try {
     await connectToDatabase();
     const body = await req.json();
-    const { action } = body;
+    if (!body || typeof body !== "object" || Array.isArray(body))
+      return NextResponse.json(
+        { success: false, error: "Solicitud inválida" },
+        { status: 400 },
+      );
+    const { action, requestId } = body;
+    if (
+      requestId !== undefined &&
+      (typeof requestId !== "string" ||
+        !/^[a-z0-9:_-]{8,100}$/i.test(requestId))
+    )
+      return NextResponse.json(
+        { success: false, error: "Identificador de operación inválido" },
+        { status: 400 },
+      );
+    const requestHash = requestFingerprint(
+      Object.fromEntries(
+        Object.entries(body).filter(([key]) => key !== "requestId"),
+      ),
+    );
 
     // --------------------------------------------------------
     // ACTION: CREATE SALE
@@ -128,13 +93,68 @@ async function handlePOST(req: Request) {
     if (action === "create") {
       const { clientName, items, currency, exchangeRate, paid, notes } = body;
 
-      if (!Array.isArray(items) || items.length === 0) {
+      if (
+        !Array.isArray(items) ||
+        items.length === 0 ||
+        items.length > 100 ||
+        (currency !== undefined && !["USD", "CUP"].includes(currency)) ||
+        (paid !== undefined && typeof paid !== "boolean") ||
+        (clientName !== undefined &&
+          (typeof clientName !== "string" || clientName.length > 200)) ||
+        (notes !== undefined &&
+          (typeof notes !== "string" || notes.length > 4000))
+      )
         return NextResponse.json(
-          { success: false, error: "La orden debe tener al menos 1 producto" },
+          {
+            success: false,
+            error:
+              "Datos de venta inválidos (máximo 100 productos, moneda USD/CUP y pago booleano)",
+          },
           { status: 400 },
         );
+      const productIds = new Set<string>();
+      for (const item of items) {
+        if (
+          !item ||
+          typeof item.productId !== "string" ||
+          !item.productId.trim() ||
+          item.productId.length > 200 ||
+          !Number.isSafeInteger(item.qty) ||
+          item.qty < 1 ||
+          item.qty > 10000 ||
+          !Number.isFinite(item.precioUSD) ||
+          item.precioUSD < 0 ||
+          productIds.has(item.productId)
+        )
+          return NextResponse.json(
+            {
+              success: false,
+              error:
+                "Producto, cantidad o precio inválido; agrupa las unidades del mismo producto en una sola línea",
+            },
+            { status: 400 },
+          );
+        productIds.add(item.productId);
       }
 
+      if (requestId) {
+        const existing = await Sale.findOne({ requestId });
+        if (existing)
+          return existing.requestHash === requestHash
+            ? NextResponse.json({
+                success: true,
+                sale: existing,
+                replayed: true,
+              })
+            : NextResponse.json(
+                {
+                  success: false,
+                  error:
+                    "El identificador ya corresponde a otra venta. Revisa el historial.",
+                },
+                { status: 409 },
+              );
+      }
       const activeRate = await getActiveExchangeRate();
       if (!activeRate)
         return NextResponse.json(
@@ -176,6 +196,11 @@ async function handlePOST(req: Request) {
             { status: 404 },
           );
         }
+        if (product.isHidden)
+          return NextResponse.json(
+            { success: false, error: "Reactiva el producto antes de venderlo" },
+            { status: 409 },
+          );
         if (product.stock < qty) {
           return NextResponse.json(
             {
@@ -239,7 +264,7 @@ async function handlePOST(req: Request) {
       );
       const totalUSD = subtotalUSD;
 
-      const totalCUP = parseFloat((totalUSD * rateNum).toFixed(2));
+      const totalCUP = roundCupPrice(totalUSD, rateNum);
 
       // Generate unique order number (retry up to 5 times on collision)
       let orderNumber = "";
@@ -250,6 +275,7 @@ async function handlePOST(req: Request) {
       }
 
       const sale = await Sale.create({
+        ...(requestId ? { requestId, requestHash } : {}),
         orderNumber,
         clientName: clientName || "Consumidor Final",
         items: processedItems,
@@ -275,7 +301,13 @@ async function handlePOST(req: Request) {
     if (action === "refund") {
       const { saleId, returns, reason } = body;
 
-      if (!saleId || !Array.isArray(returns) || returns.length === 0) {
+      if (
+        typeof saleId !== "string" ||
+        !/^[a-f0-9]{24}$/i.test(saleId) ||
+        !Array.isArray(returns) ||
+        returns.length === 0 ||
+        returns.length > 100
+      ) {
         return NextResponse.json(
           {
             success: false,
@@ -284,7 +316,11 @@ async function handlePOST(req: Request) {
           { status: 400 },
         );
       }
-      if (!reason || !reason.trim()) {
+      if (
+        typeof reason !== "string" ||
+        !reason.trim() ||
+        reason.length > 1000
+      ) {
         return NextResponse.json(
           { success: false, error: "Debes indicar el motivo de la devolución" },
           { status: 400 },
@@ -299,6 +335,60 @@ async function handlePOST(req: Request) {
         );
       }
 
+      const previousRefunds = requestId
+        ? sale.refunds.filter((row) => row.requestId === requestId)
+        : [];
+      if (previousRefunds.length) {
+        if (previousRefunds.some((row) => row.requestHash !== requestHash))
+          return NextResponse.json(
+            {
+              success: false,
+              error: "El identificador ya corresponde a otra devolución",
+            },
+            { status: 409 },
+          );
+        return NextResponse.json({
+          success: true,
+          replayed: true,
+          message:
+            "Esta devolución ya estaba registrada; se recuperó sin duplicar movimientos.",
+          sale,
+          refundLogs: previousRefunds,
+          totalRefundUSD: Number(
+            previousRefunds.reduce((n, row) => n + row.refundUSD, 0).toFixed(2),
+          ),
+          totalRefundCUP: Number(
+            previousRefunds.reduce((n, row) => n + row.refundCUP, 0).toFixed(2),
+          ),
+        });
+      }
+      if (["CANCELLED", "REFUNDED"].includes(sale.status))
+        return NextResponse.json(
+          { success: false, error: "La orden ya está anulada o devuelta" },
+          { status: 409 },
+        );
+      const returnIds = new Set<string>();
+      for (const ret of returns) {
+        if (
+          !ret ||
+          typeof ret.productId !== "string" ||
+          !ret.productId.trim() ||
+          returnIds.has(ret.productId) ||
+          !Number.isSafeInteger(ret.qty) ||
+          ret.qty < 1 ||
+          ret.qty > 10000 ||
+          (ret.destination !== undefined &&
+            !["stock", "merma"].includes(ret.destination))
+        )
+          return NextResponse.json(
+            {
+              success: false,
+              error: "Cantidad, producto o destino de devolución inválido",
+            },
+            { status: 400 },
+          );
+        returnIds.add(ret.productId);
+      }
       let totalBatchRefundUSD = 0;
       let totalBatchRefundCUP = 0;
       const refundLogs: any[] = [];
@@ -341,13 +431,13 @@ async function handlePOST(req: Request) {
           );
         }
 
-        // Update item returned quantity
+        const amounts = refundAmounts(sale, item, qtyNum, {
+          usd: totalBatchRefundUSD,
+          cup: totalBatchRefundCUP,
+        });
+        const itemRefundUSD = amounts.usd;
+        const itemRefundCUP = amounts.cup;
         item.returnedQty = currentlyReturned + qtyNum;
-
-        const itemRefundUSD = parseFloat((item.precioUSD * qtyNum).toFixed(2));
-        const itemRefundCUP = parseFloat(
-          (itemRefundUSD * sale.exchangeRate).toFixed(2),
-        );
 
         totalBatchRefundUSD += itemRefundUSD;
         totalBatchRefundCUP += itemRefundCUP;
@@ -361,6 +451,7 @@ async function handlePOST(req: Request) {
               : "retirado";
 
         const logEntry = {
+          ...(requestId ? { requestId, requestHash } : {}),
           productId,
           marca: item.marca,
           modelo: item.modelo,
@@ -470,7 +561,7 @@ async function handlePOST(req: Request) {
     // --------------------------------------------------------
     if (action === "toggle-paid") {
       const { saleId } = body;
-      if (!saleId) {
+      if (typeof saleId !== "string" || !/^[a-f0-9]{24}$/i.test(saleId)) {
         return NextResponse.json(
           { success: false, error: "saleId requerido" },
           { status: 400 },
@@ -498,6 +589,11 @@ async function handlePOST(req: Request) {
       { status: 400 },
     );
   } catch (err) {
+    if (err instanceof SyntaxError)
+      return NextResponse.json(
+        { success: false, error: "JSON inválido" },
+        { status: 400 },
+      );
     console.error("[sales POST]", err);
     return NextResponse.json(
       { success: false, error: "Error procesando solicitud de venta" },

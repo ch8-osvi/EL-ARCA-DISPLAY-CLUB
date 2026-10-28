@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { atomicResponse } from "@/lib/security/atomic-response";
 import { requireAdmin } from "@/lib/security/admin";
 import { NextResponse } from "next/server";
@@ -50,15 +51,43 @@ async function handleGET(request: Request) {
       Product.find(queryFilter).sort({ createdAt: -1 }).lean(),
       Product.countDocuments({ isHidden: true, stock: { $gt: 0 } }),
       Sale.aggregate([
-        { $match: { status: { $ne: "CANCELLED" } } },
+        { $match: { status: { $nin: ["CANCELLED", "REFUNDED"] } } },
         { $unwind: "$items" },
         {
           $group: {
             _id: "$items.productId",
-            totalSold: { $sum: "$items.qty" },
+            totalSold: {
+              $sum: {
+                $max: [
+                  0,
+                  {
+                    $subtract: [
+                      "$items.qty",
+                      { $ifNull: ["$items.returnedQty", 0] },
+                    ],
+                  },
+                ],
+              },
+            },
           },
         },
-        { $sort: { totalSold: -1 } },
+        { $match: { totalSold: { $gt: 0 } } },
+        {
+          $lookup: {
+            from: Product.collection.name,
+            localField: "_id",
+            foreignField: "id",
+            as: "currentProduct",
+          },
+        },
+        {
+          $match: {
+            currentProduct: {
+              $elemMatch: { isHidden: false, stock: { $gt: 0 } },
+            },
+          },
+        },
+        { $sort: { totalSold: -1, _id: 1 } },
         { $limit: 15 },
       ]).catch(() => []),
     ]);
@@ -102,7 +131,35 @@ async function handlePOST(request: Request) {
     await connectToDatabase();
 
     const body = await request.json();
+    if (!body || typeof body !== "object" || Array.isArray(body))
+      return NextResponse.json(
+        { success: false, error: "Solicitud inválida" },
+        { status: 400 },
+      );
     const { action, id, product, initialList } = body;
+    if (
+      ["delete", "delete-permanent", "unhide", "update"].includes(action) &&
+      (typeof id !== "string" || !id.trim() || id.length > 200)
+    )
+      return NextResponse.json(
+        { success: false, error: "Identificador de producto inválido" },
+        { status: 400 },
+      );
+    if (
+      action === "add" &&
+      (!product ||
+        typeof product !== "object" ||
+        Array.isArray(product) ||
+        ["marca", "modelo", "calidad"].some(
+          (field) =>
+            product[field] !== undefined &&
+            (typeof product[field] !== "string" || product[field].length > 200),
+        ))
+    )
+      return NextResponse.json(
+        { success: false, error: "Datos de producto inválidos" },
+        { status: 400 },
+      );
     try {
       if (action === "add" && product) {
         product.categoria = productCategory(product.categoria);
@@ -333,7 +390,7 @@ async function handlePOST(request: Request) {
           });
         }
       } else {
-        const customId = `display-custom-${Date.now()}`;
+        const customId = `product-${randomUUID()}`;
         savedProduct = await Product.create({
           categoria: product.categoria,
           id: customId,
@@ -501,6 +558,11 @@ async function handlePOST(request: Request) {
       { status: 400 },
     );
   } catch (error) {
+    if (error instanceof SyntaxError)
+      return NextResponse.json(
+        { success: false, error: "JSON inválido" },
+        { status: 400 },
+      );
     console.error("API POST Error:", error);
     return NextResponse.json(
       {

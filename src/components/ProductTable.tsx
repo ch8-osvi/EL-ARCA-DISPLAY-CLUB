@@ -1,4 +1,5 @@
 "use client";
+import { getProductBadges } from "@/lib/productBadges";
 import { categoryLabel } from "@/lib/categories";
 import { useWhatsAppPhone } from "@/lib/useWhatsAppPhone";
 
@@ -45,7 +46,7 @@ export default function ProductTable({
           <thead>
             <tr className="bg-[#10131E] border-b border-[#D4AF37]/20 text-[#E5C158] text-xs uppercase tracking-wider">
               <th className="py-4 px-6 font-bold">Marca</th>
-              <th className="py-4 px-6 font-bold">Modelo Display</th>
+              <th className="py-4 px-6 font-bold">Modelo / Repuesto</th>
               <th className="py-4 px-6 font-bold">Calidad</th>
               <th className="py-4 px-6 font-bold text-right">
                 Precio {currency}
@@ -60,14 +61,8 @@ export default function ProductTable({
                 ? cupPrice.toLocaleString("es-CU")
                 : "No disponible";
 
-              const isTopSeller = Boolean(product.isTopSeller);
-              const isLowStock = product.stock === 1;
-              const isNewArrival = (() => {
-                if (!product.createdAt) return false;
-                const createdTime = new Date(product.createdAt).getTime();
-                if (isNaN(createdTime)) return false;
-                return Date.now() - createdTime <= 14 * 24 * 60 * 60 * 1000;
-              })();
+              const { isTopSeller, isLowStock, isNewArrival } =
+                getProductBadges(product);
 
               const whatsappText = encodeURIComponent(
                 `Hola! Deseo consultar la disponibilidad de ${categoryLabel(product.categoria).toLowerCase()}: ${product.marca} ${product.modelo} (${product.calidad}) - $${product.precio} USD (${formattedCUP} CUP) en EL ARCA DISPLAY CLUB.`,

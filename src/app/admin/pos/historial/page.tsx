@@ -1,4 +1,5 @@
 "use client";
+import { refundAmounts } from "@/lib/refundAmounts";
 import {
   refundDestinationLabel,
   type RefundDestination,
@@ -9,7 +10,7 @@ import { type ProductCategory } from "@/lib/categories";
 import { useWhatsAppPhone } from "@/lib/useWhatsAppPhone";
 import { checkAdminSession, loginAdmin } from "@/lib/auth-client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -102,6 +103,8 @@ interface SaleRecord {
 
 export default function SalesHistoryPage() {
   const businessPhone = useWhatsAppPhone();
+  const [historyLimited, setHistoryLimited] = useState(false);
+  const [totalSalesCount, setTotalSalesCount] = useState(0);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
   const [sales, setSales] = useState<SaleRecord[]>([]);
@@ -136,6 +139,10 @@ export default function SalesHistoryPage() {
     text: string;
     isError?: boolean;
   } | null>(null);
+
+  const refundAttempt = useRef<{ fingerprint: string; id: string } | null>(
+    null,
+  );
 
   // Refund Modal State
   const [refundModal, setRefundModal] = useState<{
@@ -172,9 +179,12 @@ export default function SalesHistoryPage() {
     setLoading(true);
     try {
       const res = await fetch("/api/sales");
+      if (!res.ok) throw new Error("No se pudo actualizar el historial");
       if (res.ok) {
         const data = await res.json();
         setSales(data.sales || []);
+        setHistoryLimited(data.historyLimited === true);
+        setTotalSalesCount(data.totalCount ?? data.sales?.length ?? 0);
         if (data.daily) setDaily(data.daily);
       }
     } catch (err) {
@@ -333,14 +343,21 @@ export default function SalesHistoryPage() {
 
     setRefundModal((prev) => ({ ...prev, loading: true }));
     try {
+      const payload = {
+        action: "refund",
+        saleId: refundModal.sale._id,
+        returns: returnsToSubmit,
+        reason: refundModal.reason,
+      };
+      const fingerprint = JSON.stringify(payload);
+      if (refundAttempt.current?.fingerprint !== fingerprint)
+        refundAttempt.current = { fingerprint, id: crypto.randomUUID() };
       const res = await fetch("/api/sales", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "refund",
-          saleId: refundModal.sale._id,
-          returns: returnsToSubmit,
-          reason: refundModal.reason,
+          ...payload,
+          requestId: refundAttempt.current.id,
         }),
       });
 
@@ -351,6 +368,7 @@ export default function SalesHistoryPage() {
         return;
       }
 
+      refundAttempt.current = null;
       triggerToast(data.message || "Devolución procesada con éxito");
 
       // Print Refund Receipt if requested
@@ -516,14 +534,16 @@ export default function SalesHistoryPage() {
 
     filteredSales.forEach((s) => {
       if (s.status === "CANCELLED") return;
+      const netCUP = Math.max(0, s.totalCUP - (s.totalRefundedCUP || 0));
+      const netUSD = Math.max(0, s.totalUSD - (s.totalRefundedUSD || 0));
       if (s.currency === "CUP") {
-        totalCUP += s.totalCUP;
-        if (s.paid) paidCUP += s.totalCUP;
-        else pendingCUP += s.totalCUP;
+        totalCUP += netCUP;
+        if (s.paid) paidCUP += netCUP;
+        else pendingCUP += netCUP;
       } else {
-        totalUSD += s.totalUSD;
-        if (s.paid) paidUSD += s.totalUSD;
-        else pendingUSD += s.totalUSD;
+        totalUSD += netUSD;
+        if (s.paid) paidUSD += netUSD;
+        else pendingUSD += netUSD;
       }
     });
 
@@ -541,14 +561,25 @@ export default function SalesHistoryPage() {
         mermaCount: 0,
       };
     let totalUSD = 0;
+    let totalCUP = 0;
+    const preview = {
+      ...refundModal.sale,
+      items: refundModal.sale.items.map((item) => ({ ...item })),
+    };
     let itemsCount = 0;
     let stockCount = 0;
     let mermaCount = 0;
 
-    refundModal.sale.items.forEach((item) => {
+    preview.items.forEach((item) => {
       const qty = refundModal.returnQuantities[item.productId] || 0;
       if (qty > 0) {
-        totalUSD += item.precioUSD * qty;
+        const amounts = refundAmounts(preview, item, qty, {
+          usd: totalUSD,
+          cup: totalCUP,
+        });
+        totalUSD = Number((totalUSD + amounts.usd).toFixed(2));
+        totalCUP = Number((totalCUP + amounts.cup).toFixed(2));
+        item.returnedQty = (item.returnedQty || 0) + qty;
         itemsCount += qty;
         if (
           (refundModal.returnDestinations[item.productId] || "stock") ===
@@ -561,7 +592,6 @@ export default function SalesHistoryPage() {
       }
     });
 
-    const totalCUP = totalUSD * refundModal.sale.exchangeRate;
     return { totalUSD, totalCUP, itemsCount, stockCount, mermaCount };
   }, [refundModal]);
 
@@ -954,7 +984,7 @@ export default function SalesHistoryPage() {
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/30">
             <History className="w-3.5 h-3.5 text-blue-400" />
             <span className="text-xs font-bold text-blue-300">
-              {sales.length} Ventas Registradas
+              {totalSalesCount} Ventas Registradas
             </span>
           </div>
         </div>
@@ -987,7 +1017,7 @@ export default function SalesHistoryPage() {
             <div className="glass-card rounded-2xl p-5 border border-emerald-500/40 relative overflow-hidden bg-emerald-950/10">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                  Caja USD Hoy (Efectivo)
+                  Ventas USD de hoy
                 </span>
                 <DollarSign className="w-4 h-4 text-emerald-400" />
               </div>
@@ -1027,7 +1057,7 @@ export default function SalesHistoryPage() {
             <div className="glass-card rounded-2xl p-5 border border-[#D4AF37]/40 relative overflow-hidden bg-[#121626]">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold uppercase tracking-wider text-[#E5C158]">
-                  Caja CUP Hoy (Efectivo)
+                  Ventas CUP de hoy
                 </span>
                 <Banknote className="w-4 h-4 text-[#D4AF37]" />
               </div>
@@ -1095,7 +1125,7 @@ export default function SalesHistoryPage() {
                 <History className="w-4 h-4 text-gray-400" />
               </div>
               <div className="text-2xl font-extrabold text-white mt-2">
-                {sales.length}
+                {totalSalesCount}
               </div>
               <span className="text-[11px] text-gray-400">
                 Órdenes totales en base de datos
@@ -1317,12 +1347,14 @@ export default function SalesHistoryPage() {
               Mostrando{" "}
               <strong className="text-white">{filteredSales.length}</strong> de{" "}
               <strong className="text-gray-300">{sales.length}</strong> ventas
-              registradas
+              {historyLimited
+                ? " más recientes. Los totales diarios incluyen todas las de hoy."
+                : " registradas"}
             </div>
             <div className="flex items-center gap-3">
               {filteredSummary.totalUSD > 0 && (
                 <span>
-                  Total USD:{" "}
+                  Neto USD:{" "}
                   <strong className="text-emerald-400 font-extrabold">
                     ${filteredSummary.totalUSD.toFixed(2)}
                   </strong>
@@ -1335,7 +1367,7 @@ export default function SalesHistoryPage() {
               )}
               {filteredSummary.totalCUP > 0 && (
                 <span>
-                  Total CUP:{" "}
+                  Neto CUP:{" "}
                   <strong className="text-[#E5C158] font-extrabold">
                     {filteredSummary.totalCUP.toLocaleString("en-US", {
                       minimumFractionDigits: 2,

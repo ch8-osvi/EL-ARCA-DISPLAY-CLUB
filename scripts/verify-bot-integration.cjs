@@ -850,6 +850,375 @@ async function main() {
     console.log(
       "PASS: devolución a merma de SKU eliminado y rollback del borrado si no puede registrarse su movimiento",
     );
+    // Overnight audit regressions: this is still ONLY the randomly named disposable database.
+    await Product.create({
+      id: "audit-stock",
+      marca: "SAMSUNG",
+      modelo: "AUDIT A50",
+      calidad: "ORIGINAL",
+      precio: 2.1,
+      stock: 20,
+    });
+    const createAudit = {
+      action: "create",
+      clientName: "Audit idempotency",
+      items: [{ productId: "audit-stock", qty: 2, precioUSD: 2.1 }],
+      currency: "USD",
+      paid: true,
+      exchangeRate: 835,
+      requestId: "audit-sale-0001",
+    };
+    const firstAudit = await saleRoute.POST(
+      apiRequest("/api/sales", createAudit),
+    );
+    assert.equal(firstAudit.status, 200);
+    const auditSale = (await firstAudit.json()).sale;
+    const repeatedAudit = await saleRoute.POST(
+      apiRequest("/api/sales", {
+        requestId: createAudit.requestId,
+        ...createAudit,
+      }),
+    );
+    assert.equal(repeatedAudit.status, 200);
+    assert.equal((await repeatedAudit.json()).replayed, true);
+    assert.equal((await Product.findOne({ id: "audit-stock" })).stock, 18);
+    assert.equal(
+      await Sale.countDocuments({ requestId: createAudit.requestId }),
+      1,
+    );
+    assert.equal(
+      (
+        await saleRoute.POST(
+          apiRequest("/api/sales", {
+            ...createAudit,
+            items: [{ productId: "audit-stock", qty: 3, precioUSD: 2.1 }],
+          }),
+        )
+      ).status,
+      409,
+    );
+    for (const invalid of [
+      { ...createAudit, requestId: undefined, paid: "false" },
+      {
+        ...createAudit,
+        requestId: undefined,
+        items: [{ productId: { $ne: null }, qty: 1, precioUSD: 2.1 }],
+      },
+      {
+        ...createAudit,
+        requestId: undefined,
+        items: [createAudit.items[0], createAudit.items[0]],
+      },
+      { ...createAudit, requestId: undefined, items: [null] },
+    ])
+      assert.equal(
+        (await saleRoute.POST(apiRequest("/api/sales", invalid))).status,
+        400,
+      );
+    const refundAudit = {
+      action: "refund",
+      saleId: auditSale._id,
+      returns: [{ productId: "audit-stock", qty: 1, destination: "stock" }],
+      reason: "Isolated audit",
+      requestId: "audit-refund-0001",
+    };
+    assert.equal(
+      (
+        await saleRoute.POST(
+          apiRequest("/api/sales", {
+            ...refundAudit,
+            requestId: undefined,
+            returns: [
+              { productId: "audit-stock", qty: 1, destination: "stcok" },
+            ],
+          }),
+        )
+      ).status,
+      400,
+    );
+    assert.equal(
+      (await saleRoute.POST(apiRequest("/api/sales", refundAudit))).status,
+      200,
+    );
+    const repeatedRefund = await saleRoute.POST(
+      apiRequest("/api/sales", refundAudit),
+    );
+    assert.equal(repeatedRefund.status, 200);
+    assert.equal((await repeatedRefund.json()).replayed, true);
+    assert.equal((await Product.findOne({ id: "audit-stock" })).stock, 19);
+    assert.equal((await Sale.findById(auditSale._id)).refunds.length, 1);
+    assert.equal(
+      (
+        await saleRoute.POST(
+          apiRequest("/api/sales", {
+            ...refundAudit,
+            reason: "Changed request",
+          }),
+        )
+      ).status,
+      409,
+    );
+    assert.equal(
+      (
+        await productRoute.POST(
+          apiRequest("/api/products", { action: "delete", id: { $ne: null } }),
+        )
+      ).status,
+      400,
+    );
+    const stockRoute = load("src/app/api/stock/route.ts");
+    assert.equal(
+      (
+        await stockRoute.POST(
+          apiRequest("/api/stock", {
+            action: "add",
+            productId: "audit-stock",
+            qty: true,
+          }),
+        )
+      ).status,
+      400,
+    );
+    console.log(
+      "PASS: reintentos de venta/devolución no duplican stock ni dinero; rechaza IDs operativos, booleans falsos y destinos inválidos",
+    );
+    const aiRepeated = await operations.proposeActions("audit-actor", [
+      {
+        type: "CREAR_ORDEN",
+        payload: {
+          clientName: "Audit duplicate consolidation",
+          items: [
+            { productQuery: "audit-stock", qty: 1, precioOverride: 0.1 },
+            { productQuery: "audit-stock", qty: 2, precioOverride: 0.1 },
+          ],
+          currency: "USD",
+          paid: true,
+        },
+      },
+    ]);
+    await operations.confirmActions(
+      "audit-actor",
+      aiRepeated.match(/CONFIRMAR ([A-F0-9]{8})/)[1],
+    );
+    const aiSale = await Sale.findOne({
+      clientName: "Audit duplicate consolidation",
+    });
+    assert.equal(aiSale.items.length, 1);
+    assert.equal(aiSale.items[0].qty, 3);
+    assert.equal(aiSale.totalUSD, 0.3);
+    console.log(
+      "PASS: orden IA agrupa SKU repetido y redondea centavos sin líneas de devolución ambiguas",
+    );
+
+    const rankProducts = [
+      "net",
+      "returned",
+      "cancelled",
+      "zero",
+      ...Array.from({ length: 18 }, (_, i) => "hidden-" + i),
+    ];
+    await Product.insertMany(
+      rankProducts.map((id) => ({
+        id: "audit-rank-" + id,
+        marca: "QA",
+        modelo: id.toUpperCase(),
+        calidad: "ORIGINAL",
+        precio: 1,
+        stock: id === "zero" ? 0 : 1,
+        isHidden: id.startsWith("hidden"),
+      })),
+    );
+    const historyRow = (code, id, qty, returnedQty, status = "COMPLETED") => ({
+      orderNumber: "AUDIT-" + code,
+      clientName: "Audit ranking",
+      items: [
+        {
+          productId: id,
+          marca: "QA",
+          modelo: code,
+          calidad: "ORIGINAL",
+          qty,
+          returnedQty,
+          precioUSD: 1,
+          subtotalUSD: qty,
+        },
+      ],
+      currency: "USD",
+      paid: true,
+      exchangeRate: 835,
+      subtotalUSD: qty,
+      totalUSD: qty,
+      totalCUP: qty * 835,
+      totalRefundedUSD: returnedQty,
+      totalRefundedCUP: returnedQty * 835,
+      status,
+    });
+    await Sale.insertMany(
+      rankProducts.map((id) =>
+        historyRow(
+          id,
+          "audit-rank-" + id,
+          id === "net" ? 40 : 100,
+          id === "returned" ? 99 : 0,
+          id === "cancelled"
+            ? "CANCELLED"
+            : id === "returned"
+              ? "PARTIALLY_REFUNDED"
+              : "COMPLETED",
+        ),
+      ),
+    );
+    const ranking = await (
+      await productRoute.GET(new Request("https://elarca.test/api/products"))
+    ).json();
+    assert.equal(
+      ranking.products.find((p) => p.id === "audit-rank-net").salesCount,
+      40,
+    );
+    assert.equal(
+      ranking.products.find((p) => p.id === "audit-rank-returned").salesCount,
+      1,
+    );
+    assert.equal(
+      ranking.products.find((p) => p.id === "audit-rank-cancelled").isTopSeller,
+      false,
+    );
+    assert.ok(!ranking.products.some((p) => /hidden|zero/.test(p.id)));
+    console.log(
+      "PASS: ranking público usa ventas netas, ignora anuladas y no pierde posiciones por ocultos/agotados",
+    );
+
+    const authGet = () =>
+      new Request("https://elarca.test/api/sales", {
+        headers: { cookie: "el_arca_admin_session=" + token },
+      });
+    const moneyPayload = {
+      ...createAudit,
+      clientName: "Audit rounded charge",
+      requestId: "audit-money-0001",
+      items: [{ productId: "audit-stock", qty: 3, precioUSD: 1 / 3 }],
+    };
+    const moneyResponse = await saleRoute.POST(
+      apiRequest("/api/sales", moneyPayload),
+    );
+    assert.equal(moneyResponse.status, 200);
+    const moneySale = (await moneyResponse.json()).sale;
+    assert.equal(moneySale.totalUSD, 1);
+    assert.equal(moneySale.totalCUP, 800);
+    for (let i = 0; i < 3; i++) {
+      const r = await saleRoute.POST(
+        apiRequest("/api/sales", {
+          action: "refund",
+          saleId: moneySale._id,
+          returns: [{ productId: "audit-stock", qty: 1 }],
+          reason: "Rounding test only",
+          requestId: "audit-money-refund-" + i,
+        }),
+      );
+      assert.equal(r.status, 200);
+    }
+    const moneyReturned = await Sale.findById(moneySale._id);
+    assert.equal(moneyReturned.totalRefundedUSD, moneyReturned.totalUSD);
+    assert.equal(moneyReturned.totalRefundedCUP, moneyReturned.totalCUP);
+    const concurrentPayload = {
+      ...createAudit,
+      requestId: "audit-concurrent-001",
+      items: [{ productId: "audit-stock", qty: 1, precioUSD: 2.1 }],
+    };
+    const beforeConcurrent = (await Product.findOne({ id: "audit-stock" }))
+      .stock;
+    const concurrent = await Promise.all([
+      saleRoute.POST(apiRequest("/api/sales", concurrentPayload)),
+      saleRoute.POST(apiRequest("/api/sales", concurrentPayload)),
+    ]);
+    assert.deepEqual(
+      concurrent.map((r) => r.status),
+      [200, 200],
+    );
+    assert.equal(
+      (await Product.findOne({ id: "audit-stock" })).stock,
+      beforeConcurrent - 1,
+    );
+    assert.equal(
+      await Sale.countDocuments({ requestId: concurrentPayload.requestId }),
+      1,
+    );
+    console.log(
+      "PASS: total CUP guardado coincide con POS; devolución fraccionada recupera exactamente USD/CUP; doble POST concurrente vende una vez",
+    );
+    const baselineSummary = (await (await saleRoute.GET(authGet())).json())
+      .daily;
+    const summaryRows = Array.from({ length: 205 }, (_, i) =>
+      historyRow("SUMMARY-" + i, "audit-summary", 1, 0),
+    );
+    summaryRows.push({
+      ...historyRow("PENDING", "audit-summary", 10, 4, "PARTIALLY_REFUNDED"),
+      paid: false,
+    });
+    await Sale.insertMany(summaryRows);
+    const summary = await (await saleRoute.GET(authGet())).json();
+    assert.equal(summary.sales.length, 200);
+    assert.equal(summary.totalCount, await Sale.countDocuments({}));
+    assert.equal(summary.historyLimited, true);
+    assert.equal(summary.daily.count, baselineSummary.count + 206);
+    assert.equal(
+      summary.daily.todayGrossUSD,
+      Number((baselineSummary.todayGrossUSD + 205).toFixed(2)),
+    );
+    assert.equal(
+      summary.daily.todayRefundsUSD,
+      baselineSummary.todayRefundsUSD,
+    );
+    assert.equal(
+      summary.daily.todayPendingUSD,
+      Number((baselineSummary.todayPendingUSD + 6).toFixed(2)),
+    );
+    console.log(
+      "PASS: resumen diario incluye más de 200 órdenes; devolución pendiente reduce deuda sin fingir salida de caja",
+    );
+
+    const analytics = load("src/app/api/analytics/route.ts");
+    assert.equal(
+      (
+        await analytics.POST(
+          apiRequest("/api/analytics", {
+            visitorId: "x".repeat(129),
+            page: "/",
+          }),
+        )
+      ).status,
+      400,
+    );
+    assert.equal(
+      (
+        await analytics.POST(
+          new Request("https://elarca.test/api/analytics", {
+            method: "POST",
+            headers: {
+              origin: "https://foreign.test",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ visitorId: "audit", page: "/" }),
+          }),
+        )
+      ).status,
+      403,
+    );
+    assert.equal(
+      (
+        await analytics.POST(
+          apiRequest("/api/analytics", {
+            visitorId: "audit-visitor",
+            page: "/",
+            referrer: "",
+          }),
+        )
+      ).status,
+      200,
+    );
+    console.log(
+      "PASS: analítica limita entradas y rechaza origen externo sin cerrar el catálogo",
+    );
     console.log(
       "Integración completa en base aislada; no se cambiaron permisos del negocio.",
     );

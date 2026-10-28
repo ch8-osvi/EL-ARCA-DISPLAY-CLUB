@@ -1,3 +1,4 @@
+import { roundCupPrice } from "@/lib/searchUtils";
 import { escapeRegex } from "@/lib/security/validation";
 import { getActiveExchangeRate } from "@/lib/exchangeRate";
 import connectToDatabase from "@/lib/mongoose";
@@ -122,7 +123,7 @@ export async function executeMarcarOrdenPagada(orderNumber: string) {
 
     return {
       success: true,
-      message: `✅ *Orden #${sale.orderNumber} marcada como PAGADA con éxito*\n\n• Cliente: *${sale.clientName}*\n• Monto: *${sale.currency === "CUP" ? `${sale.totalCUP?.toLocaleString()} CUP` : `$${sale.totalUSD?.toFixed(2)} USD`}*\n• Estado actual: *PAGADO* 💵`,
+      message: `✅ *Orden #${sale.orderNumber} marcada como PAGADA con éxito*\n\n• Cliente: *${sale.clientName}*\n• Monto: *${sale.currency === "CUP" ? `${Math.max(0, sale.totalCUP - (sale.totalRefundedCUP || 0)).toLocaleString()} CUP` : `$${Math.max(0, sale.totalUSD - (sale.totalRefundedUSD || 0)).toFixed(2)} USD`}*\n• Estado actual: *PAGADO* 💵`,
     };
   } catch (err: any) {
     console.error("[executeMarcarOrdenPagada error]", err);
@@ -161,7 +162,7 @@ export async function executeMarcarOrdenPendiente(orderNumber: string) {
 
     return {
       success: true,
-      message: `⚠️ *Orden #${sale.orderNumber} marcada como PENDIENTE de cobro*\n\n• Cliente: *${sale.clientName}*\n• Monto adeudado: *${sale.currency === "CUP" ? `${sale.totalCUP?.toLocaleString()} CUP` : `$${sale.totalUSD?.toFixed(2)} USD`}*\n• Estado: *A Crédito / Pendiente* 📋`,
+      message: `⚠️ *Orden #${sale.orderNumber} marcada como PENDIENTE de cobro*\n\n• Cliente: *${sale.clientName}*\n• Monto adeudado: *${sale.currency === "CUP" ? `${Math.max(0, sale.totalCUP - (sale.totalRefundedCUP || 0)).toLocaleString()} CUP` : `$${Math.max(0, sale.totalUSD - (sale.totalRefundedUSD || 0)).toFixed(2)} USD`}*\n• Estado: *A Crédito / Pendiente* 📋`,
     };
   } catch (err: any) {
     console.error("[executeMarcarOrdenPendiente error]", err);
@@ -371,7 +372,7 @@ export async function executeRegistrarVentaRapida(args: {
 
     // Calculate totals
     const subtotalUSD = parseFloat((product.precio * qty).toFixed(2));
-    const totalCUP = parseFloat((subtotalUSD * rate).toFixed(2));
+    const totalCUP = roundCupPrice(subtotalUSD, rate);
 
     // Generate unique order number
     let orderNumber = "";

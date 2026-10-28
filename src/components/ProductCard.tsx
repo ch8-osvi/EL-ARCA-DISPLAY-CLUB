@@ -1,4 +1,5 @@
 "use client";
+import { getProductBadges } from "@/lib/productBadges";
 import { categoryLabel } from "@/lib/categories";
 import { useWhatsAppPhone } from "@/lib/useWhatsAppPhone";
 
@@ -41,16 +42,7 @@ export default function ProductCard({
     return roundCupPrice(product.precio, exchangeRate);
   }, [product.precio, exchangeRate]);
 
-  // Dynamic Badges without emojis
-  const isTopSeller = Boolean(product.isTopSeller);
-  const isLowStock = product.stock === 1;
-  const isNewArrival = useMemo(() => {
-    if (!product.createdAt) return false;
-    const createdTime = new Date(product.createdAt).getTime();
-    if (isNaN(createdTime)) return false;
-    const fourteenDaysMs = 14 * 24 * 60 * 60 * 1000;
-    return Date.now() - createdTime <= fourteenDaysMs;
-  }, [product.createdAt]);
+  const { isTopSeller, isLowStock, isNewArrival } = getProductBadges(product);
 
   // WhatsApp link configuration
   const whatsappNumber = useWhatsAppPhone();

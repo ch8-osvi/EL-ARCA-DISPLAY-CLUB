@@ -1,3 +1,4 @@
+import { roundCupPrice } from "@/lib/searchUtils";
 import { productCategory, categoryFilter } from "@/lib/categories";
 import { escapeRegex } from "@/lib/security/validation";
 import {
@@ -504,6 +505,27 @@ export async function executeCrearOrdenMulti(input: {
         };
       }
       const precioUSD = item.precioOverride ?? product.precio;
+      const duplicate = resolvedItems.find(
+        (row) => row.productId === product.id,
+      );
+      if (duplicate) {
+        if (duplicate.precioUSD !== precioUSD)
+          return {
+            success: false,
+            message:
+              "El mismo producto tiene dos precios distintos. Indica una sola línea con precio y cantidad total.",
+          };
+        const combined = duplicate.qty + item.qty;
+        if (combined > product.stock || combined > 10000)
+          return {
+            success: false,
+            message:
+              "La cantidad total repetida supera el stock disponible o el límite permitido.",
+          };
+        duplicate.qty = combined;
+        duplicate.subtotalUSD = Number((precioUSD * combined).toFixed(2));
+        continue;
+      }
       resolvedItems.push({
         productId: product.id,
         marca: product.marca,
@@ -512,7 +534,7 @@ export async function executeCrearOrdenMulti(input: {
         categoria: productCategory(product.categoria),
         qty: item.qty,
         precioUSD,
-        subtotalUSD: precioUSD * item.qty,
+        subtotalUSD: Number((precioUSD * item.qty).toFixed(2)),
         returnedQty: 0,
         stockBefore: product.stock,
         productMongoId: product._id as mongoose.Types.ObjectId,
@@ -520,9 +542,11 @@ export async function executeCrearOrdenMulti(input: {
       });
     }
 
-    const subtotalUSD = resolvedItems.reduce((s, i) => s + i.subtotalUSD, 0);
+    const subtotalUSD = Number(
+      resolvedItems.reduce((s, i) => s + i.subtotalUSD, 0).toFixed(2),
+    );
     const totalUSD = subtotalUSD;
-    const totalCUP = totalUSD * exchangeRate;
+    const totalCUP = roundCupPrice(totalUSD, exchangeRate);
     const totalQty = resolvedItems.reduce((s, i) => s + i.qty, 0);
 
     let orderNumber = "";

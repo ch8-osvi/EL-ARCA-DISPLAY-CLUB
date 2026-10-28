@@ -5,6 +5,7 @@ import {
   CATEGORIES,
   type ProductCategory,
 } from "@/lib/categories";
+import BrandFilter from "@/components/BrandFilter";
 import CategoryFilter from "@/components/CategoryFilter";
 import { parseCatalogNumber } from "@/lib/catalogNumbers";
 import { checkAdminSession, loginAdmin } from "@/lib/auth-client";
@@ -1315,36 +1316,13 @@ export default function AdminPage() {
           </div>
 
           {/* Brand Filter Chips */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-            {brands.map((b) => {
-              const count =
-                b === "ALL"
-                  ? availableProducts.length
-                  : brandCounts.get(b) || 0;
-              return (
-                <button
-                  key={b}
-                  onClick={() => setSelectedBrand(b)}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all duration-200 flex items-center gap-1.5 ${
-                    selectedBrand === b
-                      ? "gold-gradient-bg text-black shadow-gold-glow scale-105"
-                      : "bg-[#10131E] text-gray-300 hover:text-white border border-white/10 hover:border-white/20"
-                  }`}
-                >
-                  <span>{b === "ALL" ? "Todas las Marcas" : b}</span>
-                  <span
-                    className={`text-[10px] px-1.5 py-0.5 rounded-md font-extrabold ${
-                      selectedBrand === b
-                        ? "bg-black/20 text-black"
-                        : "bg-white/10 text-[#E5C158]"
-                    }`}
-                  >
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          <BrandFilter
+            brands={brands.filter((b) => b !== "ALL")}
+            selectedBrand={selectedBrand}
+            onBrandSelect={setSelectedBrand}
+            brandCounts={brandCounts}
+            totalCount={availableProducts.length}
+          />
         </div>
 
         {/* Admin Products List */}

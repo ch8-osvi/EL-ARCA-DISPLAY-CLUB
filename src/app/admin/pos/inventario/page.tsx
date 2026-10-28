@@ -12,7 +12,6 @@ import {
   Plus,
   History,
   CheckCircle2,
-  Smartphone,
   X,
   ShieldAlert,
   ArrowUpRight,
@@ -23,7 +22,9 @@ import {
   Pencil,
   RefreshCw,
 } from "lucide-react";
-import CategoryFilter, { CategoryBadge } from "@/components/CategoryFilter";
+import BrandFilter from "@/components/BrandFilter";
+import ProductIdentity from "@/components/ProductIdentity";
+import CategoryFilter from "@/components/CategoryFilter";
 import {
   CATEGORIES,
   productCategory,
@@ -1329,34 +1330,13 @@ export default function InventoryPage() {
               </div>
 
               {/* Brand Filter */}
-              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-                {brands.map((b) => {
-                  const count =
-                    b === "ALL" ? products.length : brandCounts.get(b) || 0;
-                  return (
-                    <button
-                      key={b}
-                      onClick={() => setSelectedBrand(b)}
-                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all duration-200 flex items-center gap-1.5 ${
-                        selectedBrand === b
-                          ? "gold-gradient-bg text-black shadow-gold-glow scale-105"
-                          : "bg-[#10131E] text-gray-300 hover:text-white border border-white/10 hover:border-white/20"
-                      }`}
-                    >
-                      <span>{b === "ALL" ? "Todas las Marcas" : b}</span>
-                      <span
-                        className={`text-[10px] px-1.5 py-0.5 rounded-md font-extrabold ${
-                          selectedBrand === b
-                            ? "bg-black/20 text-black"
-                            : "bg-white/10 text-[#E5C158]"
-                        }`}
-                      >
-                        {count}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+              <BrandFilter
+                brands={brands.filter((b) => b !== "ALL")}
+                selectedBrand={selectedBrand}
+                onBrandSelect={setSelectedBrand}
+                brandCounts={brandCounts}
+                totalCount={categoryProducts.length}
+              />
             </div>
 
             {/* Inventory Cards Grid */}
@@ -1368,7 +1348,7 @@ export default function InventoryPage() {
                     className="glass-card rounded-2xl p-4 border border-white/5 flex flex-col justify-between min-h-[195px] animate-pulse"
                   >
                     <div>
-                      <div className="flex items-center justify-between gap-1 mb-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                         <div className="w-16 h-5 bg-white/10 rounded-md"></div>
                         <div className="w-12 h-5 bg-white/10 rounded-md"></div>
                       </div>
@@ -1417,20 +1397,20 @@ export default function InventoryPage() {
                       }`}
                     >
                       <div>
-                        <div className="flex items-center justify-between gap-1 mb-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                           <span className="text-[10px] font-bold text-[#E5C158] uppercase px-2 py-0.5 rounded-md bg-[#10131E] border border-white/10">
                             {prod.marca}
                           </span>
                           <span className="text-[10px] text-gray-300 font-semibold px-2 py-0.5 rounded-md bg-white/5">
-                            {prod.calidad}{" "}
-                            <CategoryBadge category={prod.categoria} />
+                            {prod.calidad}
                           </span>
                         </div>
 
-                        <h3 className="text-sm font-bold text-white leading-snug flex items-start gap-1.5">
-                          <Smartphone className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
-                          <span>{prod.modelo}</span>
-                        </h3>
+                        <ProductIdentity
+                          model={prod.modelo}
+                          category={prod.categoria}
+                          titleClassName="text-sm"
+                        />
                       </div>
 
                       <div className="mt-3.5 pt-2.5 border-t border-white/5 space-y-2.5">

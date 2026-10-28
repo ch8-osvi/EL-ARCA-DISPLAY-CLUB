@@ -2,6 +2,21 @@
 
 Esta entrega prepara El Arca para vender pantallas, baterías, tapas traseras y accesorios con el mismo diseño oscuro y dorado. También corrige problemas de inventario, importación, presentación y contexto de la IA de clientes.
 
+## Revisión de consistencia: tarjetas, administración y WhatsApp
+
+- **Tarjetas:** `ProductIdentity` concentra el modelo y, debajo, el dato «Tipo · Pantalla/Batería/Tapa trasera/Accesorio». Sin emojis, iconos de teléfono ni acento azul en la categoría. Se utiliza en catálogo, administración, POS, carrito, inventario, ocultos y comparaciones de duplicados; los selectores y listas del gestor de etiquetas usan el mismo dato de tipo. Las etiquetas físicas impresas no cambian.
+- **Marcas:** administración, POS e inventario tenían copias independientes del filtro con `scale-105`. Ahora utilizan `BrandFilter`, como el catálogo público, conservando completos los bordes del primer botón.
+- **WhatsApp:** cabecera compacta en móvil, acciones que se distribuyen en varias filas, formularios apilados y contenedores con ancho limitado. La tabla se desplaza dentro de su propia región; no ensancha la página. El skeleton se adapta al mismo ancho y el detalle admite textos largos sin desbordar.
+- **Verificación:** compilación de producción y 45 pruebas existentes correctas. Revisión de administración e historial a 320, 390 y 651 px; ancho del documento igual al de la ventana. Administradores, bloqueados y detalle de conversación también encajan a 320 px. Datos de demostración en una base temporal, sin escribir a clientes ni modificar el inventario del negocio. Estas medidas de navegador no sustituyen una prueba física del teclado de iPhone.
+
+Administración con datos de demostración:
+
+![Filtro completo y modelo seguido de tipo, sin iconos de categoría](qa-cards-consistentes-2026-10-27.png)
+
+WhatsApp con registros de demostración:
+
+![Panel de WhatsApp adaptado a móvil](qa-whatsapp-responsive-2026-10-27.png)
+
 ## Ajustes visuales posteriores: buscador, categorías y marcas
 
 **Segunda revisión del zoom, Chrome de iPhone:** el usuario confirmó que el primer ajuste no resolvía su caso. Se verificó que producción entregaba la regla de 16 px. El catálogo ahora declara 18 px directamente y tiene una regla específica sin media queries, sin el anterior `text-sm` y sin animaciones de métricas al enfocar. Se conserva el viewport ampliable. La validación en un iPhone físico sigue pendiente: una prueba con ventana móvil de Chrome de escritorio no reproduce el teclado de iOS ni basta para dar el fallo por resuelto.
@@ -61,7 +76,7 @@ No se añadieron productos ficticios al negocio. Las categorías nuevas se activ
 
 Vista móvil verificada con productos de ejemplo en una base temporal:
 
-![Catálogo móvil con categoría sin píldora y filtro de marcas completo](qa-ajustes-movil-2026-10-27.png)
+![Tarjetas con información de tipo sin píldoras ni iconos](qa-cards-consistentes-2026-10-27.png)
 
 ## Cambios en la IA de clientes
 

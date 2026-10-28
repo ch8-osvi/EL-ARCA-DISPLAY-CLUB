@@ -2,13 +2,12 @@
 import { categoryLabel } from "@/lib/categories";
 import { useWhatsAppPhone } from "@/lib/useWhatsAppPhone";
 
-import { CategoryBadge } from "./CategoryFilter";
+import ProductIdentity from "./ProductIdentity";
 import React from "react";
 import { Product, Currency } from "@/lib/types";
 import {
   MessageSquare,
   Tag,
-  Smartphone,
   Search,
   TrendingUp,
   AlertCircle,
@@ -95,11 +94,12 @@ export default function ProductTable({
                   {/* Modelo */}
                   <td className="py-3.5 px-6 font-medium text-white group-hover:text-[#F3E0A9] transition-colors">
                     <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-2">
-                        <Smartphone className="w-4 h-4 text-gray-400 shrink-0" />
-                        <span>{product.modelo}</span>
-                        <CategoryBadge category={product.categoria} />
-                      </div>
+                      <ProductIdentity
+                        model={product.modelo}
+                        category={product.categoria}
+                        as="p"
+                        titleClassName="text-sm"
+                      />
                       {/* Sub-badges in table */}
                       {(isTopSeller || isLowStock || isNewArrival) && (
                         <div className="flex items-center gap-1.5 flex-wrap mt-0.5">

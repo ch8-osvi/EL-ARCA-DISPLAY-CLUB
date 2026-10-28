@@ -1,4 +1,5 @@
 "use client";
+import ProductIdentity from "@/components/ProductIdentity";
 import { checkAdminSession, loginAdmin } from "@/lib/auth-client";
 
 import React, { useState, useEffect, useMemo } from "react";
@@ -17,6 +18,7 @@ import { sortProductsByPopularity } from "@/lib/brandUtils";
 import { fuzzyMatchProduct } from "@/lib/searchUtils";
 
 interface HiddenProduct {
+  categoria?: string;
   _id?: string;
   id: string;
   marca: string;
@@ -279,9 +281,12 @@ export default function OcultosPage() {
                   <span className="text-[10px] font-extrabold tracking-widest text-[#D4AF37] uppercase block">
                     {product.marca}
                   </span>
-                  <h3 className="text-sm font-bold text-white leading-tight mt-0.5">
-                    {product.modelo}
-                  </h3>
+                  <ProductIdentity
+                    model={product.modelo}
+                    category={product.categoria}
+                    className="mt-1"
+                    titleClassName="text-sm"
+                  />
                 </div>
 
                 {/* Quality, Stock & Price */}

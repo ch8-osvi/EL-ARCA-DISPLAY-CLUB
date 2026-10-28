@@ -1,11 +1,12 @@
-'use client';
+"use client";
+import { CategoryDetails } from "@/components/ProductIdentity";
 
-import React, { useMemo, useState } from 'react';
-import { AlertCircle, Plus, Search, Trash2, X } from 'lucide-react';
-import { Product } from '@/lib/types';
-import { fuzzyMatchProduct } from '@/lib/searchUtils';
-import { productLabel } from '@/lib/labelLayout';
-import { StockFilter } from './BoxEditor';
+import React, { useMemo, useState } from "react";
+import { AlertCircle, Plus, Search, Trash2, X } from "lucide-react";
+import { Product } from "@/lib/types";
+import { fuzzyMatchProduct } from "@/lib/searchUtils";
+import { productLabel } from "@/lib/labelLayout";
+import { StockFilter } from "./BoxEditor";
 
 export interface SingleStickerItem {
   uid: string;
@@ -37,18 +38,23 @@ export default function SingleStickersManager({
   onAddFromStock,
   onClearAll,
 }: SingleStickersManagerProps) {
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Product | null>(null);
-  const [copies, setCopies] = useState('1');
+  const [copies, setCopies] = useState("1");
   const [pickerError, setPickerError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
 
   const results = useMemo(() => {
-    const pool = stockFilter === 'stock' ? products.filter((p) => (p.stock ?? 0) > 0) : products;
+    const pool =
+      stockFilter === "stock"
+        ? products.filter((p) => (p.stock ?? 0) > 0)
+        : products;
     const term = search.trim();
     if (!term) {
       return [...pool]
-        .sort((a, b) => `${a.marca} ${a.modelo}`.localeCompare(`${b.marca} ${b.modelo}`))
+        .sort((a, b) =>
+          `${a.marca} ${a.modelo}`.localeCompare(`${b.marca} ${b.modelo}`),
+        )
         .slice(0, MAX_RESULTS);
     }
     return pool
@@ -61,18 +67,18 @@ export default function SingleStickersManager({
 
   const handleAdd = () => {
     if (!selected) {
-      setPickerError('Selecciona un modelo del catálogo.');
+      setPickerError("Selecciona un modelo del catálogo.");
       return;
     }
     const n = parseInt(copies, 10);
     if (!Number.isFinite(n) || n <= 0) {
-      setPickerError('Ingresa un número de stickers válido (> 0).');
+      setPickerError("Ingresa un número de stickers válido (> 0).");
       return;
     }
     onAddItem(selected, n);
     setSelected(null);
-    setSearch('');
-    setCopies('1');
+    setSearch("");
+    setCopies("1");
     setPickerError(null);
   };
 
@@ -83,9 +89,12 @@ export default function SingleStickersManager({
       {/* Selector Rápido */}
       <div className="glass-panel rounded-2xl p-4 sm:p-5 border border-[#D4AF37]/30 space-y-3 relative z-30">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold text-white">Añadir Displays para Stickers Individuales</h3>
+          <h3 className="text-sm font-bold text-white">
+            Añadir repuestos para stickers individuales
+          </h3>
           <span className="text-xs text-gray-400">
-            Total stickers a imprimir: <strong className="text-[#E5C158]">{totalStickers}</strong>
+            Total stickers a imprimir:{" "}
+            <strong className="text-[#E5C158]">{totalStickers}</strong>
           </span>
         </div>
 
@@ -94,7 +103,11 @@ export default function SingleStickersManager({
             <Search className="w-4 h-4 text-gray-500 absolute left-3 top-2.5" />
             <input
               type="text"
-              value={selected ? `${productLabel(selected)} · ${selected.calidad}` : search}
+              value={
+                selected
+                  ? `${productLabel(selected)} · ${selected.calidad}`
+                  : search
+              }
               onChange={(e) => {
                 setSelected(null);
                 setSearch(e.target.value);
@@ -103,7 +116,11 @@ export default function SingleStickersManager({
               }}
               onFocus={() => setOpen(true)}
               onBlur={() => setTimeout(() => setOpen(false), 150)}
-              placeholder={stockFilter === 'stock' ? 'Buscar modelo con stock…' : 'Buscar en todo el catálogo…'}
+              placeholder={
+                stockFilter === "stock"
+                  ? "Buscar modelo con stock…"
+                  : "Buscar en todo el catálogo…"
+              }
               autoComplete="off"
               className="w-full pl-9 pr-3 py-2 bg-[#10131E] border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm focus:outline-none focus:border-[#D4AF37] transition-all"
             />
@@ -111,7 +128,10 @@ export default function SingleStickersManager({
               <ul className="absolute z-50 mt-1 w-full max-h-64 overflow-y-auto rounded-xl border border-[#D4AF37]/40 bg-[#0D0F17] shadow-2xl shadow-black">
                 {results.length === 0 ? (
                   <li className="px-3 py-3 text-xs text-gray-400">
-                    Sin resultados{stockFilter === 'stock' ? ' con stock. Prueba el filtro "Todos".' : '.'}
+                    Sin resultados
+                    {stockFilter === "stock"
+                      ? ' con stock. Prueba el filtro "Todos".'
+                      : "."}
                   </li>
                 ) : (
                   results.map((p) => (
@@ -129,17 +149,22 @@ export default function SingleStickersManager({
                         className="w-full text-left px-3 py-2 hover:bg-[#D4AF37]/10 flex items-center justify-between gap-3"
                       >
                         <span className="min-w-0">
-                          <span className="block text-sm text-white font-semibold truncate">{productLabel(p)}</span>
-                          <span className="block text-[11px] text-[#E5C158] truncate">{p.calidad}</span>
+                          <span className="block text-sm text-white font-semibold truncate">
+                            {productLabel(p)}
+                          </span>
+                          <CategoryDetails category={p.categoria} />
+                          <span className="block text-[11px] text-[#E5C158] truncate">
+                            {p.calidad}
+                          </span>
                         </span>
                         <span
                           className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
                             (p.stock ?? 0) > 0
-                              ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
-                              : 'text-gray-400 border-white/10 bg-white/5'
+                              ? "text-emerald-300 border-emerald-500/40 bg-emerald-500/10"
+                              : "text-gray-400 border-white/10 bg-white/5"
                           }`}
                         >
-                          {(p.stock ?? 0) > 0 ? `Stock ${p.stock}` : 'Agotado'}
+                          {(p.stock ?? 0) > 0 ? `Stock ${p.stock}` : "Agotado"}
                         </span>
                       </button>
                     </li>
@@ -150,7 +175,9 @@ export default function SingleStickersManager({
           </div>
 
           <div className="flex items-center gap-2">
-            <label className="text-[11px] text-gray-400 font-semibold shrink-0">Stickers:</label>
+            <label className="text-[11px] text-gray-400 font-semibold shrink-0">
+              Stickers:
+            </label>
             <input
               type="number"
               inputMode="numeric"
@@ -162,7 +189,7 @@ export default function SingleStickersManager({
                 setPickerError(null);
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') {
+                if (e.key === "Enter") {
                   e.preventDefault();
                   handleAdd();
                 }
@@ -180,7 +207,9 @@ export default function SingleStickersManager({
           </div>
         </div>
 
-        {pickerError && <p className="text-[11px] text-rose-300">{pickerError}</p>}
+        {pickerError && (
+          <p className="text-[11px] text-rose-300">{pickerError}</p>
+        )}
 
         {/* Acciones de Llenado Rápido */}
         <div className="pt-2 border-t border-white/10 flex flex-wrap items-center justify-between gap-2">
@@ -211,9 +240,12 @@ export default function SingleStickersManager({
       {items.length === 0 ? (
         <div className="glass-panel rounded-2xl p-8 border border-dashed border-white/15 text-center space-y-2">
           <AlertCircle className="w-8 h-8 text-gray-500 mx-auto" />
-          <h4 className="text-sm font-bold text-gray-300">No hay stickers en la lista</h4>
+          <h4 className="text-sm font-bold text-gray-300">
+            No hay stickers en la lista
+          </h4>
           <p className="text-xs text-gray-500 max-w-sm mx-auto">
-            Busca un modelo arriba para generar sus stickers individuales de 4×2 cm listos para bolsitas.
+            Busca un modelo arriba para generar sus stickers individuales de 4×2
+            cm listos para bolsitas.
           </p>
         </div>
       ) : (
@@ -227,6 +259,7 @@ export default function SingleStickersManager({
                 <span className="block text-sm font-bold text-white truncate">
                   {productLabel(item.product)}
                 </span>
+                <CategoryDetails category={item.product.categoria} />
                 <span className="block text-[11px] text-[#E5C158] truncate">
                   {item.product.calidad}
                 </span>
@@ -241,7 +274,10 @@ export default function SingleStickersManager({
                     value={item.copies}
                     onChange={(e) => {
                       const val = parseInt(e.target.value, 10);
-                      onUpdateCopies(item.uid, Number.isFinite(val) && val > 0 ? val : 1);
+                      onUpdateCopies(
+                        item.uid,
+                        Number.isFinite(val) && val > 0 ? val : 1,
+                      );
                     }}
                     className="w-16 px-2 py-1 bg-[#090A0F] border border-white/10 rounded-lg text-white text-xs text-center focus:outline-none focus:border-[#D4AF37]"
                   />

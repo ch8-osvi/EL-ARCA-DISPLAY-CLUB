@@ -497,10 +497,10 @@ export default function AdminWhatsAppPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#07090E] text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-black">
+    <div className="min-h-screen w-full min-w-0 bg-[#07090E] text-slate-100 flex flex-col font-sans [overflow-wrap:anywhere] selection:bg-amber-500 selection:text-black">
       {/* Toast Notification Centrada Horizontalmente */}
       {toastMessage && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl bg-[#131C2E] border border-amber-500/40 text-amber-300 font-bold text-sm shadow-2xl flex items-center gap-3 animate-fade-in backdrop-blur-md">
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 w-max max-w-[calc(100vw-2rem)] px-5 py-3 rounded-2xl bg-[#131C2E] border border-amber-500/40 text-amber-300 font-bold text-sm shadow-2xl flex items-center gap-3 animate-fade-in backdrop-blur-md">
           <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
           <span>{toastMessage}</span>
         </div>
@@ -508,25 +508,29 @@ export default function AdminWhatsAppPage() {
 
       {/* Top Navigation Bar */}
       <header className="sticky top-0 z-40 bg-[#07090E]/90 backdrop-blur-xl border-b border-amber-500/20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-4">
+        <div className="max-w-7xl w-full min-w-0 mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-2 sm:gap-4">
           <Link
             href="/admin"
-            className="flex items-center gap-2 text-[#D4AF37] hover:text-white transition-colors group"
+            aria-label="Volver al panel de administración"
+            className="flex shrink-0 items-center gap-2 text-[#D4AF37] hover:text-white transition-colors group"
           >
             <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
-            <span className="text-sm font-bold">Volver al Panel Admin</span>
+            <span className="text-sm font-bold sm:hidden">Panel</span>
+            <span className="hidden sm:inline text-sm font-bold">
+              Volver al Panel Admin
+            </span>
           </Link>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
             {/* Indicador de Estado del Bot con Dot Verde Parpadeante */}
             <div
               role="status"
-              className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border text-xs font-bold shadow-sm ${online ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300" : "bg-amber-500/10 border-amber-500/30 text-amber-300"}`}
+              className={`inline-flex min-w-0 items-center gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-full border text-[11px] sm:text-xs font-bold shadow-sm ${online ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300" : "bg-amber-500/10 border-amber-500/30 text-amber-300"}`}
             >
               <span
-                className={`w-2.5 h-2.5 rounded-full ${online ? "bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400/50" : "bg-amber-400"}`}
+                className={`w-2.5 h-2.5 shrink-0 rounded-full ${online ? "bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400/50" : "bg-amber-400"}`}
               />
-              <span>
+              <span className="min-w-0 truncate">
                 Bot:{" "}
                 {metrics?.botPhone ? `+${metrics.botPhone}` : "Sin vincular"}
               </span>
@@ -539,7 +543,7 @@ export default function AdminWhatsAppPage() {
               onClick={() => fetchData()}
               disabled={loading}
               title="Refrescar datos ahora"
-              className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 transition-all hover:scale-105 active:scale-95"
+              className="shrink-0 p-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 transition-all hover:scale-105 active:scale-95"
             >
               <RefreshCw
                 className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
@@ -549,11 +553,11 @@ export default function AdminWhatsAppPage() {
         </div>
       </header>
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      <main className="flex-1 min-w-0 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8 space-y-6 [&>*]:min-w-0">
         {/* Hero Section Banner */}
         <section className="glass-panel rounded-3xl p-6 sm:p-8 border border-amber-500/30 relative overflow-hidden flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
-          <div className="space-y-2 max-w-2xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#171B2B] border border-white/10 text-xs font-bold text-[#E5C158]">
+          <div className="min-w-0 space-y-2 max-w-2xl">
+            <div className="inline-flex max-w-full items-center gap-2 px-3 py-1 rounded-full bg-[#171B2B] border border-white/10 text-[10px] sm:text-xs font-bold text-[#E5C158]">
               <Sparkles className="w-3.5 h-3.5 text-[#D4AF37]" />
               Centro de Operaciones y Atención Automatizada
             </div>
@@ -574,7 +578,7 @@ export default function AdminWhatsAppPage() {
               rel="noopener noreferrer"
               className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-200 border border-white/15 font-bold text-xs flex items-center gap-2 transition-all hover:scale-105"
             >
-              <QrCode className="w-4 h-4 text-amber-400" />
+              <QrCode className="w-4 h-4 shrink-0 text-amber-400" />
               <span>Ver Pantalla QR</span>
               <ExternalLink className="w-3 h-3 text-gray-400" />
             </a>
@@ -591,11 +595,11 @@ export default function AdminWhatsAppPage() {
           </div>
         )}
         {/* Quick Stats Grid */}
-        <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="glass-panel p-5 rounded-2xl border border-white/10 relative overflow-hidden">
-            <div className="flex items-center justify-between text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">
+        <section className="grid min-w-0 grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div className="glass-panel min-w-0 p-4 sm:p-5 rounded-2xl border border-white/10 relative overflow-hidden">
+            <div className="flex items-start justify-between gap-2 text-gray-400 text-[10px] sm:text-xs font-bold uppercase tracking-wider mb-2">
               <span>Mensajes Hoy</span>
-              <MessageSquare className="w-4 h-4 text-emerald-400" />
+              <MessageSquare className="w-4 h-4 shrink-0 text-emerald-400" />
             </div>
             <div className="text-2xl sm:text-3xl font-extrabold text-white">
               {metrics?.todayLogsCount ?? "—"}
@@ -605,10 +609,10 @@ export default function AdminWhatsAppPage() {
             </div>
           </div>
 
-          <div className="glass-panel p-5 rounded-2xl border border-white/10 relative overflow-hidden">
-            <div className="flex items-center justify-between text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">
+          <div className="glass-panel min-w-0 p-4 sm:p-5 rounded-2xl border border-white/10 relative overflow-hidden">
+            <div className="flex items-start justify-between gap-2 text-gray-400 text-[10px] sm:text-xs font-bold uppercase tracking-wider mb-2">
               <span>Clientes Atendidos</span>
-              <Users className="w-4 h-4 text-cyan-400" />
+              <Users className="w-4 h-4 shrink-0 text-cyan-400" />
             </div>
             <div className="text-2xl sm:text-3xl font-extrabold text-white">
               {metrics?.uniqueClientsTodayCount ?? "—"}
@@ -618,10 +622,10 @@ export default function AdminWhatsAppPage() {
             </div>
           </div>
 
-          <div className="glass-panel p-5 rounded-2xl border border-white/10 relative overflow-hidden">
-            <div className="flex items-center justify-between text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">
+          <div className="glass-panel min-w-0 p-4 sm:p-5 rounded-2xl border border-white/10 relative overflow-hidden">
+            <div className="flex items-start justify-between gap-2 text-gray-400 text-[10px] sm:text-xs font-bold uppercase tracking-wider mb-2">
               <span>Órdenes Admin</span>
-              <Cpu className="w-4 h-4 text-amber-400" />
+              <Cpu className="w-4 h-4 shrink-0 text-amber-400" />
             </div>
             <div className="text-2xl sm:text-3xl font-extrabold text-amber-300">
               {metrics?.adminCommandsToday ?? "—"}
@@ -631,10 +635,10 @@ export default function AdminWhatsAppPage() {
             </div>
           </div>
 
-          <div className="glass-panel p-5 rounded-2xl border border-white/10 relative overflow-hidden">
-            <div className="flex items-center justify-between text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">
+          <div className="glass-panel min-w-0 p-4 sm:p-5 rounded-2xl border border-white/10 relative overflow-hidden">
+            <div className="flex items-start justify-between gap-2 text-gray-400 text-[10px] sm:text-xs font-bold uppercase tracking-wider mb-2">
               <span>Tasa de Cambio</span>
-              <DollarSign className="w-4 h-4 text-yellow-400" />
+              <DollarSign className="w-4 h-4 shrink-0 text-yellow-400" />
             </div>
             <div className="text-2xl sm:text-3xl font-extrabold text-white">
               {metrics?.activeRate ? `1x${metrics.activeRate}` : "—"}{" "}
@@ -647,10 +651,13 @@ export default function AdminWhatsAppPage() {
         </section>
 
         {/* Tab Selector */}
-        <div className="flex items-center gap-2 border-b border-white/10 pb-2 overflow-x-auto">
+        <div
+          aria-label="Secciones de WhatsApp"
+          className="flex w-full min-w-0 items-center gap-2 border-b border-white/10 py-2 overflow-x-auto scrollbar-none"
+        >
           <button
             onClick={() => setActiveTab("logs")}
-            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+            className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors ${
               activeTab === "logs"
                 ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
                 : "text-gray-400 hover:text-white hover:bg-white/5"
@@ -664,7 +671,7 @@ export default function AdminWhatsAppPage() {
 
           <button
             onClick={() => setActiveTab("admins")}
-            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+            className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors ${
               activeTab === "admins"
                 ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
                 : "text-gray-400 hover:text-white hover:bg-white/5"
@@ -676,7 +683,7 @@ export default function AdminWhatsAppPage() {
 
           <button
             onClick={() => setActiveTab("blacklist")}
-            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+            className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors ${
               activeTab === "blacklist"
                 ? "bg-red-500/20 text-red-300 border border-red-500/40"
                 : "text-gray-400 hover:text-white hover:bg-white/5"
@@ -691,8 +698,8 @@ export default function AdminWhatsAppPage() {
         {activeTab === "logs" && (
           <div className="space-y-4">
             {/* Filter & Search Bar */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-              <div className="relative flex-1">
+            <div className="flex min-w-0 flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3">
+              <div className="relative min-w-0 flex-1">
                 <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
@@ -703,7 +710,10 @@ export default function AdminWhatsAppPage() {
                 />
               </div>
 
-              <div className="flex items-center gap-2">
+              <div
+                aria-label="Filtros y acciones del historial"
+                className="flex min-w-0 flex-wrap items-center gap-2"
+              >
                 <button
                   onClick={() => setRoleFilter("all")}
                   className={`px-3 py-2 rounded-xl text-xs font-bold ${
@@ -805,9 +815,19 @@ export default function AdminWhatsAppPage() {
                   </p>
                 </div>
               ) : (
-                <div className="glass-panel h-full rounded-2xl border border-white/10 overflow-hidden">
-                  <div className="overflow-auto h-full">
-                    <table className="w-full text-left text-xs text-gray-300">
+                <div className="glass-panel w-full min-w-0 max-w-full h-full rounded-2xl border border-white/10 overflow-hidden">
+                  <div
+                    role="region"
+                    aria-label="Tabla de conversaciones, desliza para ver todas las columnas"
+                    tabIndex={0}
+                    className="w-full max-w-full overflow-auto h-full overscroll-x-contain"
+                  >
+                    <table className="w-full min-w-[1100px] table-fixed text-left text-xs text-gray-300">
+                      <colgroup>
+                        {[15, 15, 10, 20, 25, 11, 4].map((width, index) => (
+                          <col key={index} style={{ width: `${width}%` }} />
+                        ))}
+                      </colgroup>
                       <thead className="bg-[#0B0F19] text-gray-400 uppercase font-bold border-b border-white/10 text-[10px] tracking-wider">
                         <tr>
                           <th className="py-3 px-4">Fecha / Hora</th>
@@ -899,7 +919,10 @@ export default function AdminWhatsAppPage() {
                               </td>
                               <td className="py-3 px-4 text-right whitespace-nowrap">
                                 {log.actionExecuted ? (
-                                  <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
+                                  <span
+                                    title={log.actionExecuted}
+                                    className="inline-block max-w-full truncate align-middle px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold"
+                                  >
                                     {log.actionExecuted}
                                   </span>
                                 ) : (
@@ -916,7 +939,7 @@ export default function AdminWhatsAppPage() {
                               >
                                 <button
                                   onClick={(e) => handleDeleteLog(log.id, e)}
-                                  className="p-1.5 rounded-lg hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                                  className="p-1.5 rounded-lg hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100"
                                   title="Archivar registro (recuperable durante 30 días)"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
@@ -936,7 +959,7 @@ export default function AdminWhatsAppPage() {
 
         {/* TAB 2: GESTIÓN DE ADMINISTRADORES */}
         {activeTab === "admins" && (
-          <div className="glass-panel p-6 rounded-3xl border border-white/10 space-y-6 max-w-3xl mx-auto">
+          <div className="glass-panel min-w-0 w-full p-4 sm:p-6 rounded-3xl border border-white/10 space-y-6 max-w-3xl mx-auto">
             <div className="space-y-1">
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 <Users className="w-5 h-5 text-amber-400" />
@@ -960,19 +983,19 @@ export default function AdminWhatsAppPage() {
                     setNewAdminPhone("");
                 }
               }}
-              className="flex gap-2"
+              className="flex min-w-0 flex-col sm:flex-row gap-2"
             >
               <input
                 type="text"
                 placeholder="Teléfono completo con código de país"
                 value={newAdminPhone}
                 onChange={(e) => setNewAdminPhone(e.target.value)}
-                className="flex-1 px-4 py-2.5 bg-[#0B0F19] border border-white/10 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-amber-400 font-mono"
+                className="min-w-0 w-full flex-1 px-4 py-2.5 bg-[#0B0F19] border border-white/10 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-amber-400 font-mono"
               />
               <button
                 type="submit"
                 disabled={changing}
-                className="px-5 py-2.5 rounded-xl gold-gradient-bg text-black font-extrabold text-xs shadow-gold-glow flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all"
+                className="shrink-0 justify-center px-5 py-2.5 rounded-xl gold-gradient-bg text-black font-extrabold text-xs shadow-gold-glow flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all"
               >
                 <Plus className="w-4 h-4" />
                 <span>Agregar Admin</span>
@@ -988,7 +1011,7 @@ export default function AdminWhatsAppPage() {
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-xs">
-                      <Crown className="w-4 h-4 text-amber-400" />
+                      <Crown className="w-4 h-4 shrink-0 text-amber-400" />
                     </div>
                     <div>
                       <div className="font-mono font-bold text-white text-xs">
@@ -1018,7 +1041,7 @@ export default function AdminWhatsAppPage() {
 
         {/* TAB 3: LISTA NEGRA / BLOQUEO */}
         {activeTab === "blacklist" && (
-          <div className="glass-panel p-6 rounded-3xl border border-red-500/20 space-y-6 max-w-3xl mx-auto">
+          <div className="glass-panel min-w-0 w-full p-4 sm:p-6 rounded-3xl border border-red-500/20 space-y-6 max-w-3xl mx-auto">
             <div className="space-y-1">
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 <ShieldAlert className="w-5 h-5 text-red-400" />
@@ -1045,18 +1068,18 @@ export default function AdminWhatsAppPage() {
                     setNewBlacklistPhone("");
                 }
               }}
-              className="flex gap-2"
+              className="flex min-w-0 flex-col sm:flex-row gap-2"
             >
               <input
                 type="text"
                 placeholder="Ej: 5358999999"
                 value={newBlacklistPhone}
                 onChange={(e) => setNewBlacklistPhone(e.target.value)}
-                className="flex-1 px-4 py-2.5 bg-[#0B0F19] border border-white/10 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-red-400 font-mono"
+                className="min-w-0 w-full flex-1 px-4 py-2.5 bg-[#0B0F19] border border-white/10 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-red-400 font-mono"
               />
               <button
                 type="submit"
-                className="px-5 py-2.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 font-extrabold text-xs flex items-center gap-1.5 transition-all"
+                className="shrink-0 justify-center px-5 py-2.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 font-extrabold text-xs flex items-center gap-1.5 transition-all"
                 disabled={changing}
               >
                 <Plus className="w-4 h-4" />
@@ -1078,7 +1101,7 @@ export default function AdminWhatsAppPage() {
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-lg bg-red-500/20 text-red-400 flex items-center justify-center font-bold text-xs">
-                        🚫
+                        <ShieldAlert aria-hidden="true" className="h-4 w-4" />
                       </div>
                       <div>
                         <div className="font-mono font-bold text-white text-xs">
@@ -1183,7 +1206,7 @@ export default function AdminWhatsAppPage() {
                   {data?.pausedPhones.map((p) => (
                     <div
                       key={p}
-                      className="flex justify-between items-center rounded-xl bg-amber-500/5 border border-amber-500/20 px-3 py-2"
+                      className="flex flex-wrap justify-between items-center gap-2 rounded-xl bg-amber-500/5 border border-amber-500/20 px-3 py-2"
                     >
                       <span className="text-gray-300">
                         +{p} · Atención humana
@@ -1210,11 +1233,11 @@ export default function AdminWhatsAppPage() {
             role="dialog"
             aria-modal="true"
             aria-label="Detalle de conversación"
-            className="glass-panel max-w-xl w-full max-h-[90vh] overflow-y-auto rounded-3xl p-6 sm:p-8 border border-white/20 space-y-5 animate-fade-in"
+            className="glass-panel min-w-0 max-w-xl w-full max-h-[90dvh] overflow-y-auto rounded-3xl p-6 sm:p-8 border border-white/20 space-y-5 animate-fade-in"
           >
-            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+            <div className="flex min-w-0 items-start justify-between gap-3 border-b border-white/10 pb-4">
               <div>
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <h3 className="text-base font-bold text-white flex flex-wrap items-center gap-2">
                   <span>Detalle de Conversación</span>
                   {selectedLog.role === "admin" ? (
                     <span className="inline-flex items-center gap-1 text-[10px] font-extrabold bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full border border-amber-500/30">
@@ -1283,7 +1306,7 @@ export default function AdminWhatsAppPage() {
             )}
             {/* Respuestas mediante la cola autenticada */}
             <div className="pt-3 border-t border-white/10 space-y-2.5">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-gray-300 font-bold text-xs flex items-center gap-1.5">
                   <Send className="w-3.5 h-3.5 text-emerald-400" />
                   <span>Enviar Respuesta Directa al Cliente:</span>
@@ -1314,7 +1337,7 @@ export default function AdminWhatsAppPage() {
                       handleSendDirectReply();
                     }
                   }}
-                  className="flex-1 px-3.5 py-2.5 bg-[#0B0F19] border border-white/10 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-emerald-400 shadow-inner"
+                  className="min-w-0 w-full flex-1 px-3.5 py-2.5 bg-[#0B0F19] border border-white/10 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-emerald-400 shadow-inner"
                 />
 
                 <div className="flex items-center gap-2">

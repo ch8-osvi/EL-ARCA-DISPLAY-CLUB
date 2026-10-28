@@ -1,4 +1,5 @@
 "use client";
+import ProductIdentity from "@/components/ProductIdentity";
 import { checkAdminSession, loginAdmin } from "@/lib/auth-client";
 
 import React, { useState, useEffect, useMemo } from "react";
@@ -12,7 +13,6 @@ import {
   Layers,
   ArrowRight,
   Sparkles,
-  Smartphone,
   Tag,
   DollarSign,
   Package,
@@ -570,9 +570,12 @@ export default function DuplicadosPage() {
                             <span className="text-[10px] uppercase font-bold text-gray-500 block">
                               Producto 1 (ID: {pair.productA.id})
                             </span>
-                            <p className="text-sm font-bold text-white leading-snug">
-                              {pair.productA.modelo}
-                            </p>
+                            <ProductIdentity
+                              model={pair.productA.modelo}
+                              category={pair.productA.categoria}
+                              as="p"
+                              titleClassName="text-sm"
+                            />
                             <div className="flex items-center justify-between text-xs pt-1 border-t border-white/5">
                               <span className="text-gray-400">
                                 Stock:{" "}
@@ -591,9 +594,12 @@ export default function DuplicadosPage() {
                             <span className="text-[10px] uppercase font-bold text-gray-500 block">
                               Producto 2 (ID: {pair.productB.id})
                             </span>
-                            <p className="text-sm font-bold text-white leading-snug">
-                              {pair.productB.modelo}
-                            </p>
+                            <ProductIdentity
+                              model={pair.productB.modelo}
+                              category={pair.productB.categoria}
+                              as="p"
+                              titleClassName="text-sm"
+                            />
                             <div className="flex items-center justify-between text-xs pt-1 border-t border-white/5">
                               <span className="text-gray-400">
                                 Stock:{" "}
@@ -727,17 +733,23 @@ export default function DuplicadosPage() {
                             <span className="text-[10px] uppercase font-bold text-gray-500 block">
                               Producto 1 (ID: {pair.productA.id})
                             </span>
-                            <p className="text-sm font-bold text-gray-300 leading-snug">
-                              {pair.productA.modelo}
-                            </p>
+                            <ProductIdentity
+                              model={pair.productA.modelo}
+                              category={pair.productA.categoria}
+                              as="p"
+                              titleClassName="text-sm"
+                            />
                           </div>
                           <div className="p-3.5 rounded-xl bg-[#10131E] border border-white/5 space-y-2">
                             <span className="text-[10px] uppercase font-bold text-gray-500 block">
                               Producto 2 (ID: {pair.productB.id})
                             </span>
-                            <p className="text-sm font-bold text-gray-300 leading-snug">
-                              {pair.productB.modelo}
-                            </p>
+                            <ProductIdentity
+                              model={pair.productB.modelo}
+                              category={pair.productB.categoria}
+                              as="p"
+                              titleClassName="text-sm"
+                            />
                           </div>
                         </div>
                       </div>
@@ -832,9 +844,12 @@ export default function DuplicadosPage() {
                             <span className="text-[10px] font-bold text-[#D4AF37] uppercase">
                               {p.marca} ({p.calidad})
                             </span>
-                            <p className="font-semibold text-white">
-                              {p.modelo}
-                            </p>
+                            <ProductIdentity
+                              model={p.modelo}
+                              category={p.categoria}
+                              as="p"
+                              titleClassName="text-sm"
+                            />
                           </div>
                           <span className="font-bold text-gray-300">
                             {p.stock} uds
@@ -905,9 +920,12 @@ export default function DuplicadosPage() {
                             <span className="text-[10px] font-bold text-blue-400 uppercase">
                               {p.marca} ({p.calidad})
                             </span>
-                            <p className="font-semibold text-white">
-                              {p.modelo}
-                            </p>
+                            <ProductIdentity
+                              model={p.modelo}
+                              category={p.categoria}
+                              as="p"
+                              titleClassName="text-sm"
+                            />
                           </div>
                           <span className="font-bold text-gray-300">
                             {p.stock} uds
@@ -1003,9 +1021,12 @@ export default function DuplicadosPage() {
                         <Check className="w-4 h-4 text-[#D4AF37]" />
                       )}
                     </div>
-                    <p className="text-xs font-bold text-white line-clamp-2">
-                      {selectedPair.prodA.modelo}
-                    </p>
+                    <ProductIdentity
+                      model={selectedPair.prodA.modelo}
+                      category={selectedPair.prodA.categoria}
+                      as="p"
+                      titleClassName="text-sm"
+                    />
                     <div className="mt-2 flex items-center justify-between text-[11px] text-gray-400">
                       <span>
                         Stock:{" "}
@@ -1041,9 +1062,12 @@ export default function DuplicadosPage() {
                         <Check className="w-4 h-4 text-[#D4AF37]" />
                       )}
                     </div>
-                    <p className="text-xs font-bold text-white line-clamp-2">
-                      {selectedPair.prodB.modelo}
-                    </p>
+                    <ProductIdentity
+                      model={selectedPair.prodB.modelo}
+                      category={selectedPair.prodB.categoria}
+                      as="p"
+                      titleClassName="text-sm"
+                    />
                     <div className="mt-2 flex items-center justify-between text-[11px] text-gray-400">
                       <span>
                         Stock:{" "}

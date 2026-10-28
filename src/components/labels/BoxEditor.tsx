@@ -1,12 +1,19 @@
-'use client';
+"use client";
+import { CategoryDetails } from "@/components/ProductIdentity";
 
-import React, { useMemo, useState } from 'react';
-import { AlertTriangle, Copy, Plus, Search, Trash2, X } from 'lucide-react';
-import { Product } from '@/lib/types';
-import { fuzzyMatchProduct } from '@/lib/searchUtils';
-import { BoxLabelDraft, BoxIssues, boxTotal, parseQty, productLabel } from '@/lib/labelLayout';
+import React, { useMemo, useState } from "react";
+import { AlertTriangle, Copy, Plus, Search, Trash2, X } from "lucide-react";
+import { Product } from "@/lib/types";
+import { fuzzyMatchProduct } from "@/lib/searchUtils";
+import {
+  BoxLabelDraft,
+  BoxIssues,
+  boxTotal,
+  parseQty,
+  productLabel,
+} from "@/lib/labelLayout";
 
-export type StockFilter = 'stock' | 'all';
+export type StockFilter = "stock" | "all";
 
 interface BoxEditorProps {
   box: BoxLabelDraft;
@@ -45,18 +52,23 @@ export default function BoxEditor({
   onDuplicate,
   onRemove,
 }: BoxEditorProps) {
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Product | null>(null);
-  const [qty, setQty] = useState('');
+  const [qty, setQty] = useState("");
   const [pickerError, setPickerError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
 
   const results = useMemo(() => {
-    const pool = stockFilter === 'stock' ? products.filter((p) => (p.stock ?? 0) > 0) : products;
+    const pool =
+      stockFilter === "stock"
+        ? products.filter((p) => (p.stock ?? 0) > 0)
+        : products;
     const term = search.trim();
     if (!term) {
       return [...pool]
-        .sort((a, b) => `${a.marca} ${a.modelo}`.localeCompare(`${b.marca} ${b.modelo}`))
+        .sort((a, b) =>
+          `${a.marca} ${a.modelo}`.localeCompare(`${b.marca} ${b.modelo}`),
+        )
         .slice(0, MAX_RESULTS);
     }
     return pool
@@ -69,22 +81,23 @@ export default function BoxEditor({
 
   const handleAdd = () => {
     if (!selected) {
-      setPickerError('Selecciona un modelo del inventario.');
+      setPickerError("Selecciona un modelo del inventario.");
       return;
     }
     const n = parseQty(qty);
     if (n === null) {
-      setPickerError('La cantidad debe ser un número entero mayor que 0.');
+      setPickerError("La cantidad debe ser un número entero mayor que 0.");
       return;
     }
     onAddLine(box.uid, selected, n);
     setSelected(null);
-    setSearch('');
-    setQty('');
+    setSearch("");
+    setQty("");
     setPickerError(null);
   };
 
-  const hasErrors = issues.errors.length > 0 || Object.keys(issues.lineErrors).length > 0;
+  const hasErrors =
+    issues.errors.length > 0 || Object.keys(issues.lineErrors).length > 0;
   const total = boxTotal(box);
   const idBase = `box-${index}`;
 
@@ -92,7 +105,7 @@ export default function BoxEditor({
     <article
       id={`label-box-${box.uid}`}
       className={`glass-panel rounded-2xl p-4 sm:p-5 border transition-colors ${
-        showErrors && hasErrors ? 'border-rose-500/60' : 'border-[#D4AF37]/25'
+        showErrors && hasErrors ? "border-rose-500/60" : "border-[#D4AF37]/25"
       }`}
     >
       {/* Cabecera de la caja */}
@@ -102,8 +115,9 @@ export default function BoxEditor({
             Caja {index}
           </span>
           <span className="text-xs text-gray-400">
-            {box.lines.length} {box.lines.length === 1 ? 'modelo' : 'modelos'} ·{' '}
-            <strong className="text-white">{total}</strong> {total === 1 ? 'pieza' : 'piezas'}
+            {box.lines.length} {box.lines.length === 1 ? "modelo" : "modelos"} ·{" "}
+            <strong className="text-white">{total}</strong>{" "}
+            {total === 1 ? "pieza" : "piezas"}
           </span>
         </div>
         <div className="flex items-center gap-1.5">
@@ -151,13 +165,20 @@ export default function BoxEditor({
               <li
                 key={line.uid}
                 className={`rounded-xl px-3 py-2 border ${
-                  err ? 'border-rose-500/50 bg-rose-500/5' : 'border-white/10 bg-[#10131E]/60'
+                  err
+                    ? "border-rose-500/50 bg-rose-500/5"
+                    : "border-white/10 bg-[#10131E]/60"
                 }`}
               >
                 <div className="flex items-center gap-3">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-white truncate">{productLabel(line.snapshot)}</p>
-                    <p className="text-[11px] text-[#E5C158] truncate">{line.snapshot.calidad}</p>
+                    <p className="text-sm font-bold text-white truncate">
+                      {productLabel(line.snapshot)}
+                    </p>
+                    <CategoryDetails category={product?.categoria} />
+                    <p className="text-[11px] text-[#E5C158] truncate">
+                      {line.snapshot.calidad}
+                    </p>
                   </div>
                   <label className="sr-only" htmlFor={`qty-${line.uid}`}>
                     Cantidad
@@ -169,9 +190,13 @@ export default function BoxEditor({
                     min={1}
                     step={1}
                     value={line.qty}
-                    onChange={(e) => onLineQtyChange(box.uid, line.uid, e.target.value)}
+                    onChange={(e) =>
+                      onLineQtyChange(box.uid, line.uid, e.target.value)
+                    }
                     className={`w-20 px-2 py-1.5 bg-[#090A0F] border rounded-lg text-white text-sm text-center focus:outline-none transition-all ${
-                      err ? 'border-rose-500/70' : 'border-white/10 focus:border-[#D4AF37]'
+                      err
+                        ? "border-rose-500/70"
+                        : "border-white/10 focus:border-[#D4AF37]"
                     }`}
                   />
                   <button
@@ -186,7 +211,8 @@ export default function BoxEditor({
                 {err && <p className="text-[11px] text-rose-300 mt-1">{err}</p>}
                 {!err && overStock && (
                   <p className="text-[11px] text-amber-300 mt-1">
-                    Aviso: en todas las etiquetas suman {across} uds y el stock registrado es {product.stock ?? 0}.
+                    Aviso: en todas las etiquetas suman {across} uds y el stock
+                    registrado es {product.stock ?? 0}.
                   </p>
                 )}
               </li>
@@ -203,7 +229,11 @@ export default function BoxEditor({
             <input
               id={`${idBase}-search`}
               type="text"
-              value={selected ? `${productLabel(selected)} · ${selected.calidad}` : search}
+              value={
+                selected
+                  ? `${productLabel(selected)} · ${selected.calidad}`
+                  : search
+              }
               onChange={(e) => {
                 setSelected(null);
                 setSearch(e.target.value);
@@ -212,7 +242,11 @@ export default function BoxEditor({
               }}
               onFocus={() => setOpen(true)}
               onBlur={() => setTimeout(() => setOpen(false), 150)}
-              placeholder={stockFilter === 'stock' ? 'Buscar modelo con stock…' : 'Buscar en todo el inventario…'}
+              placeholder={
+                stockFilter === "stock"
+                  ? "Buscar modelo con stock…"
+                  : "Buscar en todo el inventario…"
+              }
               autoComplete="off"
               className="w-full pl-9 pr-3 py-2 bg-[#10131E] border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm focus:outline-none focus:border-[#D4AF37] transition-all"
             />
@@ -220,7 +254,10 @@ export default function BoxEditor({
               <ul className="absolute z-50 mt-1 w-full max-h-64 overflow-y-auto rounded-xl border border-[#D4AF37]/40 bg-[#0D0F17] shadow-2xl shadow-black">
                 {results.length === 0 ? (
                   <li className="px-3 py-3 text-xs text-gray-400">
-                    Sin resultados{stockFilter === 'stock' ? ' con stock. Prueba el filtro "Todos".' : '.'}
+                    Sin resultados
+                    {stockFilter === "stock"
+                      ? ' con stock. Prueba el filtro "Todos".'
+                      : "."}
                   </li>
                 ) : (
                   results.map((p) => (
@@ -236,17 +273,22 @@ export default function BoxEditor({
                         className="w-full text-left px-3 py-2 hover:bg-[#D4AF37]/10 flex items-center justify-between gap-3"
                       >
                         <span className="min-w-0">
-                          <span className="block text-sm text-white font-semibold truncate">{productLabel(p)}</span>
-                          <span className="block text-[11px] text-[#E5C158] truncate">{p.calidad}</span>
+                          <span className="block text-sm text-white font-semibold truncate">
+                            {productLabel(p)}
+                          </span>
+                          <CategoryDetails category={p.categoria} />
+                          <span className="block text-[11px] text-[#E5C158] truncate">
+                            {p.calidad}
+                          </span>
                         </span>
                         <span
                           className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
                             (p.stock ?? 0) > 0
-                              ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
-                              : 'text-gray-400 border-white/10 bg-white/5'
+                              ? "text-emerald-300 border-emerald-500/40 bg-emerald-500/10"
+                              : "text-gray-400 border-white/10 bg-white/5"
                           }`}
                         >
-                          {(p.stock ?? 0) > 0 ? `Stock ${p.stock}` : 'Agotado'}
+                          {(p.stock ?? 0) > 0 ? `Stock ${p.stock}` : "Agotado"}
                         </span>
                       </button>
                     </li>
@@ -267,7 +309,7 @@ export default function BoxEditor({
               setPickerError(null);
             }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') {
+              if (e.key === "Enter") {
                 e.preventDefault();
                 handleAdd();
               }
@@ -285,23 +327,31 @@ export default function BoxEditor({
             Añadir
           </button>
         </div>
-        {pickerError && <p className="text-[11px] text-rose-300">{pickerError}</p>}
+        {pickerError && (
+          <p className="text-[11px] text-rose-300">{pickerError}</p>
+        )}
       </div>
 
       {/* Avisos de la caja */}
       {(showErrors || box.lines.length > 0) &&
         issues.errors.map((e) => (
-          <p key={e} className="mt-3 text-xs text-rose-300 flex items-center gap-1.5">
+          <p
+            key={e}
+            className="mt-3 text-xs text-rose-300 flex items-center gap-1.5"
+          >
             <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {e}
           </p>
         ))}
       {!showErrors && box.lines.length === 0 && (
-        <p className="mt-3 text-xs text-gray-500">Añade al menos un modelo a esta caja.</p>
+        <p className="mt-3 text-xs text-gray-500">
+          Añade al menos un modelo a esta caja.
+        </p>
       )}
       {overflow && (
         <p className="mt-3 text-xs text-amber-300 flex items-center gap-1.5">
           <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-          Demasiados modelos para este tamaño: el texto se corta. Agranda la etiqueta o reparte en otra caja.
+          Demasiados modelos para este tamaño: el texto se corta. Agranda la
+          etiqueta o reparte en otra caja.
         </p>
       )}
     </article>

@@ -9,7 +9,7 @@ import BrandFilter from "@/components/BrandFilter";
 import ProductCard from "@/components/ProductCard";
 import ProductTable from "@/components/ProductTable";
 
-import CategoryFilter, { CategoryBadge } from "@/components/CategoryFilter";
+import CategoryFilter from "@/components/CategoryFilter";
 import {
   CATEGORIES,
   productCategory,

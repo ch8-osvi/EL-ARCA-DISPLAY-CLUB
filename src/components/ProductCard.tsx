@@ -2,7 +2,7 @@
 import { categoryLabel } from "@/lib/categories";
 import { useWhatsAppPhone } from "@/lib/useWhatsAppPhone";
 
-import { CategoryBadge } from "./CategoryFilter";
+import ProductIdentity from "./ProductIdentity";
 import React, { useMemo } from "react";
 import { Product, Currency } from "@/lib/types";
 import {
@@ -125,12 +125,11 @@ export default function ProductCard({
         )}
 
         {/* Model Title */}
-        <div className="mb-2">
-          <CategoryBadge category={product.categoria} />
-        </div>
-        <h3 className="text-base font-bold text-white group-hover:text-[#F3E0A9] transition-colors leading-snug mb-3 flex items-start gap-2">
-          <span>{product.modelo}</span>
-        </h3>
+        <ProductIdentity
+          model={product.modelo}
+          category={product.categoria}
+          className="mb-3"
+        />
       </div>
 
       {/* Footer: Price & WhatsApp Action */}

@@ -1,9 +1,9 @@
 "use client";
 
-import { CategoryBadge } from "./CategoryFilter";
+import ProductIdentity from "./ProductIdentity";
 import React, { useState, useMemo } from "react";
 import { Product } from "@/lib/types";
-import { EyeOff, Smartphone, Tag } from "lucide-react";
+import { EyeOff, Tag } from "lucide-react";
 import { roundCupPrice } from "@/lib/searchUtils";
 
 interface AdminProductCardProps {
@@ -81,13 +81,11 @@ export default function AdminProductCard({
           </div>
         )}
 
-        <div className="mb-2">
-          <CategoryBadge category={product.categoria} />
-        </div>
-        <h3 className="text-base font-bold text-white leading-snug flex items-start gap-2">
-          <Smartphone className="w-4 h-4 text-gray-400 mt-1 shrink-0" />
-          <span>{product.modelo}</span>
-        </h3>
+        <ProductIdentity
+          model={product.modelo}
+          category={product.categoria}
+          className="mb-3"
+        />
       </div>
 
       <div className="mt-4">

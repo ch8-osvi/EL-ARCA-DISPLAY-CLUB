@@ -126,24 +126,25 @@ export default function ProductCard({
       </div>
 
       {/* Footer: Price & WhatsApp Action */}
-      <div className="pt-3.5 mt-2 border-t border-white/5 space-y-3">
+      <div className="pt-3.5 mt-2 border-t border-white/5 flex flex-wrap items-center justify-between gap-2">
         <ProductPrice
           priceUSD={product.precio}
           exchangeRate={exchangeRate}
           primaryCurrency={currency}
+          inlineAction
         />
 
         {/* Actions: WhatsApp */}
-        <div className="flex items-center justify-end gap-1.5">
+        <div className="ml-auto flex shrink-0 items-center justify-end gap-1.5">
           <a
             href={whatsappNumber ? whatsappUrl : undefined}
             aria-disabled={!whatsappNumber}
             target="_blank"
             rel="noopener noreferrer"
-            className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-emerald-900/30 hover:shadow-emerald-700/50 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
+            className="h-10 px-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-[11px] font-bold flex items-center gap-1.5 shadow-lg shadow-emerald-900/30 hover:shadow-emerald-700/50 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
             title="Consultar disponibilidad por WhatsApp del negocio"
           >
-            <MessageSquare className="w-4 h-4 text-emerald-100" />
+            <MessageSquare className="w-3.5 h-3.5 text-emerald-100" />
             <span>Consultar</span>
           </a>
         </div>

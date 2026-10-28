@@ -90,6 +90,8 @@ Meta y Whapi se mantienen como proveedores alternativos explícitos, con autenti
 
 ## Comprobaciones
 
+Últimos ajustes: [Buscador y tarjetas — 28/10/2026](docs/README-buscador-tarjetas-2026-10-28.md).
+
 ```powershell
 npm test
 npm run typecheck

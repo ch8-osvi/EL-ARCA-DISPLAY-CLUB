@@ -7,12 +7,14 @@ export default function ProductPrice({
   exchangeRate,
   primaryCurrency = "CUP",
   compact = false,
+  inlineAction = false,
   className = "",
 }: {
   priceUSD: number;
   exchangeRate?: number | null;
   primaryCurrency?: Currency;
   compact?: boolean;
+  inlineAction?: boolean;
   className?: string;
 }) {
   const cup = roundCupPrice(priceUSD, exchangeRate ?? null);
@@ -21,9 +23,23 @@ export default function ProductPrice({
     CUP: cupAvailable ? cup.toLocaleString("es-CU") : "—",
     USD: `$${priceUSD.toLocaleString("en-US", { maximumFractionDigits: 2 })}`,
   };
+  const characterCount = values.CUP.length + values.USD.length;
+  const minimumWidth =
+    characterCount > 18 ? 250 : characterCount > 12 ? 180 : 145;
   const secondaryCurrency = primaryCurrency === "CUP" ? "USD" : "CUP";
   return (
-    <div className="min-w-0 w-full" style={{ containerType: "inline-size" }}>
+    <div
+      className={`min-w-0 ${inlineAction ? "" : "w-full"}`}
+      style={{
+        containerType: "inline-size",
+        ...(inlineAction
+          ? {
+              flex: `1 1 ${minimumWidth}px`,
+              minWidth: `min(100%, ${minimumWidth}px)`,
+            }
+          : {}),
+      }}
+    >
       <div
         data-product-price
         className={`product-price-values ${values.CUP.length + values.USD.length > 12 ? "product-price-wide" : ""} flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 tabular-nums ${className}`}

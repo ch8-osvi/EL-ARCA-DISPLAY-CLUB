@@ -73,24 +73,27 @@ export default function AdminProductCard({
           </span>
         </div>
 
-        <div className="pt-3 border-t border-white/5 space-y-3">
+        <div className="pt-3 border-t border-white/5 flex flex-wrap items-center justify-between gap-2">
           <ProductPrice
             priceUSD={product.precio}
             exchangeRate={exchangeRate}
+            inlineAction
             primaryCurrency="USD"
           />
 
-          <div className="flex items-center justify-end gap-1.5">
+          <div className="ml-auto flex shrink-0 items-center justify-end gap-1.5">
             {/* Delete Trigger */}
             {!showConfirm ? (
               <button
                 id={`btn-delete-trigger-${product.id}`}
+                type="button"
+                aria-label={`Ocultar ${product.marca} ${product.modelo} del catálogo`}
+                disabled={isDeleting}
                 onClick={() => setShowConfirm(true)}
-                className="px-2.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-bold flex items-center gap-1.5 transition-all duration-200"
+                className="h-10 w-10 shrink-0 justify-center rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-bold flex items-center gap-1.5 transition-all duration-200"
                 title="Ocultar de catálogo"
               >
                 <EyeOff className="w-3.5 h-3.5" />
-                <span>Ocultar</span>
               </button>
             ) : (
               <div className="flex items-center gap-1">

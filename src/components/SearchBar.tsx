@@ -32,6 +32,7 @@ export default function SearchBar({
         </div>
         <input
           id="input-search-catalog"
+          maxLength={200}
           type="text"
           aria-label="Buscar repuesto, modelo o marca"
           enterKeyHint="search"

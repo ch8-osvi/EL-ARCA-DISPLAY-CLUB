@@ -220,3 +220,27 @@ body {
     padding-left: 6px;
   }
 }
+
+/* Leave room for the adjacent card action without shrinking currency labels to a footnote. */
+@container (max-width: 169px) {
+  .product-price-values:not(.product-price-wide) {
+    column-gap: 6px;
+  }
+  .product-price-values:not(.product-price-wide) .product-price-amount {
+    gap: 3px;
+  }
+  .product-price-values:not(.product-price-wide) .product-price-secondary {
+    padding-left: 6px;
+  }
+  .product-price-values:not(.product-price-wide) .product-price-number {
+    font-size: 17px;
+  }
+  .product-price-values:not(.product-price-wide)
+    .product-price-secondary
+    .product-price-number {
+    font-size: 16px;
+  }
+  .product-price-values:not(.product-price-wide) .product-price-unit {
+    font-size: 10px;
+  }
+}

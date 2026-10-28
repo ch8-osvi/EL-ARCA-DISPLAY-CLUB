@@ -1,10 +1,10 @@
 "use client";
 
+import ProductPrice from "./ProductPrice";
 import ProductIdentity from "./ProductIdentity";
-import React, { useState, useMemo } from "react";
+import React, { useState } from "react";
 import { Product } from "@/lib/types";
 import { EyeOff, Tag } from "lucide-react";
-import { roundCupPrice } from "@/lib/searchUtils";
 
 interface AdminProductCardProps {
   product: Product;
@@ -19,14 +19,6 @@ export default function AdminProductCard({
 }: AdminProductCardProps) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-
-  const cupPrice = useMemo(() => {
-    return roundCupPrice(product.precio, exchangeRate);
-  }, [product.precio, exchangeRate]);
-
-  const formattedCUP = Number.isFinite(cupPrice)
-    ? cupPrice.toLocaleString("es-CU")
-    : "No disponible";
 
   const handleDeleteClick = async () => {
     setIsDeleting(true);
@@ -97,25 +89,14 @@ export default function AdminProductCard({
           </span>
         </div>
 
-        <div className="pt-3 border-t border-white/5 flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <span className="text-[10px] uppercase font-semibold text-gray-400 block tracking-wider">
-              Precio
-            </span>
-            <div className="flex flex-col">
-              <div className="flex items-baseline gap-1">
-                <span className="text-xl font-extrabold text-[#F3E0A9]">
-                  ${product.precio}
-                </span>
-                <span className="text-xs font-semibold text-gray-400">USD</span>
-              </div>
-              <span className="text-[10px] text-gray-400 font-medium">
-                ≈ {formattedCUP} CUP
-              </span>
-            </div>
-          </div>
+        <div className="pt-3 border-t border-white/5 space-y-3">
+          <ProductPrice
+            priceUSD={product.precio}
+            exchangeRate={exchangeRate}
+            primaryCurrency="USD"
+          />
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center justify-end gap-1.5">
             {/* Delete Trigger */}
             {!showConfirm ? (
               <button

@@ -2,6 +2,7 @@
 import { categoryLabel } from "@/lib/categories";
 import { useWhatsAppPhone } from "@/lib/useWhatsAppPhone";
 
+import ProductPrice from "./ProductPrice";
 import ProductIdentity from "./ProductIdentity";
 import React from "react";
 import { Product, Currency } from "@/lib/types";
@@ -136,24 +137,14 @@ export default function ProductTable({
                   </td>
 
                   {/* Precio */}
-                  <td className="py-3.5 px-6 font-bold text-right whitespace-nowrap">
-                    <div className="flex flex-col items-end">
-                      <div>
-                        <span className="text-base gold-gradient-text">
-                          {currency === "CUP"
-                            ? formattedCUP
-                            : `$${product.precio}`}
-                        </span>
-                        <span className="text-xs text-gray-400 ml-1">
-                          {currency}
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-gray-400 font-normal">
-                        {currency === "CUP"
-                          ? `≈ $${product.precio} USD`
-                          : `≈ ${formattedCUP} CUP`}
-                      </span>
-                    </div>
+                  <td className="min-w-[250px] py-3.5 px-6 font-bold text-right whitespace-nowrap">
+                    <ProductPrice
+                      priceUSD={product.precio}
+                      exchangeRate={exchangeRate}
+                      primaryCurrency={currency}
+                      compact
+                      className="justify-end"
+                    />
                   </td>
 
                   {/* Actions */}

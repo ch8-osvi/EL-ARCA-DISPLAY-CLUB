@@ -67,15 +67,12 @@ const SkeletonProductCard = () => (
         <div className="h-4 w-12 bg-white/10 rounded"></div>
         <div className="h-4 w-10 bg-white/10 rounded"></div>
       </div>
-      <div className="pt-3 border-t border-white/5 flex items-center justify-between gap-2">
-        <div>
-          <div className="h-3 w-10 bg-white/10 rounded mb-1.5"></div>
-          <div className="h-7 w-16 bg-white/10 rounded-lg"></div>
-          <div className="h-2.5 w-14 bg-white/10 rounded mt-1"></div>
+      <div className="pt-3 border-t border-white/5 space-y-3">
+        <div className="flex items-center gap-3">
+          <div className="h-6 w-16 bg-white/10 rounded-lg"></div>
+          <div className="h-5 w-20 bg-white/10 rounded-lg"></div>
         </div>
-        <div className="flex items-center gap-1.5">
-          <div className="h-8 w-20 bg-white/10 rounded-xl"></div>
-        </div>
+        <div className="h-8 w-20 ml-auto bg-white/10 rounded-xl"></div>
       </div>
     </div>
   </div>

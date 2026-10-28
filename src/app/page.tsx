@@ -368,12 +368,12 @@ export default function Home() {
                   <div className="h-5 w-4/5 bg-white/15 rounded-lg" />
                   <div className="h-3.5 w-1/2 bg-white/5 rounded-md" />
                 </div>
-                <div className="mt-6 pt-4 border-t border-white/5 flex items-center justify-between gap-3">
-                  <div className="space-y-1">
+                <div className="mt-6 pt-4 border-t border-white/5 space-y-3">
+                  <div className="flex items-center gap-3">
                     <div className="h-6 w-20 bg-white/15 rounded-lg" />
-                    <div className="h-3.5 w-16 bg-white/5 rounded" />
+                    <div className="h-5 w-16 bg-white/5 rounded" />
                   </div>
-                  <div className="h-9 w-28 bg-emerald-500/10 border border-emerald-500/20 rounded-xl" />
+                  <div className="h-9 w-28 ml-auto bg-emerald-500/10 border border-emerald-500/20 rounded-xl" />
                 </div>
               </div>
             ))}

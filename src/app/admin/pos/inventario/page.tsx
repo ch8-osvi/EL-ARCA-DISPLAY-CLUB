@@ -23,6 +23,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import BrandFilter from "@/components/BrandFilter";
+import ProductPrice from "@/components/ProductPrice";
 import ProductIdentity from "@/components/ProductIdentity";
 import CategoryFilter from "@/components/CategoryFilter";
 import {
@@ -37,11 +38,7 @@ import {
   matchBrandFilter,
   sortProductsByPopularity,
 } from "@/lib/brandUtils";
-import {
-  fuzzyMatchProduct,
-  fuzzyMatchGeneric,
-  roundCupPrice,
-} from "@/lib/searchUtils";
+import { fuzzyMatchProduct, fuzzyMatchGeneric } from "@/lib/searchUtils";
 
 interface ProductWithHidden extends Product {
   isHidden?: boolean;
@@ -1405,11 +1402,6 @@ export default function InventoryPage() {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {filtered.map((prod) => {
-                  const cupPrice = roundCupPrice(prod.precio, exchangeRate);
-                  const formattedCUP = Number.isFinite(cupPrice)
-                    ? cupPrice.toLocaleString("es-CU")
-                    : "No disponible";
-
                   return (
                     <div
                       key={prod.id}
@@ -1440,28 +1432,11 @@ export default function InventoryPage() {
 
                       <div className="mt-3.5 pt-2.5 border-t border-white/5 space-y-2.5">
                         {/* Dual Currency Price (CUP & USD) */}
-                        <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-[#10131E]/80 border border-white/5">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] uppercase font-bold text-gray-400">
-                              Precio:
-                            </span>
-                            <span className="text-xs sm:text-sm font-extrabold text-[#F3E0A9]">
-                              {formattedCUP}{" "}
-                              <span className="text-[10px] font-semibold text-[#E5C158]">
-                                CUP
-                              </span>
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">
-                            <span className="text-[10px] text-gray-400 font-medium">
-                              ≈
-                            </span>
-                            <span>${prod.precio}</span>
-                            <span className="text-[9px] text-emerald-300/70 font-semibold">
-                              USD
-                            </span>
-                          </div>
-                        </div>
+                        <ProductPrice
+                          priceUSD={prod.precio}
+                          exchangeRate={exchangeRate}
+                          compact
+                        />
 
                         {/* Stock Actual */}
                         <div className="flex items-center justify-between text-xs px-1">

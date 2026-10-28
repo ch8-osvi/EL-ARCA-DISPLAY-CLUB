@@ -192,3 +192,31 @@ body {
   font-size: 18px !important;
   line-height: 1.5;
 }
+
+/* Price pairs adapt to their card width, including narrow tablet columns. */
+@container (max-width: 215px) {
+  .product-price-values {
+    column-gap: 8px;
+  }
+  .product-price-secondary {
+    padding-left: 8px;
+  }
+  .product-price-number {
+    font-size: 18px;
+  }
+  .product-price-wide {
+    column-gap: 6px;
+  }
+  .product-price-wide .product-price-amount {
+    gap: 3px;
+  }
+  .product-price-wide .product-price-number {
+    font-size: 15.5px;
+  }
+  .product-price-wide .product-price-unit {
+    font-size: 10px;
+  }
+  .product-price-wide .product-price-secondary {
+    padding-left: 6px;
+  }
+}

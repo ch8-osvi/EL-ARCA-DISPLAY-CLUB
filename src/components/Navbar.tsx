@@ -49,9 +49,9 @@ export default function Navbar({
         {/* Brand Identity with Transparent PNG Logo */}
         <Link
           href="/"
-          className="flex items-center gap-2 sm:gap-3 group shrink-0"
+          className="flex items-center gap-1.5 sm:gap-3 group shrink-0"
         >
-          <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-[#E5C158]/20 via-[#D4AF37]/10 to-transparent p-1 border border-[#D4AF37]/30 shadow-gold-glow group-hover:scale-105 transition-transform duration-300 flex items-center justify-center shrink-0">
+          <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-[#E5C158]/20 via-[#D4AF37]/10 to-transparent p-1 border border-[#D4AF37]/30 shadow-gold-glow group-hover:scale-105 transition-transform duration-300 flex items-center justify-center shrink-0">
             <img
               src="/logo.png"
               alt="EL ARCA DISPLAY CLUB Logo"
@@ -59,7 +59,7 @@ export default function Navbar({
             />
           </div>
           <div className="flex flex-col">
-            <span className="text-xs sm:text-lg font-extrabold tracking-wide sm:tracking-wider text-white flex items-center gap-1 leading-tight whitespace-nowrap">
+            <span className="text-[10px] min-[400px]:text-xs sm:text-lg font-extrabold tracking-wide sm:tracking-wider text-white flex items-center gap-1 leading-tight whitespace-nowrap">
               EL ARCA <span className="gold-gradient-text">DISPLAY</span>
             </span>
             <span className="text-[9px] sm:text-[10px] font-extrabold tracking-[0.25em] sm:tracking-[0.3em] text-[#D4AF37] uppercase -mt-0.5">
@@ -74,40 +74,45 @@ export default function Navbar({
           {!isAdmin && exchangeRate !== undefined && (
             <div
               id="catalog-exchange-rate"
-              className="flex flex-col sm:flex-row items-center gap-0.5 sm:gap-1.5 rounded-xl border border-[#D4AF37]/20 bg-[#10131E] px-2 py-1.5 text-center leading-tight whitespace-nowrap"
+              className="flex items-center gap-1 sm:gap-1.5 rounded-xl border border-[#D4AF37]/20 bg-[#10131E] px-2 py-1.5 text-center leading-tight whitespace-nowrap"
               title="Tasa aplicada para calcular los precios del catálogo en pesos cubanos"
             >
-              <span className="text-[9px] sm:text-[10px] font-medium text-gray-400">
-                {exchangeRate !== null ? "1 USD" : "Tasa CUP"}
-              </span>
-              <span
-                className="hidden sm:inline text-[10px] text-gray-500"
-                aria-hidden="true"
-              >
-                =
-              </span>
+              {exchangeRate !== null && (
+                <>
+                  <span className="text-[9px] sm:text-[10px] font-medium text-gray-400">
+                    1 USD
+                  </span>
+                  <span
+                    className="text-[10px] text-gray-500"
+                    aria-hidden="true"
+                  >
+                    =
+                  </span>
+                </>
+              )}
               <span className="text-[11px] sm:text-xs font-bold text-[#F3E0A9] tabular-nums">
                 {exchangeRate !== null
                   ? `${exchangeRate.toLocaleString("es-CU")} CUP`
-                  : "No disponible"}
+                  : "Tasa no disponible"}
               </span>
             </div>
           )}
 
           {/* Total Modelos Badge */}
-          {totalProducts === null || totalProducts === undefined ? (
-            <div className="hidden sm:block w-24 sm:w-28 h-6 sm:h-7 bg-[#171B2B] border border-[#D4AF37]/10 rounded-full animate-pulse"></div>
-          ) : (
-            typeof totalProducts === "number" && (
-              <div className="hidden sm:flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full bg-[#171B2B] border border-[#D4AF37]/20 text-[11px] sm:text-xs text-[#E5DFD9]">
-                <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span className="font-semibold text-white">
-                  {totalProducts}
-                </span>
-                <span className="hidden sm:inline"> Modelos</span>
-              </div>
-            )
-          )}
+          {isAdmin &&
+            (totalProducts === null || totalProducts === undefined ? (
+              <div className="hidden sm:block w-24 sm:w-28 h-6 sm:h-7 bg-[#171B2B] border border-[#D4AF37]/10 rounded-full animate-pulse"></div>
+            ) : (
+              typeof totalProducts === "number" && (
+                <div className="hidden sm:flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full bg-[#171B2B] border border-[#D4AF37]/20 text-[11px] sm:text-xs text-[#E5DFD9]">
+                  <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span className="font-semibold text-white">
+                    {totalProducts}
+                  </span>
+                  <span className="hidden sm:inline"> Modelos</span>
+                </div>
+              )
+            ))}
 
           {/* Live Visitor Counter for Admin */}
           {isAdmin &&

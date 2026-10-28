@@ -25,6 +25,7 @@ import {
   Usb,
 } from "lucide-react";
 import BrandFilter from "@/components/BrandFilter";
+import ProductPrice from "@/components/ProductPrice";
 import ProductIdentity from "@/components/ProductIdentity";
 import CategoryFilter from "@/components/CategoryFilter";
 import {
@@ -657,7 +658,7 @@ export default function PosPage() {
                     </div>
                     <div className="w-3/4 h-5 bg-white/10 rounded mt-1"></div>
                   </div>
-                  <div className="mt-3 pt-2.5 border-t border-white/5 flex items-center justify-between">
+                  <div className="mt-3 pt-2.5 border-t border-white/5 flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <div className="w-14 h-3 bg-white/10 rounded mb-1"></div>
                       <div className="w-20 h-5 bg-white/10 rounded mb-1"></div>
@@ -685,11 +686,6 @@ export default function PosPage() {
                 const inCart = cart.find((c) => c.productId === prod.id);
                 const availableAfterCart =
                   prod.stock - (inCart ? inCart.qty : 0);
-                const cupRounded = roundCupPrice(prod.precio, exchangeRate);
-                const formattedCUP = Number.isFinite(cupRounded)
-                  ? cupRounded.toLocaleString()
-                  : "No disponible";
-
                 return (
                   <div
                     key={prod.id}
@@ -715,39 +711,26 @@ export default function PosPage() {
                       />
                     </div>
 
-                    <div className="mt-3 pt-2.5 border-t border-white/5 flex items-center justify-between">
-                      <div>
+                    <div className="mt-3 pt-2.5 border-t border-white/5 flex flex-wrap items-center justify-between gap-3">
+                      <div className="w-full min-w-0">
                         <span className="text-[10px] text-gray-400 block mb-0.5">
                           Stock:{" "}
                           <strong className="text-gray-200">
                             {availableAfterCart}
                           </strong>
                         </span>
-                        <div className="flex flex-col">
-                          <div className="flex items-baseline gap-1">
-                            <span className="text-base font-extrabold text-[#F3E0A9]">
-                              {currency === "CUP"
-                                ? `${formattedCUP} CUP`
-                                : `$${prod.precio.toFixed(2)}`}
-                            </span>
-                            {currency === "USD" && (
-                              <span className="text-[10px] text-gray-400 font-semibold">
-                                USD
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-[10px] text-gray-400 font-medium">
-                            {currency === "CUP"
-                              ? `≈ $${prod.precio.toFixed(2)} USD`
-                              : `≈ ${formattedCUP} CUP`}
-                          </span>
-                        </div>
+                        <ProductPrice
+                          priceUSD={prod.precio}
+                          exchangeRate={exchangeRate}
+                          primaryCurrency={currency}
+                          compact
+                        />
                       </div>
 
                       <button
                         onClick={() => addToCart(prod)}
                         disabled={availableAfterCart <= 0}
-                        className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+                        className={`ml-auto px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
                           availableAfterCart <= 0
                             ? "bg-gray-800 text-gray-500 cursor-not-allowed"
                             : "gold-gradient-bg text-black shadow-gold-glow hover:scale-105 active:scale-95"

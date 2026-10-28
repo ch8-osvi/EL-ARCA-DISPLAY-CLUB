@@ -2,6 +2,7 @@
 import { categoryLabel } from "@/lib/categories";
 import { useWhatsAppPhone } from "@/lib/useWhatsAppPhone";
 
+import ProductPrice from "./ProductPrice";
 import ProductIdentity from "./ProductIdentity";
 import React, { useMemo } from "react";
 import { Product, Currency } from "@/lib/types";
@@ -133,31 +134,15 @@ export default function ProductCard({
       </div>
 
       {/* Footer: Price & WhatsApp Action */}
-      <div className="pt-3.5 mt-2 border-t border-white/5 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <span className="text-[10px] uppercase font-semibold text-gray-400 block tracking-wider">
-            {currency === "CUP" ? "Precio CUP" : "Precio USD"}
-          </span>
-          <div className="flex flex-col">
-            <div className="flex items-baseline gap-1">
-              <span className="text-xl sm:text-2xl font-extrabold gold-gradient-text">
-                {currency === "CUP" ? formattedCUP : `$${product.precio}`}
-              </span>
-              <span className="text-xs font-semibold text-gray-400">
-                {currency}
-              </span>
-            </div>
-            {/* Secondary equivalent indicator */}
-            <span className="text-[10px] text-gray-400 font-medium">
-              {currency === "CUP"
-                ? `≈ $${product.precio} USD`
-                : `≈ ${formattedCUP} CUP`}
-            </span>
-          </div>
-        </div>
+      <div className="pt-3.5 mt-2 border-t border-white/5 space-y-3">
+        <ProductPrice
+          priceUSD={product.precio}
+          exchangeRate={exchangeRate}
+          primaryCurrency={currency}
+        />
 
         {/* Actions: WhatsApp */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center justify-end gap-1.5">
           <a
             href={whatsappNumber ? whatsappUrl : undefined}
             aria-disabled={!whatsappNumber}

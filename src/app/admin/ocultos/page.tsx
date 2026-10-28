@@ -1,4 +1,6 @@
 "use client";
+import ProductPrice from "@/components/ProductPrice";
+import { useActiveExchangeRate } from "@/lib/useActiveExchangeRate";
 import ProductIdentity from "@/components/ProductIdentity";
 import { checkAdminSession, loginAdmin } from "@/lib/auth-client";
 
@@ -30,6 +32,7 @@ interface HiddenProduct {
 }
 
 export default function OcultosPage() {
+  const [exchangeRate] = useActiveExchangeRate();
   const [hiddenProducts, setHiddenProducts] = useState<HiddenProduct[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
@@ -305,10 +308,14 @@ export default function OcultosPage() {
                       {product.stock > 0 ? `${product.stock} uds` : "0 uds"}
                     </span>
                   </div>
-                  <span className="text-base font-extrabold text-[#F3E0A9]">
-                    ${product.precio.toFixed(2)}
-                  </span>
                 </div>
+
+                <ProductPrice
+                  priceUSD={product.precio}
+                  exchangeRate={exchangeRate}
+                  primaryCurrency="USD"
+                  compact
+                />
 
                 {/* Actions */}
                 <div className="flex gap-2">

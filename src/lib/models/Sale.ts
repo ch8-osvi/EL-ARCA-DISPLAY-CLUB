@@ -1,3 +1,7 @@
+import {
+  REFUND_DESTINATIONS,
+  type RefundDestination,
+} from "../refundDestinations";
 import { CATEGORY_IDS, type ProductCategory } from "../categories";
 import mongoose, { Schema, Document, Model } from "mongoose";
 
@@ -11,7 +15,7 @@ export interface ISaleRefund {
   refundUSD: number;
   refundCUP: number;
   reason: string;
-  destination: "stock" | "merma";
+  destination: RefundDestination;
   createdAt: Date;
 }
 
@@ -57,7 +61,7 @@ const SaleRefundSchema = new Schema<ISaleRefund>(
     refundUSD: { type: Number, required: true, min: 0 },
     refundCUP: { type: Number, required: true, min: 0 },
     reason: { type: String, required: true },
-    destination: { type: String, enum: ["stock", "merma"], default: "stock" },
+    destination: { type: String, enum: REFUND_DESTINATIONS, default: "stock" },
     createdAt: { type: Date, default: Date.now },
   },
   { _id: false },

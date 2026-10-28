@@ -1,29 +1,33 @@
-import mongoose, { Schema, Document, Model } from 'mongoose';
+import mongoose, { Schema, Document, Model } from "mongoose";
 
 export interface IStockHistory extends Document {
-  productId:   string;
+  productId: string;
   productName: string;
-  type:        'entrada' | 'salida' | 'merma';
-  qty:         number;
+  type: "entrada" | "salida" | "merma" | "retirado";
+  qty: number;
   stockBefore: number;
-  stockAfter:  number;
-  reason:      string;
-  createdAt:   Date;
+  stockAfter: number;
+  reason: string;
+  createdAt: Date;
 }
 
 const StockHistorySchema = new Schema<IStockHistory>(
   {
-    productId:   { type: String, required: true, index: true },
+    productId: { type: String, required: true, index: true },
     productName: { type: String, required: true },
-    type:        { type: String, enum: ['entrada', 'salida', 'merma'], required: true },
-    qty:         { type: Number, required: true, min: 1 },
+    type: {
+      type: String,
+      enum: ["entrada", "salida", "merma", "retirado"],
+      required: true,
+    },
+    qty: { type: Number, required: true, min: 1 },
     stockBefore: { type: Number, required: true, min: 0 },
-    stockAfter:  { type: Number, required: true, min: 0 },
-    reason:      { type: String, default: '' },
+    stockAfter: { type: Number, required: true, min: 0 },
+    reason: { type: String, default: "" },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 export const StockHistory: Model<IStockHistory> =
   mongoose.models.StockHistory ||
-  mongoose.model<IStockHistory>('StockHistory', StockHistorySchema);
+  mongoose.model<IStockHistory>("StockHistory", StockHistorySchema);

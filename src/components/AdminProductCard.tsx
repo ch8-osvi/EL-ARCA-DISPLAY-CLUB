@@ -65,6 +65,12 @@ export default function AdminProductCard({
           </span>
         </div>
 
+        <ProductIdentity
+          model={product.modelo}
+          category={product.categoria}
+          className="mb-3"
+        />
+
         {/* Subtle status badges for admin */}
         {(product.isTopSeller || product.stock === 1) && (
           <div className="flex items-center gap-1.5 flex-wrap mb-2">
@@ -80,12 +86,6 @@ export default function AdminProductCard({
             )}
           </div>
         )}
-
-        <ProductIdentity
-          model={product.modelo}
-          category={product.categoria}
-          className="mb-3"
-        />
       </div>
 
       <div className="mt-4">

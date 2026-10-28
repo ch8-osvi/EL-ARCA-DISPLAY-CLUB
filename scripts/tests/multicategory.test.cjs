@@ -33,6 +33,12 @@ function load(file) {
 }
 const categories = load("src/lib/categories.ts"),
   customer = load("src/lib/whatsapp/customer.ts");
+test("devoluciones: un producto retirado nunca se etiqueta como repuesto a stock", () => {
+  const { refundDestinationLabel } = load("src/lib/refundDestinations.ts");
+  assert.equal(refundDestinationLabel("retirado"), "Fuera de inventario");
+  assert.equal(refundDestinationLabel("merma"), "Merma / baja");
+  assert.equal(refundDestinationLabel(), "A stock");
+});
 test("Excel: conserva signos y decimales para validar sin truncar cantidades", () => {
   const { parseCatalogNumber } = load("src/lib/catalogNumbers.ts");
   assert.equal(parseCatalogNumber("-2"), -2);

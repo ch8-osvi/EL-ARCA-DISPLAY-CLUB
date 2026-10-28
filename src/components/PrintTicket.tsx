@@ -1,3 +1,7 @@
+import {
+  refundDestinationLabel,
+  type RefundDestination,
+} from "@/lib/refundDestinations";
 import { escapePrintData } from "@/lib/printSafety";
 import { categoryLabel, type ProductCategory } from "@/lib/categories";
 import React from "react";
@@ -36,7 +40,7 @@ export interface RefundItem {
   qty: number;
   refundUSD: number;
   refundCUP: number;
-  destination?: "stock" | "merma";
+  destination?: RefundDestination;
 }
 
 export interface RefundTicketData {
@@ -216,8 +220,7 @@ export function buildRefundEscPosBytes(data: RefundTicketData): Uint8Array {
 
   data.items.forEach((item) => {
     add([0x1b, 0x45, 0x01]);
-    const destTag =
-      item.destination === "merma" ? " [MERMA/BAJA]" : " [A STOCK]";
+    const destTag = ` [${refundDestinationLabel(item.destination).toUpperCase()}]`;
     line(
       `[${categoryLabel(item.categoria)}] ${item.marca} ${item.modelo}${destTag}`,
     );
@@ -412,9 +415,11 @@ export function printRefundTicket(rawData: RefundTicketData) {
           <span style="font-size: 9px; padding: 1px 4px; border-radius: 4px; ${
             item.destination === "merma"
               ? "background: #fee2e2; color: #991b1b;"
-              : "background: #dcfce7; color: #166534;"
+              : item.destination === "retirado"
+                ? "background: #f1f5f9; color: #334155;"
+                : "background: #dcfce7; color: #166534;"
           }">
-            ${item.destination === "merma" ? "MERMA / BAJA" : "A STOCK"}
+            ${refundDestinationLabel(item.destination).toUpperCase()}
           </span>
         </div>
         <div style="display: flex; justify-content: space-between; font-size: 10px; margin-top: 2px;">

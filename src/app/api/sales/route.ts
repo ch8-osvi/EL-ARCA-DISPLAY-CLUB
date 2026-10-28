@@ -1,3 +1,4 @@
+import type { RefundDestination } from "@/lib/refundDestinations";
 import { productCategory } from "@/lib/categories";
 import { atomicResponse } from "@/lib/security/atomic-response";
 import { requireAdmin } from "@/lib/security/admin";
@@ -351,8 +352,13 @@ async function handlePOST(req: Request) {
         totalBatchRefundUSD += itemRefundUSD;
         totalBatchRefundCUP += itemRefundCUP;
 
-        const itemDestination: "stock" | "merma" =
-          ret.destination === "merma" ? "merma" : "stock";
+        const product = await Product.findOne({ id: productId });
+        const itemDestination: RefundDestination =
+          ret.destination === "merma"
+            ? "merma"
+            : product
+              ? "stock"
+              : "retirado";
 
         const logEntry = {
           productId,
@@ -372,7 +378,6 @@ async function handlePOST(req: Request) {
         refundLogs.push(logEntry);
 
         // Fetch product
-        const product = await Product.findOne({ id: productId });
         if (product) {
           const stockBefore = product.stock;
 
@@ -412,6 +417,16 @@ async function handlePOST(req: Request) {
               reason: `Devolución Orden #${sale.orderNumber}: ${reason.trim()} [MERMA / ROTO / DEFECTUOSO - No apto para venta]`,
             });
           }
+        } else {
+          await StockHistory.create({
+            productId,
+            productName: `[${productCategory(item.categoria)}] ${item.marca} ${item.modelo} (${item.calidad})`,
+            type: itemDestination === "merma" ? "merma" : "retirado",
+            qty: qtyNum,
+            stockBefore: 0,
+            stockAfter: 0,
+            reason: `Devolución Orden #${sale.orderNumber}: ${reason.trim()} [Producto eliminado; no se recrea ni repone stock]`,
+          });
         }
       }
 
@@ -440,7 +455,9 @@ async function handlePOST(req: Request) {
 
       return NextResponse.json({
         success: true,
-        message: "Devolución procesada y stock reintegrado con éxito",
+        message: refundLogs.some((log) => log.destination === "retirado")
+          ? "Devolución procesada. Las unidades de productos eliminados quedan fuera del inventario; no se recrearon productos ni se repuso su stock."
+          : "Devolución procesada. Los movimientos se registraron según el destino indicado.",
         sale,
         refundLogs,
         totalRefundUSD: totalBatchRefundUSD,

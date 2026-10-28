@@ -2,9 +2,39 @@
 
 Esta entrega prepara El Arca para vender pantallas, baterías, tapas traseras y accesorios con el mismo diseño oscuro y dorado. También corrige problemas de inventario, importación, presentación y contexto de la IA de clientes.
 
+## Última revisión: eliminación definitiva e identidad de productos
+
+### Eliminar un producto con historial
+
+- Inventario permite **eliminar realmente el producto**, aunque tenga ventas, entradas o mermas. Requiere confirmar «Sí, Eliminar»; la API también exige una confirmación booleana explícita. El diálogo identifica categoría, modelo, calidad y unidades afectadas.
+- Se elimina el documento del catálogo y del inventario. **Las ventas, devoluciones y movimientos anteriores se conservan** con sus datos originales. Si queda stock, se registra su salida a cero. Todo se ejecuta en una transacción: si falla el registro, se revierte el borrado.
+- Una devolución de un producto eliminado no lo recrea: registra las unidades **fuera de inventario**. Si se devuelve como merma, conserva ese destino. Los comprobantes y el historial distinguen ambos casos de una devolución a stock.
+- La anulación de una venta por la IA administrativa también admite productos eliminados sin inventar existencias. No se vuelve a cobrar ni a registrar la misma devolución al repetir una confirmación.
+- El borrado no se puede deshacer desde la aplicación. Ocultar sigue disponible cuando solo se quiere dejar de publicar un producto. No se ha eliminado ningún producto real del negocio durante las pruebas.
+
+### Diseño de las tarjetas
+
+- Un único pictograma por identidad: pantalla, batería, tapa con cámaras o cable. Trazo fino en un pequeño recuadro neutro, con un acento champán suave; sin emojis ni iconos duplicados.
+- Categoría discreta sobre el modelo, junto al icono. Marca y calidad arriba; novedades y estados debajo. La identificación no reutiliza la píldora dorada de marca o calidad.
+- Componente compartido en catálogo (cuadrícula y lista), administración, inventario, POS, carrito, ocultos, duplicados e historial/devoluciones. Los selectores de etiquetas emplean la versión compacta del mismo juego de iconos; las etiquetas físicas conservan su formato de impresión.
+- Se mantienen los fondos, bordes, colores principales y acciones existentes. Los nombres largos pueden partirse sin ensanchar la tarjeta.
+
+![Tarjetas actuales: un símbolo y una cabecera para cada categoría, con datos ficticios](qa-cards-identidad-2026-10-27.png)
+
+![Tarjetas actuales en móvil con productos de demostración](qa-cards-identidad-movil-2026-10-27.png)
+
+### Verificación de esta revisión
+
+- **46 pruebas unitarias correctas**, comprobación de tipos y compilación de producción correctas.
+- Integración en una base temporal: borrar con historial, rechazar confirmaciones inválidas, no vender un producto eliminado, conservar ventas y categoría, devolver sin recrear stock, devolver a merma, anular de forma idempotente y revertir el borrado si falla el movimiento de salida.
+- Revisión visual con productos ficticios de las cuatro categorías. Un solo SVG de identificación por producto. Inventario y confirmación revisados a 390 y 320 px sin desbordamiento horizontal; confirmación cancelada en la prueba visual.
+- El usuario confirmó que el ajuste anterior del buscador **ya no produce zoom en Chrome de iPhone**. Se conserva esa corrección.
+
+Las secciones siguientes documentan también las etapas anteriores; esta revisión sustituye el bloqueo antiguo del borrado con historial y las versiones anteriores de la identidad visual.
+
 ## Revisión de consistencia: tarjetas, administración y WhatsApp
 
-- **Tarjetas:** `ProductIdentity` concentra el modelo y, debajo, el dato «Tipo · Pantalla/Batería/Tapa trasera/Accesorio». Sin emojis, iconos de teléfono ni acento azul en la categoría. Se utiliza en catálogo, administración, POS, carrito, inventario, ocultos y comparaciones de duplicados; los selectores y listas del gestor de etiquetas usan el mismo dato de tipo. Las etiquetas físicas impresas no cambian.
+- **Tarjetas (etapa anterior):** se centralizó la identidad en `ProductIdentity`. La última revisión, descrita arriba, recupera un único icono de categoría y mejora la jerarquía del modelo.
 - **Marcas:** administración, POS e inventario tenían copias independientes del filtro con `scale-105`. Ahora utilizan `BrandFilter`, como el catálogo público, conservando completos los bordes del primer botón.
 - **WhatsApp:** cabecera compacta en móvil, acciones que se distribuyen en varias filas, formularios apilados y contenedores con ancho limitado. La tabla se desplaza dentro de su propia región; no ensancha la página. El skeleton se adapta al mismo ancho y el detalle admite textos largos sin desbordar.
 - **Verificación:** compilación de producción y 45 pruebas existentes correctas. Revisión de administración e historial a 320, 390 y 651 px; ancho del documento igual al de la ventana. Administradores, bloqueados y detalle de conversación también encajan a 320 px. Datos de demostración en una base temporal, sin escribir a clientes ni modificar el inventario del negocio. Estas medidas de navegador no sustituyen una prueba física del teclado de iPhone.
@@ -51,7 +81,7 @@ WhatsApp con registros de demostración:
 | Importaciones ambiguas | Filas repetidas o identidades duplicadas podían sobrescribir productos                        | Rechazo del archivo ambiguo; se solicita ID exportado cuando hace falta                                                    |
 | Stock omitido en Excel | Una celda vacía podía borrar cantidades existentes                                            | Conserva stock previo; para un producto nuevo sin cantidad usa 1. Un cero explícito sigue siendo cero                      |
 | Historial de stock     | Editar cantidades o importar no siempre dejaba un movimiento                                  | Se registra antes, después, diferencia y motivo dentro de la misma transacción                                             |
-| Borrado definitivo     | Podía dejar ventas o movimientos sin referencia                                               | Se bloquea si el producto tiene historial; se puede ocultar                                                                |
+| Borrado definitivo     | Podía dejar ventas o movimientos sin referencia                                               | Confirmación explícita, cierre del stock y conservación del historial; devoluciones posteriores fuera del inventario       |
 | Restauración inicial   | Podía reiniciar un catálogo con actividad comercial                                           | Se bloquea si existen ventas o movimientos; la alternativa es importar conservando referencias                             |
 | Confirmación del panel | Se mostraba éxito local aunque la API rechazara guardar                                       | Las acciones actualizan la pantalla después de confirmar éxito en el servidor                                              |
 | Duplicados y fusiones  | Baterías y pantallas del mismo modelo podían parecer equivalentes                             | Comparación y fusión separadas por categoría; selección ambigua pide identificación exacta                                 |

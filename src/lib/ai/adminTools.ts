@@ -645,16 +645,29 @@ export async function executeAnularOrden(orderNumber: string, motivo?: string) {
 
     // Reintegrar al stock las unidades no devueltas aún
     const restoredItems: string[] = [];
+    const retiredItems: string[] = [];
     for (const item of sale.items) {
       const alreadyReturned = item.returnedQty || 0;
       const remainingToReturn = item.qty - alreadyReturned;
 
       if (remainingToReturn > 0) {
         const product = await Product.findOne({ id: item.productId });
-        if (!product)
-          throw new Error(
-            "No existe el producto original para reintegrar stock. Revisa la orden.",
+        if (!product) {
+          await StockHistory.create({
+            productId: item.productId,
+            productName: `[${productCategory(item.categoria)}] ${item.marca} ${item.modelo} (${item.calidad})`,
+            type: "retirado",
+            qty: remainingToReturn,
+            stockBefore: 0,
+            stockAfter: 0,
+            reason: `Anulación Orden #${sale.orderNumber}: ${motivo || "Cancelación solicitada"} [Producto eliminado; unidades fuera del inventario]`,
+          });
+          retiredItems.push(
+            `${remainingToReturn}x ${item.marca} ${item.modelo}`,
           );
+          item.returnedQty = item.qty;
+          continue;
+        }
         if (product) {
           const stockBefore = product.stock;
 
@@ -707,7 +720,12 @@ export async function executeAnularOrden(orderNumber: string, motivo?: string) {
         `📝 Motivo: ${motivo ? `*${motivo}*` : "Cancelación solicitada por Administrador"}\n\n` +
         (restoredItems.length > 0
           ? `📦 **Stock reintegrado al almacén:**\n${restoredItems.join("\n")}`
-          : "📦 No había ítems pendientes por reintegrar."),
+          : retiredItems.length
+            ? ""
+            : "📦 No había ítems pendientes por reintegrar.") +
+        (retiredItems.length
+          ? `\n\nFuera de inventario (productos eliminados): ${retiredItems.join("; ")}. No se recrearon productos ni se repuso su stock.`
+          : ""),
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

@@ -1,6 +1,11 @@
 "use client";
+import {
+  refundDestinationLabel,
+  type RefundDestination,
+} from "@/lib/refundDestinations";
+import ProductIdentity from "@/components/ProductIdentity";
 import RouteLoading from "./loading";
-import { categoryLabel, type ProductCategory } from "@/lib/categories";
+import { type ProductCategory } from "@/lib/categories";
 import { useWhatsAppPhone } from "@/lib/useWhatsAppPhone";
 import { checkAdminSession, loginAdmin } from "@/lib/auth-client";
 
@@ -72,7 +77,7 @@ interface SaleRefundLog {
   refundUSD: number;
   refundCUP: number;
   reason: string;
-  destination: "stock" | "merma";
+  destination: RefundDestination;
   createdAt: string;
 }
 
@@ -346,7 +351,7 @@ export default function SalesHistoryPage() {
         return;
       }
 
-      triggerToast("¡Devolución procesada con éxito!");
+      triggerToast(data.message || "Devolución procesada con éxito");
 
       // Print Refund Receipt if requested
       if (refundModal.printOption !== "none") {
@@ -587,7 +592,7 @@ export default function SalesHistoryPage() {
       {/* Toast Notification */}
       {toastMessage && (
         <div
-          className={`fixed bottom-6 right-6 z-[100] glass-panel px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-bounce border ${
+          className={`fixed bottom-6 right-6 z-[100] max-w-[calc(100vw-3rem)] glass-panel px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-bounce border ${
             toastMessage.isError
               ? "border-rose-500/60 bg-[#1A1118] text-rose-300 shadow-rose-950/50"
               : "border-[#D4AF37]/40 bg-[#121522] text-white shadow-gold-glow"
@@ -672,9 +677,12 @@ export default function SalesHistoryPage() {
                           <span className="text-[10px] text-[#D4AF37] font-bold uppercase block">
                             {item.marca}
                           </span>
-                          <h4 className="text-xs font-bold text-white truncate">
-                            [{categoryLabel(item.categoria)}] {item.modelo}
-                          </h4>
+                          <ProductIdentity
+                            model={item.modelo}
+                            category={item.categoria}
+                            as="h4"
+                            titleClassName="text-xs"
+                          />
                           <div className="flex items-center gap-2 text-[11px] text-gray-400 mt-0.5">
                             <span>{item.calidad}</span>
                             <span>•</span>
@@ -1586,10 +1594,12 @@ export default function SalesHistoryPage() {
                                   <span className="text-[10px] text-[#D4AF37] font-bold uppercase block">
                                     {item.marca}
                                   </span>
-                                  <span className="font-bold text-white block">
-                                    [{categoryLabel(item.categoria)}]{" "}
-                                    {item.modelo}
-                                  </span>
+                                  <ProductIdentity
+                                    model={item.modelo}
+                                    category={item.categoria}
+                                    as="p"
+                                    titleClassName="text-xs"
+                                  />
                                   <span className="text-[10px] text-gray-400">
                                     {item.calidad}
                                   </span>
@@ -1636,12 +1646,14 @@ export default function SalesHistoryPage() {
                                       className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded ${
                                         refLog.destination === "merma"
                                           ? "bg-rose-500/30 text-rose-300 border border-rose-500/40"
-                                          : "bg-emerald-500/30 text-emerald-300 border border-emerald-500/40"
+                                          : refLog.destination === "retirado"
+                                            ? "bg-white/5 text-gray-300 border border-white/15"
+                                            : "bg-emerald-500/30 text-emerald-300 border border-emerald-500/40"
                                       }`}
                                     >
-                                      {refLog.destination === "merma"
-                                        ? "🔴 ENVIADO A MERMA"
-                                        : "🟢 REINTEGRADO A STOCK"}
+                                      {refundDestinationLabel(
+                                        refLog.destination,
+                                      ).toUpperCase()}
                                     </span>
                                   </div>
                                   <span className="text-gray-400 block text-[11px] mt-0.5">

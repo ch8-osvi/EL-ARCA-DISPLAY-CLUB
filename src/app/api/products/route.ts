@@ -196,19 +196,37 @@ async function handlePOST(request: Request) {
     // ACTION: DELETE-PERMANENT (Hard delete)
     // -----------------------------------------
     if (action === "delete-permanent" && id) {
-      if (
-        (await Sale.exists({ "items.productId": id })) ||
-        (await StockHistory.exists({ productId: id }))
-      )
+      if (body.confirmPermanent !== true)
         return NextResponse.json(
           {
             success: false,
             error:
-              "Este producto tiene historial. Ocúltalo para conservar la trazabilidad.",
+              "Confirma la eliminación definitiva del producto antes de continuar.",
           },
           { status: 409 },
         );
-      await Product.findOneAndDelete({ id });
+      if (typeof id !== "string")
+        return NextResponse.json(
+          { success: false, error: "ID de producto inválido" },
+          { status: 400 },
+        );
+      const removed = await Product.findOneAndDelete({ id });
+      if (!removed)
+        return NextResponse.json(
+          { success: false, error: "Producto no encontrado" },
+          { status: 404 },
+        );
+      if (removed.stock > 0)
+        await StockHistory.create({
+          productId: removed.id,
+          productName: `[${productCategory(removed.categoria)}] ${removed.marca} ${removed.modelo} (${removed.calidad})`,
+          type: "salida",
+          qty: removed.stock,
+          stockBefore: removed.stock,
+          stockAfter: 0,
+          reason:
+            "Eliminación definitiva del producto confirmada desde inventario. Ventas y movimientos anteriores conservados.",
+        });
 
       const deletedCount = await Product.countDocuments({
         isHidden: true,
@@ -217,7 +235,9 @@ async function handlePOST(request: Request) {
 
       return NextResponse.json({
         success: true,
-        message: "Producto eliminado permanentemente de la base de datos",
+        message:
+          "Producto eliminado del catálogo y del inventario. Su historial se conserva.",
+        retainedHistory: true,
         deletedCount,
       });
     }

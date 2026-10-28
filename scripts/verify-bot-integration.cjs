@@ -592,6 +592,264 @@ async function main() {
     console.log(
       "PASS: entrada visible antes de IA, registro único, respuesta al LID sin permisos extra, formato WhatsApp y recibos que nunca retroceden",
     );
+    // Permanent removal must retain commercial evidence and never recreate stock.
+    await Product.create({
+      id: "delete-battery",
+      categoria: "BATERIA",
+      marca: "SAMSUNG",
+      modelo: "A99 PRUEBA",
+      calidad: "ORIGINAL",
+      precio: 9,
+      stock: 4,
+    });
+    await StockHistory.create({
+      productId: "delete-battery",
+      productName: "BATERIA SAMSUNG A99 PRUEBA",
+      type: "entrada",
+      qty: 4,
+      stockBefore: 0,
+      stockAfter: 4,
+      reason: "Fixture aislada",
+    });
+    const deletionSaleResponse = await saleRoute.POST(
+      apiRequest("/api/sales", {
+        action: "create",
+        clientName: "Deletion verification only",
+        items: [{ productId: "delete-battery", qty: 2, precioUSD: 9 }],
+        currency: "USD",
+        exchangeRate: 835,
+        paid: true,
+      }),
+    );
+    assert.equal(deletionSaleResponse.status, 200);
+    const deletionSale = (await deletionSaleResponse.json()).sale;
+    const historyBeforeDelete = await StockHistory.countDocuments({
+      productId: "delete-battery",
+    });
+    assert.equal(
+      (
+        await productRoute.POST(
+          apiRequest("/api/products", {
+            action: "delete-permanent",
+            id: "delete-battery",
+            confirmPermanent: "true",
+          }),
+        )
+      ).status,
+      409,
+    );
+    assert.equal((await Product.findOne({ id: "delete-battery" })).stock, 2);
+    const deleted = await productRoute.POST(
+      apiRequest("/api/products", {
+        action: "delete-permanent",
+        id: "delete-battery",
+        confirmPermanent: true,
+      }),
+    );
+    assert.equal(deleted.status, 200);
+    assert.equal((await deleted.json()).retainedHistory, true);
+    assert.equal(await Product.exists({ id: "delete-battery" }), null);
+    assert.equal(
+      await StockHistory.countDocuments({ productId: "delete-battery" }),
+      historyBeforeDelete + 1,
+    );
+    const closingMovement = await StockHistory.findOne({
+      productId: "delete-battery",
+      reason: /Eliminación definitiva/,
+    });
+    assert.equal(closingMovement.stockBefore, 2);
+    assert.equal(closingMovement.stockAfter, 0);
+    assert.equal(
+      (await Sale.findById(deletionSale._id)).items[0].categoria,
+      "BATERIA",
+    );
+    assert.equal(
+      (
+        await productRoute.POST(
+          apiRequest("/api/products", {
+            action: "delete-permanent",
+            id: "delete-battery",
+            confirmPermanent: true,
+          }),
+        )
+      ).status,
+      404,
+    );
+    const salesBeforeInvalidSale = await Sale.countDocuments();
+    assert.equal(
+      (
+        await saleRoute.POST(
+          apiRequest("/api/sales", {
+            action: "create",
+            items: [{ productId: "delete-battery", qty: 1, precioUSD: 9 }],
+            currency: "USD",
+            exchangeRate: 835,
+            paid: true,
+          }),
+        )
+      ).status,
+      404,
+    );
+    assert.equal(await Sale.countDocuments(), salesBeforeInvalidSale);
+    const retiredRefund = await saleRoute.POST(
+      apiRequest("/api/sales", {
+        action: "refund",
+        saleId: deletionSale._id,
+        reason: "Devolución de prueba tras borrar SKU",
+        returns: [
+          { productId: "delete-battery", qty: 1, destination: "stock" },
+        ],
+      }),
+    );
+    assert.equal(retiredRefund.status, 200);
+    const retiredRefundData = await retiredRefund.json();
+    assert.equal(retiredRefundData.refundLogs[0].destination, "retirado");
+    assert.equal(retiredRefundData.totalRefundUSD, 9);
+    assert.match(retiredRefundData.message, /fuera del inventario/);
+    assert.equal(await Product.exists({ id: "delete-battery" }), null);
+    assert.equal(
+      (
+        await StockHistory.findOne({
+          productId: "delete-battery",
+          type: "retirado",
+        })
+      ).stockAfter,
+      0,
+    );
+    assert.equal(
+      (
+        await saleRoute.POST(
+          apiRequest("/api/sales", {
+            action: "refund",
+            saleId: deletionSale._id,
+            reason: "Cantidad duplicada",
+            returns: [
+              { productId: "delete-battery", qty: 2, destination: "stock" },
+            ],
+          }),
+        )
+      ).status,
+      400,
+    );
+    assert.equal((await Sale.findById(deletionSale._id)).totalRefundedUSD, 9);
+    const retiredCancellation = await operations.proposeActions("test-actor", [
+      {
+        type: "ANULAR_ORDEN",
+        payload: {
+          orderNumber: deletionSale.orderNumber,
+          motivo: "Prueba de producto eliminado",
+        },
+      },
+    ]);
+    const retiredCode = retiredCancellation.match(/CONFIRMAR ([A-F0-9]{8})/)[1];
+    assert.match(
+      await operations.confirmActions("test-actor", retiredCode),
+      /Fuera de inventario/,
+    );
+    await operations.confirmActions("test-actor", retiredCode);
+    assert.equal((await Sale.findById(deletionSale._id)).status, "CANCELLED");
+    assert.equal(
+      (await Sale.findById(deletionSale._id)).items[0].returnedQty,
+      2,
+    );
+    assert.equal(
+      await StockHistory.countDocuments({
+        productId: "delete-battery",
+        type: "retirado",
+      }),
+      2,
+    );
+    assert.equal(await Product.exists({ id: "delete-battery" }), null);
+    assert.equal((await Product.findOne({ id: "legacy-cat" })).stock, 3);
+    console.log(
+      "PASS: borrado confirmado con ventas e historial conservados, stock cerrado, devolución y anulación sin recrear productos ni duplicar unidades",
+    );
+
+    await Product.create({
+      id: "delete-merma",
+      categoria: "TAPA",
+      marca: "SAMSUNG",
+      modelo: "A99 PRUEBA",
+      calidad: "ORIGINAL",
+      precio: 3,
+      stock: 1,
+    });
+    const wasteSaleResponse = await saleRoute.POST(
+      apiRequest("/api/sales", {
+        action: "create",
+        clientName: "Deleted waste fixture",
+        items: [{ productId: "delete-merma", qty: 1, precioUSD: 3 }],
+        currency: "USD",
+        exchangeRate: 835,
+        paid: true,
+      }),
+    );
+    assert.equal(wasteSaleResponse.status, 200);
+    const wasteSale = (await wasteSaleResponse.json()).sale;
+    assert.equal(
+      (
+        await productRoute.POST(
+          apiRequest("/api/products", {
+            action: "delete-permanent",
+            id: "delete-merma",
+            confirmPermanent: true,
+          }),
+        )
+      ).status,
+      200,
+    );
+    const wasteRefund = await saleRoute.POST(
+      apiRequest("/api/sales", {
+        action: "refund",
+        saleId: wasteSale._id,
+        reason: "Merma de SKU eliminado",
+        returns: [{ productId: "delete-merma", qty: 1, destination: "merma" }],
+      }),
+    );
+    assert.equal(wasteRefund.status, 200);
+    assert.equal((await wasteRefund.json()).refundLogs[0].destination, "merma");
+    assert.equal(
+      await StockHistory.countDocuments({
+        productId: "delete-merma",
+        type: "merma",
+      }),
+      1,
+    );
+    assert.equal(await Product.exists({ id: "delete-merma" }), null);
+
+    await Product.create({
+      id: "delete-rollback",
+      categoria: "ACCESORIO",
+      marca: "VARIOS",
+      modelo: "ROLLBACK",
+      calidad: "ORIGINAL",
+      precio: 2,
+      stock: 1,
+    });
+    const originalCreateHistory = StockHistory.create;
+    StockHistory.create = async () => {
+      throw new Error("Fallo de auditoría simulado en base temporal");
+    };
+    try {
+      assert.equal(
+        (
+          await productRoute.POST(
+            apiRequest("/api/products", {
+              action: "delete-permanent",
+              id: "delete-rollback",
+              confirmPermanent: true,
+            }),
+          )
+        ).status,
+        500,
+      );
+    } finally {
+      StockHistory.create = originalCreateHistory;
+    }
+    assert.equal((await Product.findOne({ id: "delete-rollback" })).stock, 1);
+    console.log(
+      "PASS: devolución a merma de SKU eliminado y rollback del borrado si no puede registrarse su movimiento",
+    );
     console.log(
       "Integración completa en base aislada; no se cambiaron permisos del negocio.",
     );

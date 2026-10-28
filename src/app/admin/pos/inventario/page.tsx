@@ -51,7 +51,7 @@ interface StockHistoryRecord {
   _id: string;
   productId: string;
   productName: string;
-  type: "entrada" | "salida" | "merma";
+  type: "entrada" | "salida" | "merma" | "retirado";
   qty: number;
   stockBefore: number;
   stockAfter: number;
@@ -305,7 +305,7 @@ export default function InventoryPage() {
   };
 
   const handleConfirmDelete = async () => {
-    if (!deleteConfirmModal.product) return;
+    if (!deleteConfirmModal.product || deleteConfirmModal.isDeleting) return;
 
     setDeleteConfirmModal((prev) => ({ ...prev, isDeleting: true }));
     try {
@@ -314,6 +314,7 @@ export default function InventoryPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "delete-permanent",
+          confirmPermanent: true,
           id: deleteConfirmModal.product.id,
         }),
       });
@@ -914,7 +915,9 @@ export default function InventoryPage() {
                               ? `+${rec.qty} Entrada`
                               : rec.type === "merma"
                                 ? `-${rec.qty} MERMA / ROTO`
-                                : `-${rec.qty} Venta POS`}
+                                : rec.type === "retirado"
+                                  ? `${rec.qty} Fuera de inventario`
+                                  : `-${rec.qty} Salida`}
                           </span>
                         </div>
                         <span className="text-[11px] text-gray-400 block">
@@ -943,8 +946,16 @@ export default function InventoryPage() {
       {/* Delete Confirm Modal */}
       {deleteConfirmModal.open && deleteConfirmModal.product && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-sm glass-panel rounded-3xl p-6 sm:p-7 border border-rose-500/40 shadow-2xl relative space-y-5">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-product-title"
+            className="w-full max-w-sm max-h-[90dvh] overflow-y-auto glass-panel rounded-3xl p-6 sm:p-7 border border-rose-500/40 shadow-2xl relative space-y-5"
+          >
             <button
+              type="button"
+              aria-label="Cerrar confirmación de eliminación"
+              disabled={deleteConfirmModal.isDeleting}
               onClick={() =>
                 setDeleteConfirmModal({
                   open: false,
@@ -952,7 +963,7 @@ export default function InventoryPage() {
                   isDeleting: false,
                 })
               }
-              className="absolute top-5 right-5 text-gray-400 hover:text-white"
+              className="absolute top-5 right-5 text-gray-400 hover:text-white disabled:opacity-40"
             >
               <X className="w-5 h-5" />
             </button>
@@ -962,23 +973,37 @@ export default function InventoryPage() {
                 <ShieldAlert className="w-7 h-7" />
               </div>
               <div>
-                <h3 className="text-lg font-extrabold text-white">
+                <h3
+                  id="delete-product-title"
+                  className="text-lg font-extrabold text-white"
+                >
                   ¿Eliminar Producto?
                 </h3>
+                <ProductIdentity
+                  model={`${deleteConfirmModal.product.marca} ${deleteConfirmModal.product.modelo}`}
+                  category={deleteConfirmModal.product.categoria}
+                  className="mt-3 rounded-xl border border-white/10 bg-[#10131E] p-3 text-left"
+                  titleClassName="text-sm"
+                />
                 <p className="text-xs text-gray-400 mt-2">
-                  Estás a punto de borrar permanentemente el producto{" "}
-                  <strong className="text-rose-400">
-                    {deleteConfirmModal.product.modelo}
-                  </strong>{" "}
-                  ({deleteConfirmModal.product.calidad}). Esta acción no se
-                  puede deshacer y borrará su historial de mermas.
+                  Calidad: {deleteConfirmModal.product.calidad}. Esta acción no
+                  se puede deshacer. Se eliminará del catálogo y del inventario;
+                  sus ventas, devoluciones y movimientos anteriores se
+                  conservarán.
                 </p>
+                {deleteConfirmModal.product.stock > 0 && (
+                  <p className="mt-2 text-xs text-rose-300">
+                    Se darán de baja sus {deleteConfirmModal.product.stock}{" "}
+                    unidades actuales.
+                  </p>
+                )}
               </div>
             </div>
 
             <div className="flex gap-3 pt-2">
               <button
                 type="button"
+                disabled={deleteConfirmModal.isDeleting}
                 onClick={() =>
                   setDeleteConfirmModal({
                     open: false,
@@ -986,7 +1011,7 @@ export default function InventoryPage() {
                     isDeleting: false,
                   })
                 }
-                className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 text-xs font-bold hover:bg-gray-700 transition-colors"
+                className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 text-xs font-bold hover:bg-gray-700 transition-colors disabled:opacity-40"
               >
                 Cancelar
               </button>

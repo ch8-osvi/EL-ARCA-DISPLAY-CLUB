@@ -1,22 +1,11 @@
 "use client";
-import {
-  BatteryCharging,
-  Smartphone,
-  Layers,
-  Cable,
-  LayoutGrid,
-} from "lucide-react";
+import { LayoutGrid } from "lucide-react";
+import { CATEGORY_ICONS as icons } from "./CategoryIcon";
 import {
   CATEGORIES,
   productCategory,
   type ProductCategory,
 } from "@/lib/categories";
-const icons = {
-  DISPLAY: Smartphone,
-  BATERIA: BatteryCharging,
-  TAPA: Layers,
-  ACCESORIO: Cable,
-};
 export default function CategoryFilter({
   products,
   value,

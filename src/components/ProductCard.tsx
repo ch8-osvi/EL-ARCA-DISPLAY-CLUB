@@ -100,6 +100,13 @@ export default function ProductCard({
           </div>
         </div>
 
+        {/* Model Title */}
+        <ProductIdentity
+          model={product.modelo}
+          category={product.categoria}
+          className="mb-3"
+        />
+
         {/* Dynamic High-Impact Badges (Minimalist, Professional, No Emojis) */}
         {(isTopSeller || isLowStock || isNewArrival) && (
           <div className="flex items-center flex-wrap gap-1.5 mb-2.5">
@@ -123,13 +130,6 @@ export default function ProductCard({
             )}
           </div>
         )}
-
-        {/* Model Title */}
-        <ProductIdentity
-          model={product.modelo}
-          category={product.categoria}
-          className="mb-3"
-        />
       </div>
 
       {/* Footer: Price & WhatsApp Action */}

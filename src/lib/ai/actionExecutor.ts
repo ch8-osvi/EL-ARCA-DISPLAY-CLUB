@@ -360,6 +360,10 @@ export async function executeActions(response: string): Promise<{
       }
       case "AGREGAR_PRODUCTO": {
         result = await executeAgregarProducto({
+          categoria:
+            typeof payload.categoria === "string"
+              ? payload.categoria
+              : undefined,
           marca: String(payload.marca ?? "")
             .toUpperCase()
             .trim(),
@@ -379,6 +383,8 @@ export async function executeActions(response: string): Promise<{
         const lote = Array.isArray(payload.productos) ? payload.productos : [];
         result = await executeAgregarProductosLote(
           lote.map((p: Record<string, unknown>) => ({
+            categoria:
+              typeof p.categoria === "string" ? p.categoria : undefined,
             marca: String(p.marca ?? "")
               .toUpperCase()
               .trim(),
@@ -398,6 +404,8 @@ export async function executeActions(response: string): Promise<{
         const lote = Array.isArray(payload.productos) ? payload.productos : [];
         result = await executeAgregarLoteBulk(
           lote.map((p: Record<string, unknown>) => ({
+            categoria:
+              typeof p.categoria === "string" ? p.categoria : undefined,
             marca: String(p.marca ?? "")
               .toUpperCase()
               .trim(),

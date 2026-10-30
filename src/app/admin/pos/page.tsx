@@ -18,21 +18,17 @@ import {
   History,
   Boxes,
   ShieldAlert,
-  CreditCard,
   Banknote,
   Layers,
-  Bluetooth,
-  Usb,
 } from "lucide-react";
 import BrandFilter from "@/components/BrandFilter";
 import ProductPrice from "@/components/ProductPrice";
 import ProductIdentity from "@/components/ProductIdentity";
 import CategoryFilter from "@/components/CategoryFilter";
-import {
-  CATEGORIES,
-  productCategory,
-  type ProductCategory,
-} from "@/lib/categories";
+import PosCheckoutControls from "@/components/PosCheckoutControls";
+import SaleReceiptSender from "@/components/SaleReceiptSender";
+import { customerPhone } from "@/lib/saleReceipt";
+import { productCategory, type ProductCategory } from "@/lib/categories";
 import { Product } from "@/lib/types";
 import {
   TicketContent,
@@ -81,6 +77,9 @@ export default function PosPage() {
   // Cart State
   const [cart, setCart] = useState<CartItem[]>([]);
   const [clientName, setClientName] = useState("");
+  const [clientPhone, setClientPhone] = useState("");
+  const productsLoaded = useRef(false);
+  const checkoutBusy = useRef(false);
   const [currency, setCurrency] = useState<"USD" | "CUP">("USD");
   const [exchangeRate, setExchangeRate] = useActiveExchangeRate();
   const [isEditingRate, setIsEditingRate] = useState(false);
@@ -115,7 +114,7 @@ export default function PosPage() {
 
   // Fetch products & exchange rate
   const fetchProductsAndRate = async () => {
-    setLoading(true);
+    if (!productsLoaded.current) setLoading(true);
     try {
       const [prodRes, rateRes] = await Promise.all([
         fetch("/api/products"),
@@ -125,6 +124,7 @@ export default function PosPage() {
       if (prodRes.ok) {
         const prodData = await prodRes.json();
         setProducts(prodData.products || []);
+        productsLoaded.current = true;
       }
       if (rateRes.ok) {
         const rateData = await rateRes.json();
@@ -297,6 +297,7 @@ export default function PosPage() {
     checkoutAttempt.current = null;
     setCart([]);
     setClientName("");
+    setClientPhone("");
     setNotes("");
   };
 
@@ -369,7 +370,7 @@ export default function PosPage() {
 
   // Submit Order
   const handleCheckout = async (autoPrint = false) => {
-    if (isSubmitting) return;
+    if (isSubmitting || checkoutBusy.current) return;
     if (cart.length === 0) {
       triggerToast("El carrito está vacío", true);
       return;
@@ -382,11 +383,23 @@ export default function PosPage() {
       );
       return;
     }
+    let normalizedPhone = "";
+    try {
+      normalizedPhone = customerPhone(clientPhone);
+    } catch (error) {
+      triggerToast(
+        error instanceof Error ? error.message : "WhatsApp inválido",
+        true,
+      );
+      return;
+    }
+    checkoutBusy.current = true;
     setIsSubmitting(true);
     try {
       const payload = {
         action: "create",
         clientName,
+        clientPhone: normalizedPhone,
         items: cart,
         currency,
         exchangeRate: exchangeRate,
@@ -434,6 +447,7 @@ export default function PosPage() {
       console.error("Error during checkout:", err);
       triggerToast("Error de conexión al procesar la venta", true);
     } finally {
+      checkoutBusy.current = false;
       setIsSubmitting(false);
     }
   };
@@ -546,6 +560,7 @@ export default function PosPage() {
               <button
                 type="button"
                 id="btn-pos-currency-usd"
+                disabled={isSubmitting}
                 onClick={() => setCurrency("USD")}
                 className={`px-2 sm:px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-bold transition-all duration-200 ${
                   currency === "USD"
@@ -559,6 +574,7 @@ export default function PosPage() {
               <button
                 type="button"
                 id="btn-pos-currency-cup"
+                disabled={isSubmitting}
                 onClick={() => setCurrency("CUP")}
                 className={`px-2 sm:px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-bold transition-all duration-200 ${
                   currency === "CUP"
@@ -748,7 +764,7 @@ export default function PosPage() {
 
                         <button
                           onClick={() => addToCart(prod)}
-                          disabled={availableAfterCart <= 0}
+                          disabled={isSubmitting || availableAfterCart <= 0}
                           className={`ml-auto shrink-0 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
                             availableAfterCart <= 0
                               ? "bg-gray-800 text-gray-500 cursor-not-allowed"
@@ -771,7 +787,42 @@ export default function PosPage() {
 
         {/* Right Column: Active Cart & Checkout (5 Cols) */}
         <section className="lg:col-span-5 min-w-0">
-          <div className="glass-panel rounded-3xl p-5 sm:p-6 border border-[#D4AF37]/30 shadow-2xl space-y-5 sticky top-24">
+          <div className="glass-panel rounded-3xl p-4 sm:p-6 border border-[#D4AF37]/30 shadow-2xl space-y-5 lg:sticky lg:top-24">
+            {completedOrder && (
+              <div className="space-y-3 rounded-2xl border border-emerald-500/25 bg-emerald-500/5 p-3 sm:p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-300">
+                      <CheckCircle2 className="h-4 w-4" />
+                      Venta registrada
+                    </p>
+                    <p className="mt-1 text-lg font-extrabold text-white">
+                      Orden #{completedOrder.orderNumber}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCompletedOrder(null)}
+                    className="rounded-lg px-2 py-1 text-xs text-gray-400 hover:bg-white/5 hover:text-white"
+                  >
+                    Ocultar
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => executePrintTicket(completedOrder)}
+                  className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-gray-200 hover:bg-white/5"
+                >
+                  <Printer className="h-4 w-4" />
+                  Reimprimir esta orden
+                </button>
+                <SaleReceiptSender
+                  key={completedOrder._id}
+                  saleId={completedOrder._id}
+                  initialPhone={completedOrder.clientPhone}
+                />
+              </div>
+            )}
             {/* Cart Header */}
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2">
@@ -784,6 +835,7 @@ export default function PosPage() {
               {cart.length > 0 && (
                 <button
                   onClick={clearCart}
+                  disabled={isSubmitting}
                   className="text-xs text-rose-400 hover:text-rose-300 font-semibold transition-colors flex items-center gap-1"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -834,6 +886,8 @@ export default function PosPage() {
                     <div className="flex items-center gap-1 bg-black/40 border border-white/10 rounded-lg p-1">
                       <button
                         onClick={() => updateCartQty(item.productId, -1)}
+                        disabled={isSubmitting}
+                        aria-label={`Quitar una unidad de ${item.modelo}`}
                         className="w-6 h-6 rounded flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
                       >
                         <Minus className="w-3 h-3" />
@@ -843,6 +897,8 @@ export default function PosPage() {
                       </span>
                       <button
                         onClick={() => updateCartQty(item.productId, 1)}
+                        disabled={isSubmitting}
+                        aria-label={`Añadir una unidad de ${item.modelo}`}
                         className="w-6 h-6 rounded flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
                       >
                         <Plus className="w-3 h-3" />
@@ -851,6 +907,7 @@ export default function PosPage() {
 
                     <button
                       onClick={() => removeFromCart(item.productId)}
+                      disabled={isSubmitting}
                       className="text-gray-500 hover:text-rose-400 p-1"
                       title="Eliminar de la orden"
                     >
@@ -861,217 +918,35 @@ export default function PosPage() {
               )}
             </div>
 
-            {/* Customer & Payment Form */}
-            <div className="space-y-3 pt-2 border-t border-white/10 text-xs">
-              <div>
-                <label className="text-[11px] font-semibold text-gray-400 block mb-1">
-                  Nombre del Cliente (Opcional)
-                </label>
-                <input
-                  type="text"
-                  value={clientName}
-                  onChange={(e) => setClientName(e.target.value)}
-                  placeholder="Ej. Taller Central / Juan Pérez"
-                  className="w-full px-3 py-2 bg-[#10131E] border border-white/10 rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-[#D4AF37] transition-all"
-                />
-              </div>
-
-              {/* Currency Selector & Paid Toggle */}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[11px] font-semibold text-gray-400 block mb-1">
-                    Moneda de Pago
-                  </label>
-                  <div className="flex rounded-xl bg-[#10131E] p-1 border border-white/10">
-                    <button
-                      type="button"
-                      onClick={() => setCurrency("USD")}
-                      className={`flex-1 py-1.5 rounded-lg font-bold text-xs transition-all ${
-                        currency === "USD"
-                          ? "gold-gradient-bg text-black shadow-sm"
-                          : "text-gray-400 hover:text-white"
-                      }`}
-                    >
-                      USD ($)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCurrency("CUP")}
-                      className={`flex-1 py-1.5 rounded-lg font-bold text-xs transition-all ${
-                        currency === "CUP"
-                          ? "bg-emerald-600 text-white shadow-sm"
-                          : "text-gray-400 hover:text-white"
-                      }`}
-                    >
-                      CUP
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-gray-400 block mb-1">
-                    Estado de Pago
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setIsPaid(!isPaid)}
-                    className={`w-full py-2 px-3 rounded-xl font-bold text-xs border transition-all flex items-center justify-center gap-1.5 ${
-                      isPaid
-                        ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-400"
-                        : "bg-amber-500/15 border-amber-500/30 text-amber-300"
-                    }`}
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>{isPaid ? "Pagado" : "Pendiente"}</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Notes / Internal Observations */}
-              <div>
-                <label className="text-[11px] font-semibold text-gray-400 block mb-1">
-                  Observaciones / Notas Internas
-                </label>
-                <input
-                  type="text"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Ej. Garantía 7 días, entrega a domicilio..."
-                  className="w-full px-3 py-2 bg-[#10131E] border border-white/10 rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-[#D4AF37] transition-all"
-                />
-              </div>
-
-              {/* Printer Mode Selector */}
-              <div>
-                <label className="text-[11px] font-semibold text-gray-400 block mb-1">
-                  Impresora Térmica
-                </label>
-                <div className="grid grid-cols-3 gap-1 bg-[#10131E] p-1 rounded-xl border border-white/10 text-[11px]">
-                  <button
-                    type="button"
-                    onClick={() => setPrintMode("bluetooth")}
-                    className={`py-1.5 px-2 rounded-lg font-bold flex items-center justify-center gap-1 transition-all ${
-                      printMode === "bluetooth"
-                        ? "bg-blue-600 text-white shadow-md"
-                        : "text-gray-400 hover:text-white"
-                    }`}
-                    title="Conectar por Bluetooth (ESC/POS)"
-                  >
-                    <Bluetooth className="w-3.5 h-3.5" />
-                    <span>Bluetooth</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPrintMode("usb")}
-                    className={`py-1.5 px-2 rounded-lg font-bold flex items-center justify-center gap-1 transition-all ${
-                      printMode === "usb"
-                        ? "bg-emerald-600 text-white shadow-md"
-                        : "text-gray-400 hover:text-white"
-                    }`}
-                    title="Conectar por cable USB / Serial"
-                  >
-                    <Usb className="w-3.5 h-3.5" />
-                    <span>USB</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPrintMode("system")}
-                    className={`py-1.5 px-2 rounded-lg font-bold flex items-center justify-center gap-1 transition-all ${
-                      printMode === "system"
-                        ? "bg-purple-600 text-white shadow-md"
-                        : "text-gray-400 hover:text-white"
-                    }`}
-                    title="Imprimir usando ventana de navegador"
-                  >
-                    <Printer className="w-3.5 h-3.5" />
-                    <span>Sistema</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Ticket copies selector */}
-              <div className="flex items-center justify-between text-gray-400 pt-1">
-                <span className="text-[11px]">Copias de Ticket:</span>
-                <div className="flex items-center gap-1">
-                  {[1, 2, 3].map((num) => (
-                    <button
-                      key={num}
-                      type="button"
-                      onClick={() => setCopies(num)}
-                      className={`w-6 h-6 rounded-lg text-xs font-bold ${
-                        copies === num
-                          ? "bg-[#D4AF37] text-black"
-                          : "bg-[#10131E] text-gray-400 hover:text-white border border-white/10"
-                      }`}
-                    >
-                      {num}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Calculations Summary Box */}
-            <div className="p-4 rounded-2xl bg-[#10131E] border border-[#D4AF37]/20 space-y-2">
-              <div className="flex justify-between text-xs text-gray-400">
-                <span>Subtotal USD:</span>
-                <span className="font-bold text-white">
-                  ${subtotalUSD.toFixed(2)}
-                </span>
-              </div>
-              <div className="flex justify-between text-xs text-gray-400">
-                <span>Tasa de Cambio:</span>
-                <span className="font-semibold text-emerald-400">
-                  {exchangeRate} CUP
-                </span>
-              </div>
-
-              <div className="pt-2 border-t border-white/10 flex justify-between items-baseline">
-                <span className="text-xs font-extrabold uppercase tracking-wider text-gray-300">
-                  Total a Pagar:
-                </span>
-                <div className="text-right">
-                  <div className="text-xl font-extrabold text-[#F3E0A9]">
-                    ${totalUSD.toFixed(2)} USD
-                  </div>
-                  <div className="text-xs font-bold text-emerald-400">
-                    ≈{" "}
-                    {Number.isFinite(totalCUP)
-                      ? totalCUP.toLocaleString("en-US", {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })
-                      : "No disponible"}{" "}
-                    CUP
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="space-y-2 pt-1">
-              <button
-                onClick={() => handleCheckout(true)}
-                disabled={cart.length === 0 || isSubmitting}
-                className="w-full py-3.5 rounded-2xl gold-gradient-bg text-black font-extrabold text-sm shadow-gold-glow flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:pointer-events-none"
-              >
-                <Printer className="w-4 h-4" />
-                <span>
-                  {isSubmitting
-                    ? "Procesando Venta..."
-                    : "Vender & Imprimir Ticket"}
-                </span>
-              </button>
-
-              <button
-                onClick={() => handleCheckout(false)}
-                disabled={cart.length === 0 || isSubmitting}
-                className="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 font-bold text-xs flex items-center justify-center gap-1.5 transition-all disabled:opacity-50"
-              >
-                <CreditCard className="w-3.5 h-3.5" />
-                <span>Solo Registrar Venta (Sin Imprimir)</span>
-              </button>
-            </div>
+            <PosCheckoutControls
+              value={{
+                clientName,
+                clientPhone,
+                currency,
+                paid: isPaid,
+                notes,
+                copies,
+                printMode,
+              }}
+              onChange={(patch) => {
+                if (patch.clientName !== undefined)
+                  setClientName(patch.clientName);
+                if (patch.clientPhone !== undefined)
+                  setClientPhone(patch.clientPhone);
+                if (patch.currency !== undefined) setCurrency(patch.currency);
+                if (patch.paid !== undefined) setIsPaid(patch.paid);
+                if (patch.notes !== undefined) setNotes(patch.notes);
+                if (patch.copies !== undefined) setCopies(patch.copies);
+                if (patch.printMode !== undefined)
+                  setPrintMode(patch.printMode);
+              }}
+              subtotalUSD={subtotalUSD}
+              totalCUP={totalCUP}
+              rate={exchangeRate}
+              itemCount={totalItemsCount}
+              submitting={isSubmitting}
+              onCheckout={handleCheckout}
+            />
           </div>
         </section>
       </main>

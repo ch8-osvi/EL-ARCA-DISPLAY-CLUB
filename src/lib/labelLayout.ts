@@ -66,6 +66,42 @@ export interface LabelDraft {
   boxes: BoxLabelDraft[];
 }
 
+/** Validate persisted browser drafts before their nested arrays reach React. */
+export function isLabelDraft(value: unknown): value is LabelDraft {
+  if (!value || typeof value !== "object") return false;
+  const draft = value as LabelDraft;
+  return (
+    draft.version === 1 &&
+    !!draft.settings &&
+    ["widthCm", "heightCm", "marginMm", "gapMm"].every(
+      (key) =>
+        typeof draft.settings[key as keyof LabelSettings] === "number" &&
+        Number.isFinite(draft.settings[key as keyof LabelSettings]),
+    ) &&
+    Array.isArray(draft.boxes) &&
+    draft.boxes.every(
+      (box) =>
+        !!box &&
+        typeof box.uid === "string" &&
+        typeof box.note === "string" &&
+        Array.isArray(box.lines) &&
+        box.lines.every(
+          (line) =>
+            !!line &&
+            typeof line.uid === "string" &&
+            typeof line.productId === "string" &&
+            typeof line.qty === "string" &&
+            !!line.snapshot &&
+            ["marca", "modelo", "calidad"].every(
+              (key) =>
+                typeof line.snapshot[key as keyof LabelProductSnapshot] ===
+                "string",
+            ),
+        ),
+    )
+  );
+}
+
 export interface GridLayout {
   ok: boolean;
   error?: string;
@@ -96,7 +132,7 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
  * Rechaza: "", "0", "-1", "2.5", "2,5", "1e2", "abc", " 3a".
  */
 export function parseQty(raw: string): number | null {
-  const s = String(raw ?? '').trim();
+  const s = String(raw ?? "").trim();
   if (!/^\d+$/.test(s)) return null;
   const n = Number(s);
   if (!Number.isSafeInteger(n) || n <= 0) return null;
@@ -104,7 +140,7 @@ export function parseQty(raw: string): number | null {
 }
 
 export function productLabel(s: LabelProductSnapshot): string {
-  return [s.marca, s.modelo].filter(Boolean).join(' ').trim();
+  return [s.marca, s.modelo].filter(Boolean).join(" ").trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -136,13 +172,26 @@ export function computeGrid(settings: LabelSettings): GridLayout {
   };
 
   const invalid = [w, h, margin, gap].some((v) => !Number.isFinite(v));
-  if (invalid) return { ...base, error: 'Revisa las medidas: hay valores vacíos o no numéricos.' };
+  if (invalid)
+    return {
+      ...base,
+      error: "Revisa las medidas: hay valores vacíos o no numéricos.",
+    };
   if (w < MIN_LABEL_CM * 10 || h < MIN_LABEL_CM * 10)
-    return { ...base, error: `El tamaño mínimo de etiqueta es ${MIN_LABEL_CM} × ${MIN_LABEL_CM} cm.` };
+    return {
+      ...base,
+      error: `El tamaño mínimo de etiqueta es ${MIN_LABEL_CM} × ${MIN_LABEL_CM} cm.`,
+    };
   if (margin < MIN_MARGIN_MM || margin > MAX_MARGIN_MM)
-    return { ...base, error: `El margen debe estar entre ${MIN_MARGIN_MM} y ${MAX_MARGIN_MM} mm.` };
+    return {
+      ...base,
+      error: `El margen debe estar entre ${MIN_MARGIN_MM} y ${MAX_MARGIN_MM} mm.`,
+    };
   if (gap < MIN_GAP_MM || gap > MAX_GAP_MM)
-    return { ...base, error: `La separación debe estar entre ${MIN_GAP_MM} y ${MAX_GAP_MM} mm.` };
+    return {
+      ...base,
+      error: `La separación debe estar entre ${MIN_GAP_MM} y ${MAX_GAP_MM} mm.`,
+    };
 
   const usableW = A4_WIDTH_MM - 2 * margin;
   const usableH = A4_HEIGHT_MM - 2 * margin;
@@ -179,7 +228,8 @@ export function computeGrid(settings: LabelSettings): GridLayout {
 export function paginate<T>(items: T[], perPage: number): T[][] {
   if (perPage <= 0) return [];
   const pages: T[][] = [];
-  for (let i = 0; i < items.length; i += perPage) pages.push(items.slice(i, i + perPage));
+  for (let i = 0; i < items.length; i += perPage)
+    pages.push(items.slice(i, i + perPage));
   return pages;
 }
 
@@ -213,10 +263,11 @@ export function computeTypography(
   widthMm: number,
   heightMm: number,
   lineCount: number,
-  hasNote: boolean
+  hasNote: boolean,
 ): LabelTypography {
   const minSide = Math.min(widthMm, heightMm);
-  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+  const clamp = (v: number, lo: number, hi: number) =>
+    Math.min(hi, Math.max(lo, v));
 
   const paddingMm = clamp(minSide * 0.045, 2, 4);
   const brandPt = clamp(minSide * 0.075, 5, 7.5);
@@ -235,7 +286,11 @@ export function computeTypography(
   const perLineFactor = PT_TO_MM * 1.15 * (1 + 0.78);
   const ideal = (available / n - 0.8) / perLineFactor;
   const widthCap = clamp(widthMm * 0.16, MIN_LINE_FONT_PT, MAX_LINE_FONT_PT);
-  const linePt = clamp(ideal, MIN_LINE_FONT_PT, Math.min(MAX_LINE_FONT_PT, widthCap));
+  const linePt = clamp(
+    ideal,
+    MIN_LINE_FONT_PT,
+    Math.min(MAX_LINE_FONT_PT, widthCap),
+  );
 
   return {
     paddingMm,
@@ -262,12 +317,15 @@ export function addOrMergeLine(
   lines: LabelLine[],
   productId: string,
   snapshot: LabelProductSnapshot,
-  qty: number
+  qty: number,
 ): { lines: LabelLine[]; merged: boolean } {
   const idx = lines.findIndex((l) => l.productId === productId);
   if (idx === -1) {
     return {
-      lines: [...lines, { uid: createUid(), productId, snapshot, qty: String(qty) }],
+      lines: [
+        ...lines,
+        { uid: createUid(), productId, snapshot, qty: String(qty) },
+      ],
       merged: false,
     };
   }
@@ -298,18 +356,23 @@ export interface BoxIssues {
   lineErrors: Record<string, string>;
 }
 
-export function validateBox(box: BoxLabelDraft, knownProductIds: Set<string> | null): BoxIssues {
+export function validateBox(
+  box: BoxLabelDraft,
+  knownProductIds: Set<string> | null,
+): BoxIssues {
   const errors: string[] = [];
   const lineErrors: Record<string, string> = {};
 
-  if (box.lines.length === 0) errors.push('La caja no tiene modelos. Añade al menos uno.');
+  if (box.lines.length === 0)
+    errors.push("La caja no tiene modelos. Añade al menos uno.");
 
   for (const l of box.lines) {
-    if (!l.productId) lineErrors[l.uid] = 'Falta seleccionar el modelo.';
+    if (!l.productId) lineErrors[l.uid] = "Falta seleccionar el modelo.";
     else if (knownProductIds && !knownProductIds.has(l.productId))
-      lineErrors[l.uid] = 'Este producto ya no existe en el inventario. Quítalo o reemplázalo.';
+      lineErrors[l.uid] =
+        "Este producto ya no existe en el inventario. Quítalo o reemplázalo.";
     else if (parseQty(l.qty) === null)
-      lineErrors[l.uid] = 'La cantidad debe ser un número entero mayor que 0.';
+      lineErrors[l.uid] = "La cantidad debe ser un número entero mayor que 0.";
   }
 
   return { errors, lineErrors };

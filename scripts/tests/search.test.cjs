@@ -45,6 +45,60 @@ const item = (modelo, extra = {}) => ({
   precio: 11,
   ...extra,
 });
+test("buscador: Note 8 Pro no desaparece al escribir la primera letra de Pro", () => {
+  const product = item("REDMI NOTE 8 PRO", { marca: "XIAOMI" });
+  for (const query of [
+    "note 8",
+    "note 8 p",
+    "note 8 pr",
+    "note 8 pro",
+    "rm note 8 p",
+    "rn8 p",
+    "  NOTE   8   P  ",
+  ])
+    assert.equal(search(product, query).match, true, query);
+  for (const query of [
+    "note 9 p",
+    "note 8 max",
+    "note 8 plus",
+    "note 8p",
+    "note 8 t",
+  ])
+    assert.equal(search(product, query).match, false, query);
+});
+test("buscador: variantes parciales respetan modelo, sufijos e identidad", () => {
+  for (const [model, query] of [
+    ["11 PRO MAX", "iphone 11 p"],
+    ["11 PRO MAX", "iphone 11 pro m"],
+    ["11 PLUS", "iphone 11 p"],
+    ["11 LITE", "iphone 11 l"],
+  ])
+    assert.equal(
+      search(item(model, { marca: "IPHONE" }), query).match,
+      true,
+      query,
+    );
+  for (const [model, query] of [
+    ["A03S", "a 03 s"],
+    ["8T", "8 t"],
+    ["8P", "8 p"],
+  ])
+    assert.equal(search(item(model), query).match, true, query);
+  for (const [model, query] of [
+    ["REDMI NOTE 8", "note 8 p"],
+    ["REDMI NOTE 9 PRO", "note 8 p"],
+    ["A03", "a 03 s"],
+    ["11", "iphone 11 p"],
+  ])
+    assert.equal(
+      search(
+        item(model, { marca: "IPHONE", calidad: "PROFESIONAL PLUS PREMIUM" }),
+        query,
+      ).match,
+      false,
+      `${model}: ${query}`,
+    );
+});
 test("buscador: tolera marcas mal escritas, abreviaturas y consultas pegadas", () => {
   for (const query of [
     "sansun a03",

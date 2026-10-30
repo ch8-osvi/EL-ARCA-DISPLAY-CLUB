@@ -22,7 +22,7 @@ export async function queryGemini(
     );
   const models = [
     ...new Set(
-      (process.env.GEMINI_MODELS || "gemini-flash-lite-latest,gemini-3.6-flash")
+      (process.env.GEMINI_MODELS || "gemini-3.1-flash-lite,gemini-3.6-flash")
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean),
@@ -46,7 +46,16 @@ export async function queryGemini(
           body: JSON.stringify({
             system_instruction: { parts: [{ text: system }] },
             contents,
-            generationConfig: { temperature: 0.15, maxOutputTokens: 4096 },
+            generationConfig: {
+              temperature: 0.15,
+              maxOutputTokens: 4096,
+              // These pinned models support minimal thinking for short bot replies.
+              // Do not send this setting to arbitrary configured models.
+              ...(/^gemini-3\.1-flash-lite(?:-|$)/.test(model) ||
+              model === "gemini-3.6-flash"
+                ? { thinkingConfig: { thinkingLevel: "minimal" } }
+                : {}),
+            },
             ...(admin ? { tools: [{ functionDeclarations }] } : {}),
           }),
         },
@@ -59,8 +68,14 @@ export async function queryGemini(
       }
       const data = await response.json();
       const candidate = data.candidates?.[0];
-      if (!candidate || !["STOP", undefined].includes(candidate.finishReason))
+      if (!candidate || !["STOP", undefined].includes(candidate.finishReason)) {
+        console.warn("[AI provider]", {
+          model,
+          status: response.status,
+          reason: candidate ? candidate.finishReason : "missing_candidate",
+        });
         continue;
+      }
       const parts = candidate.content?.parts || [];
       const actions: Action[] = parts
         .filter((p: any) => p.functionCall)
@@ -80,8 +95,15 @@ export async function queryGemini(
           model,
           tokens: data.usageMetadata?.totalTokenCount || 0,
         };
-    } catch {
-      console.warn("[AI provider]", { model, status: "timeout_or_network" });
+    } catch (error) {
+      console.warn("[AI provider]", {
+        model,
+        status:
+          error instanceof Error && error.name === "TimeoutError"
+            ? "timeout"
+            : "network_or_response_error",
+        elapsedMs: Date.now() - started,
+      });
     }
   }
   throw new AiError(

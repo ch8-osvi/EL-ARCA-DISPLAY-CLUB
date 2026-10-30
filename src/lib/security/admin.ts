@@ -34,17 +34,28 @@ export async function requireAdmin(req: Request) {
       { success: false, error: "Sesión expirada. Inicia sesión." },
       { status: 401 },
     );
-  await connect();
-  if (
-    !(await Session.exists({
-      _id: hash(sessionToken(req)),
-      expiresAt: { $gt: new Date() },
-    }))
-  )
+  try {
+    await connect();
+    if (
+      !(await Session.exists({
+        _id: hash(sessionToken(req)),
+        expiresAt: { $gt: new Date() },
+      }))
+    )
+      return Response.json(
+        { success: false, error: "Sesión revocada. Inicia sesión." },
+        { status: 401 },
+      );
+  } catch {
     return Response.json(
-      { success: false, error: "Sesión revocada. Inicia sesión." },
-      { status: 401 },
+      {
+        success: false,
+        error:
+          "No se pudo verificar la sesión. Reintenta cuando se restablezca la conexión.",
+      },
+      { status: 503 },
     );
+  }
   if (!["GET", "HEAD"].includes(req.method) && !sameOrigin(req))
     return Response.json({ error: "Origen no permitido" }, { status: 403 });
   return null;

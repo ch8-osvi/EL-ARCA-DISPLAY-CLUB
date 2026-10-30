@@ -2,6 +2,12 @@
 
 Catálogo, inventario, ventas y asistente de WhatsApp. La aplicación funciona en Vercel; el puente WhatsApp se ejecuta en la PC del negocio y consulta una cola segura en la nube. No requiere publicar puertos de la PC.
 
+**POS y comprobante digital (30/10/2026):** [Nuevo formulario responsive, cliente/WhatsApp, impresión compacta, totales y envío por el bot](docs/README-pos-comprobante-whatsapp-2026-10-30.md).
+
+**Inventario fluido (30/10/2026):** [Guardado sin recarga de tarjetas, atajos de teclado y búsqueda parcial de variantes](docs/README-inventario-fluido-2026-10-30.md).
+
+**Auditoría del 30/10/2026:** [Cambios, estructura del proyecto, pruebas y límites de verificación](docs/README-auditoria-integral-2026-10-30.md). Incluye protección de stock ante ediciones antiguas, confirmación real de guardado, categorías IA, importaciones, historial de fusiones, pagos repetidos y etiquetas.
+
 **Categorías planas (28/10/2026):** [Pantallas, Baterías, Repuestos y Accesorios y herramientas](docs/README-categorias-planas-2026-10-28.md), sin subcategorías y con un solo icono por categoría.
 
 **Auditoría del 28/10/2026:** [Informe integral: badges, ventas, devoluciones, IA y recuperación](docs/README-auditoria-integral-2026-10-28.md). Incluye los fallos corregidos, 53 pruebas unitarias, integración en bases temporales y límites de la entrega.
@@ -56,7 +62,7 @@ SAMSUNG A12 INCELL C/M x2 - $15.50
 XIAOMI REDMI 9A ORIGINAL S/M x3 - $12
 ```
 
-Una cotización o lista pegada sin esa intención no se ejecuta directamente. Debes indicar calidad y marco; el sistema ya no inventa ORIGINAL C/M cuando faltan. Las búsquedas ambiguas piden el ID o variante exacta. Las fusiones bloquean diferencias de calidad, marco y variantes detectadas; la equivalencia técnica debe revisarse.
+Una cotización o lista pegada sin esa intención no se ejecuta directamente. Debes indicar la calidad; el sistema no inventa ORIGINAL C/M cuando falta. Original e Incell se guardan sin el sufijo S/M; las versiones C/M se mantienen distintas, y las especificaciones personalizadas se conservan. Las búsquedas ambiguas piden el ID o variante exacta. Las fusiones bloquean diferencias de calidad, marco, visibilidad y variantes detectadas. También se protege al secundario que tenga ventas o devoluciones registradas.
 
 ## Atención humana y seguimiento
 
@@ -86,6 +92,8 @@ Una cotización o lista pegada sin esa intención no se ejecuta directamente. De
 
 Si no se configura información comercial, el bot pide confirmar esos detalles con una persona. No promete instalación, pagos, envío ni garantía inventados. Los modelos se validan contra la disponibilidad real de Google; las cuotas y costes dependen de la cuenta.
 
+El bot usa `gemini-3.1-flash-lite` como modelo principal y `gemini-3.6-flash` como respaldo, con razonamiento mínimo para respuestas breves. Se fija la versión principal para evitar cambios de comportamiento del alias `latest`. Si `GEMINI_MODELS` ya existe en Vercel, debe actualizarse allí y desplegar de nuevo; cambiar el valor predeterminado del código no reemplaza esa variable.
+
 Meta y Whapi se mantienen como proveedores alternativos explícitos, con autenticación independiente y sin cambiar automáticamente de cuenta. Meta requiere firma de webhook, versión Graph configurada y ventana válida de atención; fuera de ella debe utilizarse una plantilla aprobada. Esta instalación utiliza Baileys local.
 
 ## Comprobaciones
@@ -98,6 +106,7 @@ npm run typecheck
 npm run build
 node --check whatsapp-bridge/server.js
 node scripts/verify-bot-integration.cjs
+npm run verify:web -- https://elarca-displayclub.vercel.app
 ```
 
 La última prueba crea una base nueva `codex_bot_verification_<aleatorio>`, prueba transacciones reales y elimina únicamente esa base temporal. Nunca usa el nombre de la base del negocio. Si el resolvedor local bloquea consultas SRV, puede ejecutarse con `MONGODB_DNS_SERVERS` configurado solo para ese proceso.

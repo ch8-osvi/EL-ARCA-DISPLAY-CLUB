@@ -12,7 +12,8 @@
     "test": "node --test scripts/tests/*.test.cjs",
     "typecheck": "tsc --noEmit --incremental false",
     "format": "prettier --write src scripts whatsapp-bridge/*.js README.md docs/*.md",
-    "test:integration": "node scripts/verify-bot-integration.cjs"
+    "test:integration": "node scripts/verify-bot-integration.cjs",
+    "verify:web": "node scripts/verify-web.cjs"
   },
   "dependencies": {
     "@vercel/analytics": "^1.6.1",

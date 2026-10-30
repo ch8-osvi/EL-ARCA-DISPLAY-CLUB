@@ -5,6 +5,7 @@ import {
   type RefundDestination,
 } from "@/lib/refundDestinations";
 import ProductIdentity from "@/components/ProductIdentity";
+import SaleReceiptSender from "@/components/SaleReceiptSender";
 import RouteLoading from "./loading";
 import { type ProductCategory } from "@/lib/categories";
 import { useWhatsAppPhone } from "@/lib/useWhatsAppPhone";
@@ -86,6 +87,7 @@ interface SaleRecord {
   _id: string;
   orderNumber: string;
   clientName: string;
+  clientPhone?: string;
   items: SaleItem[];
   currency: "USD" | "CUP";
   exchangeRate: number;
@@ -135,6 +137,7 @@ export default function SalesHistoryPage() {
     "RECENT" | "OLDEST" | "AMOUNT_DESC" | "AMOUNT_ASC"
   >("RECENT");
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
+  const [paymentLoading, setPaymentLoading] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<{
     text: string;
     isError?: boolean;
@@ -202,16 +205,25 @@ export default function SalesHistoryPage() {
   }, [isAuthenticated]);
 
   const handleTogglePaid = async (saleId: string) => {
+    const sale = sales.find((row) => row._id === saleId);
+    if (!sale || paymentLoading) return;
+    setPaymentLoading(saleId);
     try {
       const res = await fetch("/api/sales", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "toggle-paid", saleId }),
+        body: JSON.stringify({
+          action: "toggle-paid",
+          saleId,
+          paid: !sale.paid,
+        }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
         setSales((prev) =>
-          prev.map((s) => (s._id === saleId ? { ...s, paid: !s.paid } : s)),
+          prev.map((s) =>
+            s._id === saleId ? { ...s, paid: data.sale.paid } : s,
+          ),
         );
         fetchSales();
         triggerToast(
@@ -219,9 +231,11 @@ export default function SalesHistoryPage() {
             ? "¡Orden marcada como PAGADA con éxito!"
             : "Orden marcada como PENDIENTE",
         );
-      }
+      } else triggerToast(data.error || "No se pudo actualizar el pago", true);
     } catch {
       triggerToast("Error al actualizar pago", true);
+    } finally {
+      setPaymentLoading(null);
     }
   };
 
@@ -489,6 +503,7 @@ export default function SalesHistoryPage() {
         const allFields = [
           s.orderNumber,
           s.clientName,
+          s.clientPhone,
           ...itemFields,
           ...refundReasons,
         ];
@@ -973,6 +988,7 @@ export default function SalesHistoryPage() {
 
       {/* Header */}
       <header className="sticky top-0 z-40 w-full glass-panel border-b border-[#D4AF37]/15 backdrop-blur-xl bg-[#090A0F]/90">
+        <h1 className="sr-only">Historial de ventas y caja</h1>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-4">
           <Link
             href="/admin"
@@ -1470,6 +1486,12 @@ export default function SalesHistoryPage() {
 
                           <button
                             onClick={() => handleTogglePaid(sale._id)}
+                            disabled={
+                              paymentLoading !== null ||
+                              ["REFUNDED", "CANCELLED"].includes(
+                                sale.status || "COMPLETED",
+                              )
+                            }
                             className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full border transition-all cursor-pointer flex items-center gap-1 hover:scale-105 active:scale-95 ${
                               sale.paid
                                 ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25"
@@ -1606,6 +1628,16 @@ export default function SalesHistoryPage() {
                   {/* Expanded Item Breakdown & Refund History */}
                   {isExpanded && (
                     <div className="pt-4 border-t border-white/10 space-y-4">
+                      <SaleReceiptSender
+                        saleId={sale._id}
+                        initialPhone={sale.clientPhone}
+                        revision={JSON.stringify([
+                          sale.paid,
+                          sale.status,
+                          sale.totalRefundedUSD,
+                          sale.totalRefundedCUP,
+                        ])}
+                      />
                       <div>
                         <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
                           Productos en esta orden ({sale.items.length}):

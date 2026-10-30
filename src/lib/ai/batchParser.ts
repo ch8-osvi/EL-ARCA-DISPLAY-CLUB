@@ -4,6 +4,8 @@
  * without consuming LLM token limits or risking cutoffs.
  */
 
+import { productQuality } from "../categories";
+
 export interface ParsedBatchProduct {
   marca: string;
   modelo: string;
@@ -49,8 +51,14 @@ export function cleanModelAndQuality(
   rawModel: string,
   rawQuality?: string,
 ): { modelo: string; calidad: string } {
-  let model = (rawModel || "").toUpperCase().trim();
-  const qualityInput = (rawQuality || "").toUpperCase().trim();
+  let model = (rawModel || "")
+    .toUpperCase()
+    .trim()
+    .replace(/\bIN[\s-]?CELL\b/g, "INCELL");
+  const qualityInput = (rawQuality || "")
+    .toUpperCase()
+    .trim()
+    .replace(/\bIN[\s-]?CELL\b/g, "INCELL");
 
   // 1. Detectar tecnología de pantalla
   let tech = "";
@@ -73,7 +81,7 @@ export function cleanModelAndQuality(
   }
 
   // 2. Detectar marco: C/M (Con Marco) vs S/M (Sin Marco)
-  let frame = "MARCO SIN ESPECIFICAR";
+  let frame = "";
   if (
     /\b(S\/M|SIN MARCO|S M|SINMARCO)\b/i.test(model) ||
     /\b(S\/M|SIN MARCO|S M|SINMARCO)\b/i.test(qualityInput)
@@ -101,7 +109,22 @@ export function cleanModelAndQuality(
 
   return {
     modelo: model,
-    calidad: `${tech} ${frame}`,
+    calidad: productQuality(
+      [
+        tech,
+        qualityInput
+          .replace(tech, " ")
+          .replace(
+            /\b(?:C\/M|S\/M|CON MARCO|SIN MARCO|C M|S M|SM|SINMARCO|CONMARCO)\b/g,
+            " ",
+          )
+          .replace(/\s+/g, " ")
+          .trim(),
+        frame,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    ),
   };
 }
 

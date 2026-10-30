@@ -113,6 +113,16 @@ body {
   transform: translateY(-2px);
 }
 
+/* Inventory cards sit on a flat background: avoid a GPU blur layer per SKU. */
+.glass-card.inventory-product-card {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s,
+    transform 0.15s;
+}
+
 .glass-panel {
   background: rgba(15, 18, 28, 0.85);
   backdrop-filter: blur(12px);

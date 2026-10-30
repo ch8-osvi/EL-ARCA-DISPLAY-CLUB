@@ -5,7 +5,7 @@ import React, { useMemo, useState } from "react";
 import { AlertCircle, Plus, Search, Trash2, X } from "lucide-react";
 import { Product } from "@/lib/types";
 import { fuzzyMatchProduct } from "@/lib/searchUtils";
-import { productLabel } from "@/lib/labelLayout";
+import { productLabel, parseQty } from "@/lib/labelLayout";
 import { StockFilter } from "./BoxEditor";
 
 export interface SingleStickerItem {
@@ -70,9 +70,9 @@ export default function SingleStickersManager({
       setPickerError("Selecciona un modelo del catálogo.");
       return;
     }
-    const n = parseInt(copies, 10);
-    if (!Number.isFinite(n) || n <= 0) {
-      setPickerError("Ingresa un número de stickers válido (> 0).");
+    const n = parseQty(copies);
+    if (n === null || n > 10000) {
+      setPickerError("Ingresa entre 1 y 10.000 stickers, sin decimales.");
       return;
     }
     onAddItem(selected, n);

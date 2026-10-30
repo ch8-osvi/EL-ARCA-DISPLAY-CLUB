@@ -27,9 +27,15 @@ async function handlePOST(req: NextRequest) {
     await connectToDatabase();
     const { pairId, productAId, productBId } = await req.json();
 
-    if (!pairId || !productAId || !productBId) {
+    if (
+      [pairId, productAId, productBId].some(
+        (v) => typeof v !== "string" || !v.trim() || v.length > 450,
+      ) ||
+      productAId === productBId ||
+      pairId !== [productAId, productBId].sort().join(":::")
+    ) {
       return NextResponse.json(
-        { success: false, error: "Missing required fields" },
+        { success: false, error: "Identificadores de duplicados inválidos" },
         { status: 400 },
       );
     }
@@ -42,6 +48,11 @@ async function handlePOST(req: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (error instanceof SyntaxError || error instanceof TypeError)
+      return NextResponse.json(
+        { success: false, error: "Solicitud inválida" },
+        { status: 400 },
+      );
     console.error("Error ignoring duplicate pair:", error);
     return NextResponse.json(
       { success: false, error: "Failed to ignore duplicate pair" },

@@ -34,6 +34,117 @@ function load(file) {
 const categories = load("src/lib/categories.ts"),
   customer = load("src/lib/whatsapp/customer.ts");
 
+test("calidad: original sin marco se muestra ORIGINAL y con marco sigue separado", () => {
+  for (const input of [
+    "ORIGINAL",
+    "Original S/M",
+    "original SM",
+    "ORIGINAL S M",
+    " Original sin marco ",
+    "ORIGINAL SINMARCO",
+  ])
+    assert.equal(categories.productQuality(input), "ORIGINAL", input);
+  for (const input of [
+    "ORIGINAL C/M",
+    "ORIGINAL CON MARCO",
+    "ORIGINAL SERVICE PACK",
+    "OLED SOFT",
+  ])
+    assert.equal(categories.productQuality(input), input, input);
+  const qualities = categories.CATEGORIES.find(
+    (c) => c.id === "DISPLAY",
+  ).qualities;
+  assert.ok(qualities.includes("ORIGINAL"));
+  assert.ok(qualities.includes("ORIGINAL C/M"));
+  assert.ok(!qualities.includes("ORIGINAL S/M"));
+  assert.deepEqual(qualities, [
+    "ORIGINAL C/M",
+    "ORIGINAL",
+    "INCELL C/M",
+    "INCELL",
+    "OLED",
+    "AMOLED",
+  ]);
+  const identity = categories.productIdentityFilter({
+    marca: "XIAOMI",
+    modelo: "REDMI 6 / 6A",
+    calidad: "ORIGINAL",
+  });
+  assert.ok(identity.calidad.test("ORIGINAL S/M"));
+  assert.ok(identity.calidad.test("ORIGINAL SIN MARCO"));
+  assert.ok(!identity.calidad.test("ORIGINAL C/M"));
+});
+
+test("calidad: Incell omite sin marco, reconoce in-cell y conserva las especificaciones", () => {
+  for (const input of [
+    "INCELL",
+    "INCELL S/M",
+    "in-cell sin marco",
+    "IN CELL SM",
+    "INCELL SINMARCO",
+  ])
+    assert.equal(categories.productQuality(input), "INCELL", input);
+  assert.equal(
+    categories.productQuality("INCELL S/M HD 120HZ"),
+    "INCELL HD 120HZ",
+  );
+  assert.equal(
+    categories.productQuality("ORIGINAL SIN MARCO SERVICE PACK"),
+    "ORIGINAL SERVICE PACK",
+  );
+  assert.equal(categories.productQuality("INCELL C/M"), "INCELL C/M");
+  const identity = categories.productIdentityFilter({
+    marca: "SAMSUNG",
+    modelo: "A15 PRO",
+    calidad: "INCELL",
+  });
+  assert.ok(identity.calidad.test("INCELL S/M"));
+  assert.ok(identity.calidad.test("IN-CELL SIN MARCO"));
+  assert.ok(!identity.calidad.test("INCELL C/M"));
+  const { cleanModelAndQuality } = load("src/lib/ai/batchParser.ts");
+  for (const input of ["INCELL", "INCELL S/M", "IN-CELL SIN MARCO"])
+    assert.deepEqual(cleanModelAndQuality("NOTE 10 PRO", input), {
+      modelo: "NOTE 10 PRO",
+      calidad: "INCELL",
+    });
+  for (const quality of [
+    "INCELL C/M",
+    "OLED",
+    "AMOLED",
+    "OLED SOFT 120HZ",
+    "ORIGINAL SERVICE PACK",
+    "INCELL HD 120HZ",
+  ])
+    assert.equal(cleanModelAndQuality("NOTE 10 PRO", quality).calidad, quality);
+});
+
+test("IA: guarda ORIGINAL, sin añadir marco ni S/M, y conserva ORIGINAL C/M", () => {
+  const { cleanModelAndQuality, parseBatchProductsFromText } = load(
+    "src/lib/ai/batchParser.ts",
+  );
+  for (const quality of [
+    "ORIGINAL",
+    "ORIGINAL S/M",
+    "ORIGINAL SIN MARCO",
+    "ORIGINAL SM",
+  ])
+    assert.deepEqual(cleanModelAndQuality("REDMI 6 / 6A", quality), {
+      modelo: "REDMI 6 / 6A",
+      calidad: "ORIGINAL",
+    });
+  assert.deepEqual(cleanModelAndQuality("REDMI 6 / 6A", "ORIGINAL C/M"), {
+    modelo: "REDMI 6 / 6A",
+    calidad: "ORIGINAL C/M",
+  });
+  const rows = parseBatchProductsFromText(
+    "XIAOMI REDMI 6/6A (ORIGINAL) S/M x1 - $13\nXIAOMI REDMI 8/8A (ORIGINAL) x7 - $12",
+  );
+  assert.equal(rows.length, 2);
+  assert.ok(rows.every((row) => row.calidad === "ORIGINAL"));
+  assert.equal(rows[0].stock, 1);
+  assert.equal(rows[1].stock, 7);
+});
+
 test("catálogo plano: cuatro categorías, sin tipos ni subcategorías visibles", () => {
   assert.deepEqual(categories.CATEGORY_IDS, [
     "DISPLAY",

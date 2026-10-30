@@ -3,10 +3,13 @@ import {
   STORED_CATEGORY_IDS,
   productCategory,
   productDisplayModel,
+  productQuality,
   type ProductCategory,
 } from "../categories";
 
 export interface IProduct extends Document {
+  createdAt?: Date;
+  updatedAt?: Date;
   categoria: ProductCategory;
   id: string; // Maintain the 'id' field to keep frontend compatibility
   marca: string;
@@ -44,7 +47,8 @@ const ProductSchema = new Schema<IProduct>(
       required: true,
       trim: true,
       uppercase: true,
-      set: (v: string) => (typeof v === "string" ? v.toUpperCase().trim() : v),
+      set: (v: string) =>
+        typeof v === "string" ? productQuality(v.toUpperCase().trim()) : v,
     },
     precio: {
       type: Number,
@@ -80,7 +84,8 @@ ProductSchema.pre("save", function () {
   this.categoria = productCategory(this.categoria);
   if (this.marca) this.marca = this.marca.toUpperCase().trim();
   if (this.modelo) this.modelo = this.modelo.toUpperCase().trim();
-  if (this.calidad) this.calidad = this.calidad.toUpperCase().trim();
+  if (this.calidad)
+    this.calidad = productQuality(this.calidad.toUpperCase().trim());
 });
 
 // Pre-update hook: guarantee uppercase in query updates
@@ -92,7 +97,9 @@ ProductSchema.pre(["updateOne", "findOneAndUpdate", "updateMany"], function () {
   if (update.marca) update.marca = String(update.marca).toUpperCase().trim();
   if (update.modelo) update.modelo = String(update.modelo).toUpperCase().trim();
   if (update.calidad)
-    update.calidad = String(update.calidad).toUpperCase().trim();
+    update.calidad = productQuality(
+      String(update.calidad).toUpperCase().trim(),
+    );
 
   if (update.$set) {
     if (update.$set.marca)
@@ -100,7 +107,9 @@ ProductSchema.pre(["updateOne", "findOneAndUpdate", "updateMany"], function () {
     if (update.$set.modelo)
       update.$set.modelo = String(update.$set.modelo).toUpperCase().trim();
     if (update.$set.calidad)
-      update.$set.calidad = String(update.$set.calidad).toUpperCase().trim();
+      update.$set.calidad = productQuality(
+        String(update.$set.calidad).toUpperCase().trim(),
+      );
   }
 });
 

@@ -1,5 +1,6 @@
 import { refundAmounts } from "@/lib/refundAmounts";
 import { roundCupPrice } from "@/lib/searchUtils";
+import { customerPhone } from "@/lib/saleReceipt";
 import { requestFingerprint } from "@/lib/security/request-fingerprint";
 import { dailySalesPipeline, EMPTY_DAILY_SALES } from "@/lib/salesSummary";
 import type { RefundDestination } from "@/lib/refundDestinations";
@@ -92,6 +93,17 @@ async function handlePOST(req: Request) {
     // --------------------------------------------------------
     if (action === "create") {
       const { clientName, items, currency, exchangeRate, paid, notes } = body;
+      let clientPhone = "";
+      try {
+        clientPhone = customerPhone(body.clientPhone);
+      } catch (error) {
+        return NextResponse.json(
+          {
+            error: error instanceof Error ? error.message : "WhatsApp inválido",
+          },
+          { status: 400 },
+        );
+      }
 
       if (
         !Array.isArray(items) ||
@@ -124,6 +136,7 @@ async function handlePOST(req: Request) {
           item.qty > 10000 ||
           !Number.isFinite(item.precioUSD) ||
           item.precioUSD < 0 ||
+          item.precioUSD > 1000000 ||
           productIds.has(item.productId)
         )
           return NextResponse.json(
@@ -278,6 +291,7 @@ async function handlePOST(req: Request) {
         ...(requestId ? { requestId, requestHash } : {}),
         orderNumber,
         clientName: clientName || "Consumidor Final",
+        clientPhone,
         items: processedItems,
         currency: currency || "USD",
         exchangeRate: rateNum,
@@ -561,7 +575,11 @@ async function handlePOST(req: Request) {
     // --------------------------------------------------------
     if (action === "toggle-paid") {
       const { saleId } = body;
-      if (typeof saleId !== "string" || !/^[a-f0-9]{24}$/i.test(saleId)) {
+      if (
+        typeof saleId !== "string" ||
+        !/^[a-f0-9]{24}$/i.test(saleId) ||
+        (body.paid !== undefined && typeof body.paid !== "boolean")
+      ) {
         return NextResponse.json(
           { success: false, error: "saleId requerido" },
           { status: 400 },
@@ -579,7 +597,7 @@ async function handlePOST(req: Request) {
           { success: false, error: "La orden está anulada o devuelta" },
           { status: 409 },
         );
-      sale.paid = !sale.paid;
+      sale.paid = body.paid ?? !sale.paid;
       await sale.save();
       return NextResponse.json({ success: true, sale });
     }

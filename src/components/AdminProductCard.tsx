@@ -2,6 +2,7 @@
 
 import ProductPrice from "./ProductPrice";
 import ProductIdentity from "./ProductIdentity";
+import { productQuality } from "@/lib/categories";
 import React, { useState } from "react";
 import { Product } from "@/lib/types";
 import { EyeOff, Tag } from "lucide-react";
@@ -53,7 +54,7 @@ export default function AdminProductCard({
           <span
             className={`badge-quality ${getQualityBadgeClass(product.calidad)}`}
           >
-            {product.calidad}
+            {productQuality(product.calidad)}
           </span>
         </div>
 

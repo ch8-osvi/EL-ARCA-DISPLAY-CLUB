@@ -4,6 +4,7 @@ import {
   categoryFilter,
   productDisplayModel,
   productIdentityFilter,
+  productQuality,
 } from "@/lib/categories";
 import { escapeRegex } from "@/lib/security/validation";
 import {
@@ -281,7 +282,23 @@ export async function executeActualizarCalidadProducto(
     }
 
     const calidadAnterior = product.calidad;
-    const nuevaCalidadUpper = nuevaCalidad.toUpperCase().trim();
+    const nuevaCalidadUpper = productQuality(nuevaCalidad.toUpperCase().trim());
+    if (
+      await Product.exists({
+        _id: { $ne: product._id },
+        ...productIdentityFilter({
+          marca: product.marca,
+          modelo: product.modelo,
+          calidad: nuevaCalidadUpper,
+          categoria: product.categoria,
+        }),
+      })
+    )
+      return {
+        success: false,
+        message:
+          "Ya existe ese producto con la calidad indicada. Revisa las referencias sin duplicarlas.",
+      };
 
     await Product.updateOne(
       { _id: product._id },
@@ -334,7 +351,7 @@ export async function executeModificarProducto(input: {
       changes.push(`Modelo: ${product.modelo} ➔ **${updates.modelo}**`);
     }
     if (input.nuevaCalidad) {
-      updates.calidad = input.nuevaCalidad.toUpperCase().trim();
+      updates.calidad = productQuality(input.nuevaCalidad.toUpperCase().trim());
       changes.push(`Calidad: ${product.calidad} ➔ **${updates.calidad}**`);
     }
     if (input.nuevoPrecio !== undefined && input.nuevoPrecio >= 0) {
@@ -351,6 +368,22 @@ export async function executeModificarProducto(input: {
       };
     }
 
+    if (
+      await Product.exists({
+        _id: { $ne: product._id },
+        ...productIdentityFilter({
+          marca: updates.marca ?? product.marca,
+          modelo: updates.modelo ?? product.modelo,
+          calidad: updates.calidad ?? product.calidad,
+          categoria: product.categoria,
+        }),
+      })
+    )
+      return {
+        success: false,
+        message:
+          "Los cambios coinciden con otro producto existente. Revisa los IDs antes de guardar.",
+      };
     await Product.updateOne({ _id: product._id }, { $set: updates });
 
     return {
@@ -840,13 +873,41 @@ export async function executeFusionarProductos(params: {
       productCategory(primary.categoria) !==
         productCategory(secondary.categoria) ||
       primary.marca !== secondary.marca ||
-      primary.calidad !== secondary.calidad
+      Boolean(primary.isHidden) !== Boolean(secondary.isHidden) ||
+      productQuality(primary.calidad) !== productQuality(secondary.calidad)
     )
       return {
         success: false,
         message:
-          "No se pueden fusionar categorías, marcas o calidades diferentes.",
+          "No se pueden fusionar categorías, marcas, calidades o visibilidades diferentes.",
       };
+    if (
+      await Sale.exists({
+        $or: [
+          { "items.productId": secondary.id },
+          { "refunds.productId": secondary.id },
+        ],
+      })
+    )
+      return {
+        success: false,
+        message:
+          "El producto secundario tiene ventas o devoluciones registradas. Consérvalo como principal; si ambos tienen ventas, mantén sus referencias separadas para proteger el historial.",
+      };
+    if (
+      params.nuevoPrecio !== undefined &&
+      (!Number.isFinite(params.nuevoPrecio) ||
+        params.nuevoPrecio < 0 ||
+        params.nuevoPrecio > 1000000)
+    )
+      return { success: false, message: "Precio de fusión inválido" };
+    if (
+      params.nuevoModelo !== undefined &&
+      (typeof params.nuevoModelo !== "string" ||
+        !params.nuevoModelo.trim() ||
+        params.nuevoModelo.length > 200)
+    )
+      return { success: false, message: "Modelo de fusión inválido" };
     const { calculateDuplicateScore } = await import("@/lib/duplicateDetector");
     if (calculateDuplicateScore(primary as any, secondary as any).score < 95)
       return {
@@ -881,13 +942,6 @@ export async function executeFusionarProductos(params: {
           productName: `${primary.marca} ${finalModelo} (${primary.calidad})`,
         },
       },
-    );
-
-    // Migrar Sale items
-    await Sale.updateMany(
-      { "items.productId": secondary.id },
-      { $set: { "items.$[elem].productId": primary.id } },
-      { arrayFilters: [{ "elem.productId": secondary.id }] },
     );
 
     // Registrar nuevo historial
@@ -965,6 +1019,25 @@ export async function executeNormalizarCatalogoExistente() {
       });
 
       if (existing) {
+        if (Boolean(existing.isHidden) !== Boolean(prod.isHidden)) {
+          logs.push(
+            `• Conservado "${prod.modelo}" (${prod.id}): su visibilidad es diferente; no se mezcla stock oculto con stock público.`,
+          );
+          continue;
+        }
+        if (
+          await Sale.exists({
+            $or: [
+              { "items.productId": prod.id },
+              { "refunds.productId": prod.id },
+            ],
+          })
+        ) {
+          logs.push(
+            `• Conservado "${prod.modelo}" (${prod.id}): tiene ventas o devoluciones; requiere revisión manual sin fusionar su historial.`,
+          );
+          continue;
+        }
         // Fusionar con el existente
         const stockToAdd = prod.stock || 0;
         existing.stock = (existing.stock || 0) + stockToAdd;
@@ -983,13 +1056,6 @@ export async function executeNormalizarCatalogoExistente() {
               productName: `${existing.marca} ${cleanMod} (${cleanCal})`,
             },
           },
-        );
-
-        // Migrar Sale items
-        await Sale.updateMany(
-          { "items.productId": prod.id },
-          { $set: { "items.$[elem].productId": existing.id } },
-          { arrayFilters: [{ "elem.productId": prod.id }] },
         );
 
         if (stockToAdd > 0) {

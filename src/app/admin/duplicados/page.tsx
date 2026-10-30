@@ -69,11 +69,11 @@ export default function DuplicadosPage() {
   const fetchProducts = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/products");
+      const res = await fetch("/api/products?all=true");
       if (res.ok) {
         const data = await res.json();
         setProducts(data.products || []);
-      }
+      } else throw new Error("No se pudo verificar el catálogo");
 
       const ignoredRes = await fetch("/api/duplicados/ignored");
       if (ignoredRes.ok) {
@@ -233,7 +233,6 @@ export default function DuplicadosPage() {
           secondaryId: secondaryProd.id,
           finalModelo: finalModelo.trim().toUpperCase(),
           finalPrecio: parsedPrice,
-          finalCalidad: finalCalidad.trim().toUpperCase(),
         }),
       });
 
@@ -1156,14 +1155,13 @@ export default function DuplicadosPage() {
 
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block">
-                    4. Calidad Unificada
+                    4. Calidad (se conserva)
                   </label>
                   <input
                     type="text"
                     value={finalCalidad}
-                    onChange={(e) =>
-                      setFinalCalidad(e.target.value.toUpperCase())
-                    }
+                    readOnly
+                    aria-label="Calidad conservada al fusionar"
                     className="w-full px-4 py-2.5 bg-[#10131E] border border-white/10 rounded-xl text-white font-bold text-xs sm:text-sm focus:outline-none focus:border-[#D4AF37]"
                   />
                 </div>
@@ -1188,9 +1186,9 @@ export default function DuplicadosPage() {
                 </div>
                 <p className="text-[11px] text-gray-400 leading-snug pt-1 border-t border-white/5">
                   🛡️ <strong>Trazabilidad protegida:</strong> Todo el historial
-                  de entradas, salidas y ventas previas de ambos repuestos se
-                  conservará unificado. El producto secundario quedará eliminado
-                  del catálogo.
+                  de entradas y salidas se conserva. Si el secundario tiene
+                  ventas o devoluciones, la fusión se rechaza para mantener sus
+                  referencias. No se mezcla stock oculto con stock público.
                 </p>
               </div>
             </div>

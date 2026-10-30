@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useState } from 'react';
-import { Product } from '@/lib/types';
+import { useCallback, useEffect, useState } from "react";
+import { Product } from "@/lib/types";
 import {
   addOrMergeLine,
   BoxLabelDraft,
@@ -9,10 +9,11 @@ import {
   DEFAULT_SETTINGS,
   LabelDraft,
   LabelSettings,
-} from '@/lib/labelLayout';
+  isLabelDraft,
+} from "@/lib/labelLayout";
 
 /** Borrador local del navegador. NO se guarda en MongoDB ni toca el stock. */
-const STORAGE_KEY = 'el_arca_labels_draft_v1';
+const STORAGE_KEY = "el_arca_labels_draft_v1";
 
 export type SettingsInput = Record<keyof LabelSettings, string>;
 
@@ -23,7 +24,8 @@ const toInput = (s: LabelSettings): SettingsInput => ({
   gapMm: String(s.gapMm),
 });
 
-const num = (v: string) => (v.trim() === '' ? NaN : Number(v.replace(',', '.')));
+const num = (v: string) =>
+  typeof v !== "string" || v.trim() === "" ? NaN : Number(v.replace(",", "."));
 
 export const parseSettings = (i: SettingsInput): LabelSettings => ({
   widthCm: num(i.widthCm),
@@ -32,11 +34,13 @@ export const parseSettings = (i: SettingsInput): LabelSettings => ({
   gapMm: num(i.gapMm),
 });
 
-const newBox = (): BoxLabelDraft => ({ uid: createUid(), note: '', lines: [] });
+const newBox = (): BoxLabelDraft => ({ uid: createUid(), note: "", lines: [] });
 
 export function useLabelDraft() {
   const [boxes, setBoxes] = useState<BoxLabelDraft[]>([newBox()]);
-  const [settingsInput, setSettingsInput] = useState<SettingsInput>(toInput(DEFAULT_SETTINGS));
+  const [settingsInput, setSettingsInput] = useState<SettingsInput>(
+    toInput(DEFAULT_SETTINGS),
+  );
   const [hydrated, setHydrated] = useState(false);
 
   // Cargar borrador
@@ -45,9 +49,10 @@ export function useLabelDraft() {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const d = JSON.parse(raw) as LabelDraft;
-        if (d?.version === 1 && Array.isArray(d.boxes)) {
+        if (isLabelDraft(d)) {
           setBoxes(d.boxes.length ? d.boxes : [newBox()]);
-          if (d.settings) setSettingsInput(toInput({ ...DEFAULT_SETTINGS, ...d.settings }));
+          if (d.settings)
+            setSettingsInput(toInput({ ...DEFAULT_SETTINGS, ...d.settings }));
         }
       }
     } catch {
@@ -61,9 +66,15 @@ export function useLabelDraft() {
     if (!hydrated) return;
     const s = parseSettings(settingsInput);
     const safe: LabelSettings = {
-      widthCm: Number.isFinite(s.widthCm) ? s.widthCm : DEFAULT_SETTINGS.widthCm,
-      heightCm: Number.isFinite(s.heightCm) ? s.heightCm : DEFAULT_SETTINGS.heightCm,
-      marginMm: Number.isFinite(s.marginMm) ? s.marginMm : DEFAULT_SETTINGS.marginMm,
+      widthCm: Number.isFinite(s.widthCm)
+        ? s.widthCm
+        : DEFAULT_SETTINGS.widthCm,
+      heightCm: Number.isFinite(s.heightCm)
+        ? s.heightCm
+        : DEFAULT_SETTINGS.heightCm,
+      marginMm: Number.isFinite(s.marginMm)
+        ? s.marginMm
+        : DEFAULT_SETTINGS.marginMm,
       gapMm: Number.isFinite(s.gapMm) ? s.gapMm : DEFAULT_SETTINGS.gapMm,
     };
     const draft: LabelDraft = { version: 1, settings: safe, boxes };
@@ -74,35 +85,50 @@ export function useLabelDraft() {
     }
   }, [boxes, settingsInput, hydrated]);
 
-  const updateBox = useCallback((uid: string, fn: (b: BoxLabelDraft) => BoxLabelDraft) => {
-    setBoxes((prev) => prev.map((b) => (b.uid === uid ? fn(b) : b)));
-  }, []);
+  const updateBox = useCallback(
+    (uid: string, fn: (b: BoxLabelDraft) => BoxLabelDraft) => {
+      setBoxes((prev) => prev.map((b) => (b.uid === uid ? fn(b) : b)));
+    },
+    [],
+  );
 
   /** Añade un producto; si ya existe en la caja, suma la cantidad a esa línea. */
   const addLine = useCallback(
     (boxUid: string, p: Product, qty: number) =>
       updateBox(boxUid, (b) => ({
         ...b,
-        lines: addOrMergeLine(b.lines, p.id, { marca: p.marca, modelo: p.modelo, calidad: p.calidad }, qty).lines,
+        lines: addOrMergeLine(
+          b.lines,
+          p.id,
+          { marca: p.marca, modelo: p.modelo, calidad: p.calidad },
+          qty,
+        ).lines,
       })),
-    [updateBox]
+    [updateBox],
   );
 
   const setLineQty = useCallback(
     (boxUid: string, lineUid: string, qty: string) =>
-      updateBox(boxUid, (b) => ({ ...b, lines: b.lines.map((l) => (l.uid === lineUid ? { ...l, qty } : l)) })),
-    [updateBox]
+      updateBox(boxUid, (b) => ({
+        ...b,
+        lines: b.lines.map((l) => (l.uid === lineUid ? { ...l, qty } : l)),
+      })),
+    [updateBox],
   );
 
   const removeLine = useCallback(
     (boxUid: string, lineUid: string) =>
-      updateBox(boxUid, (b) => ({ ...b, lines: b.lines.filter((l) => l.uid !== lineUid) })),
-    [updateBox]
+      updateBox(boxUid, (b) => ({
+        ...b,
+        lines: b.lines.filter((l) => l.uid !== lineUid),
+      })),
+    [updateBox],
   );
 
   const setNote = useCallback(
-    (boxUid: string, note: string) => updateBox(boxUid, (b) => ({ ...b, note })),
-    [updateBox]
+    (boxUid: string, note: string) =>
+      updateBox(boxUid, (b) => ({ ...b, note })),
+    [updateBox],
   );
 
   const addBox = useCallback(() => {
@@ -131,7 +157,10 @@ export function useLabelDraft() {
 
   const clearAll = useCallback(() => setBoxes([newBox()]), []);
 
-  const resetSettings = useCallback(() => setSettingsInput(toInput(DEFAULT_SETTINGS)), []);
+  const resetSettings = useCallback(
+    () => setSettingsInput(toInput(DEFAULT_SETTINGS)),
+    [],
+  );
 
   /** Actualiza nombres guardados con los datos actuales del inventario (sin tocar cantidades). */
   const refreshSnapshots = useCallback((byId: Map<string, Product>) => {
@@ -140,9 +169,18 @@ export function useLabelDraft() {
         ...b,
         lines: b.lines.map((l) => {
           const p = byId.get(l.productId);
-          return p ? { ...l, snapshot: { marca: p.marca, modelo: p.modelo, calidad: p.calidad } } : l;
+          return p
+            ? {
+                ...l,
+                snapshot: {
+                  marca: p.marca,
+                  modelo: p.modelo,
+                  calidad: p.calidad,
+                },
+              }
+            : l;
         }),
-      }))
+      })),
     );
   }, []);
 

@@ -1,0 +1,133 @@
+{
+  "date": "2026-10-30",
+  "desktop": [
+    {
+      "path": "/admin/pos",
+      "heading": [
+        "Punto de Venta POS",
+        "Orden Actual"
+      ],
+      "scrollWidth": 1272,
+      "width": 1280
+    },
+    {
+      "path": "/admin/pos/inventario",
+      "heading": [
+        "Control de Inventario & Stock"
+      ],
+      "scrollWidth": 1272,
+      "width": 1280
+    },
+    {
+      "path": "/admin/duplicados",
+      "heading": [
+        "Limpieza y Fusión de Duplicados"
+      ],
+      "scrollWidth": 1272,
+      "width": 1280
+    },
+    {
+      "path": "/admin/ocultos",
+      "heading": [
+        "Productos Ocultos y Apartados"
+      ],
+      "scrollWidth": 1272,
+      "width": 1280
+    },
+    {
+      "path": "/admin/etiquetas",
+      "heading": [
+        "Etiquetador de Cajas",
+        "Tamaño de Etiqueta para Caja (Hoja A4)",
+        "Vista Previa A4"
+      ],
+      "scrollWidth": 1272,
+      "width": 1280
+    },
+    {
+      "path": "/admin/ia",
+      "heading": [
+        "Asistente Inteligente"
+      ],
+      "scrollWidth": 1280,
+      "width": 1280
+    },
+    {
+      "path": "/admin/whatsapp",
+      "heading": [
+        "IA WhatsApp El Arca"
+      ],
+      "scrollWidth": 1272,
+      "width": 1280
+    }
+  ],
+  "mobile": [
+    {
+      "path": "/admin/pos",
+      "scrollWidth": 382,
+      "width": 390
+    },
+    {
+      "path": "/admin/pos/inventario",
+      "scrollWidth": 382,
+      "width": 390
+    },
+    {
+      "path": "/admin/duplicados",
+      "scrollWidth": 382,
+      "width": 390
+    },
+    {
+      "path": "/admin/ocultos",
+      "scrollWidth": 382,
+      "width": 390
+    },
+    {
+      "path": "/admin/etiquetas",
+      "scrollWidth": 382,
+      "width": 390
+    },
+    {
+      "path": "/admin/ia",
+      "scrollWidth": 390,
+      "width": 390
+    },
+    {
+      "path": "/admin/whatsapp",
+      "scrollWidth": 382,
+      "width": 390
+    }
+  ],
+  "afterDeployment": [
+    {
+      "path": "/admin/pos/inventario",
+      "ready": true,
+      "scrollWidth": 1272,
+      "width": 1280
+    },
+    {
+      "path": "/admin/pos/historial",
+      "ready": true,
+      "scrollWidth": 1272,
+      "width": 1280
+    },
+    {
+      "path": "/admin/duplicados",
+      "ready": true,
+      "scrollWidth": 1272,
+      "width": 1280
+    },
+    {
+      "path": "/admin/etiquetas",
+      "ready": true,
+      "scrollWidth": 1272,
+      "width": 1280
+    }
+  ],
+  "publicMobile": {
+    "scrollWidth": 382,
+    "width": 390
+  },
+  "httpChecks": 39,
+  "unitTests": 81
+}

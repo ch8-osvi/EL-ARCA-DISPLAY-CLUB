@@ -38,6 +38,7 @@ export interface ISale extends Document {
   requestHash?: string;
   orderNumber: string;
   clientName: string;
+  clientPhone?: string;
   items: ISaleItem[];
   currency: "USD" | "CUP";
   exchangeRate: number;
@@ -94,6 +95,7 @@ const SaleSchema = new Schema<ISale>(
     requestHash: { type: String, maxlength: 64 },
     orderNumber: { type: String, required: true, unique: true },
     clientName: { type: String, default: "" },
+    clientPhone: { type: String, default: "", maxlength: 15 },
     items: {
       type: [SaleItemSchema],
       required: true,

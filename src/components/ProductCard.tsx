@@ -1,6 +1,6 @@
 "use client";
 import { getProductBadges } from "@/lib/productBadges";
-import { categoryLabel } from "@/lib/categories";
+import { categoryLabel, productQuality } from "@/lib/categories";
 import { useWhatsAppPhone } from "@/lib/useWhatsAppPhone";
 
 import ProductPrice from "./ProductPrice";
@@ -77,7 +77,7 @@ export default function ProductCard({
             <span
               className={`badge-quality ${getQualityBadgeClass(product.calidad)}`}
             >
-              {product.calidad}
+              {productQuality(product.calidad)}
             </span>
 
             {/* Google Search Lupa Button */}

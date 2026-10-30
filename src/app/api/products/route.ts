@@ -9,6 +9,7 @@ import { Sale } from "@/lib/models/Sale";
 import seedProducts from "@/data/products_seed.json";
 import {
   productCategory,
+  productQuality,
   catalogProduct,
   productDisplayModel,
   productIdentityFilter,
@@ -155,7 +156,8 @@ async function handlePOST(request: Request) {
         ["marca", "modelo", "calidad"].some(
           (field) =>
             product[field] !== undefined &&
-            (typeof product[field] !== "string" || product[field].length > 200),
+            (typeof product[field] !== "string" ||
+              product[field].length > (field === "modelo" ? 2000 : 200)),
         ))
     )
       return NextResponse.json(
@@ -174,6 +176,25 @@ async function handlePOST(request: Request) {
           throw new Error("Modelo obligatorio");
       }
       if (["update", "unhide"].includes(action)) {
+        for (const field of ["marca", "modelo", "calidad"]) {
+          // A single SKU can list many compatible phone models from Excel.
+          const maxLength = field === "modelo" ? 2000 : 200;
+          if (
+            body[field] !== undefined &&
+            (typeof body[field] !== "string" ||
+              !body[field].trim() ||
+              body[field].length > maxLength)
+          )
+            throw new Error(
+              `${field}: texto obligatorio de hasta ${maxLength} caracteres`,
+            );
+        }
+        if (
+          body.expectedUpdatedAt !== undefined &&
+          (typeof body.expectedUpdatedAt !== "string" ||
+            !Number.isFinite(Date.parse(body.expectedUpdatedAt)))
+        )
+          throw new Error("Versión del producto inválida");
         assertProductNumbers(body.precio ?? 0, body.stock ?? 0);
         if (body.categoria !== undefined) {
           if (typeof body.modelo === "string")
@@ -354,7 +375,9 @@ async function handlePOST(request: Request) {
     if (action === "add" && product) {
       const marcaUp = (product.marca || "VARIOS").toUpperCase().trim();
       const modeloUp = (product.modelo || "NUEVO MODELO").toUpperCase().trim();
-      const calidadUp = (product.calidad || "ORIGINAL").toUpperCase().trim();
+      const calidadUp = productQuality(
+        (product.calidad || "ORIGINAL").toUpperCase().trim(),
+      );
       const newStock = product.stock ?? 1;
       const newPrecio = Math.max(0, Number(product.precio) || 0);
 
@@ -454,7 +477,9 @@ async function handlePOST(request: Request) {
         updateData.stock = s;
       }
       if (body.calidad)
-        updateData.calidad = String(body.calidad).toUpperCase().trim();
+        updateData.calidad = productQuality(
+          String(body.calidad).toUpperCase().trim(),
+        );
       if (body.modelo)
         updateData.modelo = String(body.modelo).toUpperCase().trim();
       if (body.marca)
@@ -466,6 +491,18 @@ async function handlePOST(request: Request) {
         return NextResponse.json(
           { success: false, error: "Producto no encontrado" },
           { status: 404 },
+        );
+      if (
+        body.expectedUpdatedAt !== undefined &&
+        previous.updatedAt?.getTime() !== Date.parse(body.expectedUpdatedAt)
+      )
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "El producto cambió desde que lo abriste. Actualiza el inventario y revisa los cambios antes de guardar.",
+          },
+          { status: 409 },
         );
       if (
         String(previous.categoria) === "TAPA" &&

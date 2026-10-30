@@ -331,3 +331,84 @@ test("Gemini usa JSON Schema, no envía secreto en la URL y devuelve llamadas es
     global.fetch = oldFetch;
   }
 });
+
+test("Gemini usa una versión fija y respaldo tras timeout sin ejecutar acciones", async () => {
+  const ai = load("src/lib/ai/gemini.ts", { "./contracts": contracts });
+  const oldFetch = global.fetch;
+  const previousModels = process.env.GEMINI_MODELS;
+  const previousKey = process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY = "test-key";
+  delete process.env.GEMINI_MODELS;
+  const calls = [];
+  global.fetch = async (url, options) => {
+    calls.push({ url, body: JSON.parse(options.body) });
+    if (calls.length === 1)
+      throw Object.assign(new Error("timed out"), { name: "TimeoutError" });
+    return {
+      ok: true,
+      json: async () => ({
+        candidates: [
+          {
+            finishReason: "STOP",
+            content: { parts: [{ text: "Disponible" }] },
+          },
+        ],
+        usageMetadata: { totalTokenCount: 25 },
+      }),
+    };
+  };
+  try {
+    const result = await ai.queryGemini(
+      "Catálogo",
+      [{ role: "user", parts: [{ text: "Pantalla A12" }] }],
+      false,
+    );
+    assert.match(calls[0].url, /gemini-3\.1-flash-lite:generateContent$/);
+    assert.match(calls[1].url, /gemini-3\.6-flash:generateContent$/);
+    for (const call of calls) {
+      assert.equal(
+        call.body.generationConfig.thinkingConfig.thinkingLevel,
+        "minimal",
+      );
+      assert.equal(call.body.tools, undefined);
+    }
+    assert.equal(result.model, "gemini-3.6-flash");
+    assert.equal(result.text, "Disponible");
+    assert.deepEqual(result.actions, []);
+  } finally {
+    global.fetch = oldFetch;
+    if (previousModels === undefined) delete process.env.GEMINI_MODELS;
+    else process.env.GEMINI_MODELS = previousModels;
+    if (previousKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = previousKey;
+  }
+});
+
+test("Gemini respeta modelos configurados sin enviar parámetros de razonamiento incompatibles", async () => {
+  const ai = load("src/lib/ai/gemini.ts", { "./contracts": contracts });
+  const oldFetch = global.fetch;
+  const previousModels = process.env.GEMINI_MODELS;
+  process.env.GEMINI_MODELS = "custom-model";
+  global.fetch = async (url, options) => {
+    assert.match(url, /custom-model:generateContent$/);
+    assert.equal(
+      JSON.parse(options.body).generationConfig.thinkingConfig,
+      undefined,
+    );
+    return {
+      ok: true,
+      json: async () => ({
+        candidates: [
+          { finishReason: "STOP", content: { parts: [{ text: "OK" }] } },
+        ],
+      }),
+    };
+  };
+  try {
+    assert.equal((await ai.queryGemini("test", [], false)).text, "OK");
+  } finally {
+    global.fetch = oldFetch;
+    if (previousModels === undefined) delete process.env.GEMINI_MODELS;
+    else process.env.GEMINI_MODELS = previousModels;
+  }
+});

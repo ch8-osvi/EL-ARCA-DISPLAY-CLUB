@@ -6,6 +6,7 @@ node_modules
 *.log
 .env*.local
 .vercel
+.npm-cache/
 
 # Local access credentials and verification artifacts
 .admin-access.local.txt

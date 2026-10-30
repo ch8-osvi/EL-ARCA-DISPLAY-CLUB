@@ -291,38 +291,61 @@ export function fuzzyMatchProduct(
   const search = productQuery(trimmed);
   if (!search.words.length || search.words.length > 32)
     return { match: false, score: 0 };
-  let total = 0;
-  for (const word of search.words) {
-    const candidates = MODEL_VARIANTS.has(word)
-      ? index.modelWords
-      : /\d/.test(word)
-        ? index.numericWords
-        : index.words;
-    let best = 0;
-    for (const target of candidates) {
-      const score = MODEL_VARIANTS.has(word)
-        ? word === target
-          ? 100
-          : 0
-        : /\d/.test(word)
-          ? codeScore(word, target)
-          : wordScore(word, target);
-      best = Math.max(best, score);
-      if (best === 100) break;
+  const scoreQuery = (words: string[], partialVariant?: string) => {
+    let total = 0;
+    for (const [position, word] of words.entries()) {
+      const isPartialVariant =
+        partialVariant === word && position === words.length - 1;
+      const candidates =
+        MODEL_VARIANTS.has(word) || isPartialVariant
+          ? index.modelWords
+          : /\d/.test(word)
+            ? index.numericWords
+            : index.words;
+      let best = 0;
+      for (const target of candidates) {
+        const score = isPartialVariant
+          ? MODEL_VARIANTS.has(target) && target.startsWith(word)
+            ? 80
+            : 0
+          : MODEL_VARIANTS.has(word)
+            ? word === target
+              ? 100
+              : 0
+            : /\d/.test(word)
+              ? codeScore(word, target)
+              : wordScore(word, target);
+        best = Math.max(best, score);
+        if (best === 100) break;
+      }
+      if (!best) return { match: false, score: 0 };
+      total += best;
     }
-    if (!best) return { match: false, score: 0 };
-    total += best;
-  }
-  const exactModel =
-    search.compact === index.compactModel ||
-    search.compact === index.compactBrandModel;
-  const phrase = index.compactText.includes(search.compact);
-  return {
-    match: true,
-    score:
-      Math.round(total / search.words.length) +
-      (exactModel ? 1000 : phrase ? 200 : 0),
+    const exactModel =
+      words.join("") === index.compactModel ||
+      words.join("") === index.compactBrandModel;
+    const phrase = index.compactText.includes(words.join(""));
+    return {
+      match: true,
+      score:
+        Math.round(total / words.length) +
+        (exactModel ? 1000 : phrase ? 200 : 0),
+    };
   };
+  const result = scoreQuery(search.words);
+  if (result.match) return result;
+  // A spaced final letter can begin a variant ("note 8 p" → "8 pro").
+  // Try this only after normal code matching, and only against model variants:
+  // A 03 S must still find A03S; quality text must never invent a Pro model.
+  const partial = raw.match(/(?<!\d)\d{1,4}\s+([a-z])$/);
+  if (
+    partial &&
+    [...MODEL_VARIANTS].some((variant) => variant.startsWith(partial[1]))
+  ) {
+    const words = productQuery(trimmed.slice(0, -1).trim()).words;
+    return scoreQuery([...words, partial[1]], partial[1]);
+  }
+  return result;
 }
 
 /**

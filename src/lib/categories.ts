@@ -21,9 +21,9 @@ export const CATEGORIES: {
     description: "Displays y módulos de pantalla",
     qualities: [
       "ORIGINAL C/M",
-      "ORIGINAL S/M",
+      "ORIGINAL",
       "INCELL C/M",
-      "INCELL S/M",
+      "INCELL",
       "OLED",
       "AMOLED",
     ],
@@ -50,6 +50,18 @@ export const CATEGORIES: {
     qualities: ["ORIGINAL", "COMPATIBLE", "GENÉRICA"],
   },
 ];
+/** Original and Incell omit the no-frame suffix; keep user specifications. */
+export function productQuality(value: string): string {
+  const quality = value.trim().toUpperCase().replace(/\s+/g, " ");
+  const match = quality.match(/^(ORIGINAL|IN[\s-]?CELL)\b(.*)$/);
+  if (!match) return value;
+  const technology = match[1] === "ORIGINAL" ? "ORIGINAL" : "INCELL";
+  const specifications = match[2]
+    .replace(/\b(?:S\s*\/?\s*M|SIN\s*MARCO)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return [technology, specifications].filter(Boolean).join(" ");
+}
 export function productCategory(value?: unknown): ProductCategory {
   if (value == null || value === "") return "DISPLAY";
   const key = String(value)
@@ -132,12 +144,15 @@ export function productDisplayModel(model: string, category?: unknown): string {
   return name;
 }
 export function catalogProduct<
-  T extends { modelo: string; categoria?: unknown },
+  T extends { modelo: string; categoria?: unknown; calidad?: string },
 >(product: T) {
   return {
     ...product,
     modelo: productDisplayModel(product.modelo, product.categoria),
     categoria: productCategory(product.categoria),
+    ...(typeof product.calidad === "string"
+      ? { calidad: productQuality(product.calidad) }
+      : {}),
   };
 }
 /** Match exact product identity without treating an old bare-model tapa as an unrelated new part. */
@@ -148,6 +163,13 @@ export function productIdentityFilter(product: {
   categoria?: unknown;
 }): Record<string, any> {
   const p = catalogProduct(product);
+  const normalizedQuality = productQuality(p.calidad);
+  const quality =
+    normalizedQuality === "ORIGINAL"
+      ? /^ORIGINAL(?:\s+(?:S\s*\/?\s*M|SIN\s*MARCO))?$/i
+      : normalizedQuality === "INCELL"
+        ? /^IN[\s-]?CELL(?:\s+(?:S\s*\/?\s*M|SIN\s*MARCO))?$/i
+        : p.calidad;
   const exact = (model: string) =>
     new RegExp("^" + model.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$", "i");
   if (p.categoria !== "REPUESTO")
@@ -155,7 +177,7 @@ export function productIdentityFilter(product: {
       ...categoryFilter(p.categoria),
       marca: p.marca,
       modelo: exact(p.modelo),
-      calidad: p.calidad,
+      calidad: quality,
     };
   const variants: Record<string, unknown>[] = [
     { categoria: "REPUESTO", modelo: exact(p.modelo) },
@@ -170,7 +192,7 @@ export function productIdentityFilter(product: {
     );
   if (/^TAPAS?\b/i.test(p.modelo) && !/^TAPA TRASERA\s+/i.test(p.modelo))
     variants.push({ categoria: "TAPA", modelo: exact(p.modelo) });
-  return { marca: p.marca, calidad: p.calidad, $or: variants };
+  return { marca: p.marca, calidad: quality, $or: variants };
 }
 /** Free-text part words constrain search results; they do not introduce another category. */
 export function partNameFilter(text: string): Record<string, any> | undefined {

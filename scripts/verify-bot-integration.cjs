@@ -1377,6 +1377,411 @@ async function main() {
     console.log(
       "PASS: cuatro categorías planas, tapas heredadas conservadas, Excel compatible y región/flex/tapa se distinguen por nombre sin subcategorías",
     );
+    const auditCategoryProposal = await operations.proposeActions(
+      "audit-category",
+      [
+        {
+          type: "AGREGAR_PRODUCTO",
+          payload: {
+            categoria: "BATERIA",
+            marca: "QA CATEGORY",
+            modelo: "A12",
+            calidad: "ORIGINAL",
+            precio: 6,
+            stock: 0,
+          },
+        },
+        {
+          type: "AGREGAR_LOTE",
+          payload: {
+            productos: [
+              {
+                categoria: "REPUESTO",
+                marca: "QA CATEGORY",
+                modelo: "FLEX DE CARGA A12",
+                calidad: "ORIGINAL",
+                precio: 4,
+                stock: 1,
+              },
+            ],
+          },
+        },
+      ],
+    );
+    await operations.confirmActions(
+      "audit-category",
+      auditCategoryProposal.match(/CONFIRMAR ([A-F0-9]{8})/)[1],
+    );
+    assert.equal(
+      (await Product.findOne({ marca: "QA CATEGORY", modelo: "A12" }))
+        .categoria,
+      "BATERIA",
+    );
+    assert.equal(
+      (await Product.findOne({ marca: "QA CATEGORY", modelo: "A12" })).stock,
+      0,
+    );
+    assert.equal(
+      (
+        await Product.findOne({
+          marca: "QA CATEGORY",
+          modelo: "FLEX DE CARGA A12",
+        })
+      ).categoria,
+      "REPUESTO",
+    );
+    console.log(
+      "PASS: confirmación real de altas IA conserva BATERIA/REPUESTO y stock cero",
+    );
+    // Web audit: canonical qualities, stale edits and historical references.
+    await Product.collection.insertOne({
+      id: "audit-import",
+      categoria: "DISPLAY",
+      marca: "QA AUDIT",
+      modelo: "NOTE 10 PRO",
+      calidad: "INCELL S/M",
+      precio: 14,
+      stock: 2,
+      isHidden: false,
+    });
+    const importAudit = await productRoute.POST(
+      apiRequest("/api/products", {
+        action: "sync",
+        initialList: [
+          {
+            marca: "QA AUDIT",
+            modelo: "NOTE 10 PRO",
+            calidad: "INCELL",
+            precio: 14,
+          },
+        ],
+      }),
+    );
+    assert.equal(importAudit.status, 200);
+    assert.equal(
+      await Product.countDocuments({
+        marca: "QA AUDIT",
+        modelo: "NOTE 10 PRO",
+      }),
+      1,
+    );
+    assert.equal((await Product.findOne({ id: "audit-import" })).stock, 2);
+    assert.equal(
+      (await Product.findOne({ id: "audit-import" })).calidad,
+      "INCELL",
+    );
+    // Existing imported compatibility lists exceed the former 200-character limit.
+    const longModel = require("../src/data/products_seed.json").find(
+      (p) => p.modelo.length > 200,
+    ).modelo;
+    await Product.create({
+      id: "audit-long-model",
+      marca: "QA LONG",
+      modelo: longModel,
+      categoria: "DISPLAY",
+      calidad: "ORIGINAL",
+      precio: 12,
+      stock: 3,
+    });
+    for (const changes of [
+      { modelo: longModel, precio: 15, stock: 4 },
+      { precio: 16 },
+      { stock: 5 },
+      { modelo: longModel + " / QA EXTRA" },
+    ]) {
+      const before = await Product.findOne({ id: "audit-long-model" });
+      const saved = await productRoute.POST(
+        apiRequest("/api/products", {
+          action: "update",
+          id: before.id,
+          expectedUpdatedAt: before.updatedAt.toISOString(),
+          ...changes,
+        }),
+      );
+      const data = await saved.json();
+      assert.equal(saved.status, 200, JSON.stringify(data));
+      assert.equal(data.product.modelo, changes.modelo ?? before.modelo);
+    }
+    const longSaved = await Product.findOne({ id: "audit-long-model" });
+    assert.equal(longSaved.stock, 5);
+    assert.equal(longSaved.precio, 16);
+    assert.equal(longSaved.modelo, longModel + " / QA EXTRA");
+    for (const modelo of ["", " ", "X".repeat(2001), { $ne: null }]) {
+      const invalid = await productRoute.POST(
+        apiRequest("/api/products", {
+          action: "update",
+          id: longSaved.id,
+          modelo,
+        }),
+      );
+      assert.equal(invalid.status, 400);
+    }
+    console.log(
+      "PASS: precio/stock y modelo con más de 200 caracteres se guardan sin truncar; entradas inválidas siguen bloqueadas",
+    );
+    const editAudit = await Product.findOne({ id: "audit-import" });
+    const oldVersion = editAudit.updatedAt.toISOString();
+    await Product.updateOne({ id: "audit-import" }, { $inc: { stock: 1 } });
+    const staleEdit = await productRoute.POST(
+      apiRequest("/api/products", {
+        action: "update",
+        id: "audit-import",
+        stock: 2,
+        precio: 14,
+        expectedUpdatedAt: oldVersion,
+      }),
+    );
+    assert.equal(staleEdit.status, 409);
+    assert.equal((await Product.findOne({ id: "audit-import" })).stock, 3);
+    const invalidEdit = await productRoute.POST(
+      apiRequest("/api/products", {
+        action: "update",
+        id: "audit-import",
+        modelo: { $ne: null },
+      }),
+    );
+    assert.equal(invalidEdit.status, 400);
+    console.log(
+      "PASS: Excel normaliza sin duplicar referencias, conserva stock y rechaza ediciones antiguas o campos inválidos",
+    );
+
+    await Product.create([
+      {
+        id: "audit-merge-primary",
+        marca: "QA HIST",
+        modelo: "NOTE 10 PRO",
+        calidad: "INCELL",
+        precio: 14,
+        stock: 3,
+      },
+      {
+        id: "audit-merge-secondary",
+        marca: "QA HIST",
+        modelo: "NOTE 10 PRO",
+        calidad: "INCELL",
+        precio: 14,
+        stock: 3,
+      },
+    ]);
+    const historySale = await Sale.create({
+      orderNumber: "AUDIT-HISTORY",
+      clientName: "Only temporary test",
+      currency: "USD",
+      exchangeRate: 835,
+      paid: false,
+      items: [
+        {
+          productId: "audit-merge-primary",
+          marca: "QA HIST",
+          modelo: "NOTE 10 PRO",
+          calidad: "INCELL",
+          qty: 1,
+          precioUSD: 14,
+          subtotalUSD: 14,
+        },
+        {
+          productId: "audit-merge-secondary",
+          marca: "QA HIST",
+          modelo: "NOTE 10 PRO",
+          calidad: "INCELL",
+          qty: 1,
+          precioUSD: 14,
+          subtotalUSD: 14,
+        },
+      ],
+      subtotalUSD: 28,
+      totalUSD: 28,
+      totalCUP: 23400,
+    });
+    const mergeAuditRoute = load("src/app/api/products/merge/route.ts");
+    const historyMerge = await mergeAuditRoute.POST(
+      apiRequest("/api/products/merge", {
+        primaryId: "audit-merge-primary",
+        secondaryId: "audit-merge-secondary",
+      }),
+    );
+    assert.equal(historyMerge.status, 409);
+    assert.deepEqual(
+      (await Sale.findById(historySale._id)).items.map((row) => row.productId),
+      ["audit-merge-primary", "audit-merge-secondary"],
+    );
+    assert.equal(await Product.countDocuments({ marca: "QA HIST" }), 2);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const paidAudit = await saleRoute.POST(
+        apiRequest("/api/sales", {
+          action: "toggle-paid",
+          saleId: String(historySale._id),
+          paid: true,
+        }),
+      );
+      assert.equal(paidAudit.status, 200);
+      assert.equal((await paidAudit.json()).sale.paid, true);
+    }
+    const invalidMerge = await mergeAuditRoute.POST(
+      apiRequest("/api/products/merge", {
+        primaryId: "audit-merge-primary",
+        secondaryId: "audit-merge-secondary",
+        finalPrecio: "14",
+      }),
+    );
+    assert.equal(invalidMerge.status, 400);
+    const ignoredAuditRoute = load("src/app/api/duplicados/ignored/route.ts");
+    const invalidIgnored = await ignoredAuditRoute.POST(
+      apiRequest("/api/duplicados/ignored", {
+        pairId: { $ne: null },
+        productAId: "a",
+        productBId: "b",
+      }),
+    );
+    assert.equal(invalidIgnored.status, 400);
+    console.log(
+      "PASS: fusiones no reescriben ventas; repetir el pago mantiene el estado y entradas inválidas no modifican datos",
+    );
+    // Digital receipts use this disposable queue only; no provider or real bot is called.
+    const receiptRoute = load("src/app/api/sales/receipt/route.ts");
+    await Product.create({
+      id: "receipt-product",
+      marca: "QA RECEIPT",
+      modelo: "NOTE 8 PRO",
+      calidad: "ORIGINAL",
+      precio: 13.25,
+      stock: 10,
+    });
+    const createdReceiptSale = await saleRoute.POST(
+      apiRequest("/api/sales", {
+        action: "create",
+        requestId: "receipt-sale-test-0001",
+        clientName: "QA Receipt",
+        clientPhone: "51234567",
+        currency: "CUP",
+        exchangeRate: 835,
+        paid: false,
+        notes: "CONFIDENCIAL NO ENVIAR",
+        items: [{ productId: "receipt-product", qty: 2, precioUSD: 13.25 }],
+      }),
+    );
+    const receiptSaleBody = await createdReceiptSale.json();
+    assert.equal(
+      createdReceiptSale.status,
+      200,
+      JSON.stringify(receiptSaleBody),
+    );
+    const receiptSaleId = String(receiptSaleBody.sale._id);
+    assert.equal(receiptSaleBody.sale.clientPhone, "5351234567");
+    const receiptGet = () =>
+      new Request(
+        `https://elarca.test/api/sales/receipt?saleId=${receiptSaleId}`,
+        { headers: { cookie: "el_arca_admin_session=" + token } },
+      );
+    const draftReceipt = await receiptRoute.GET(receiptGet());
+    assert.equal(draftReceipt.status, 200);
+    assert.equal((await draftReceipt.json()).delivery, null);
+    const receiptCount = () =>
+      states.BotOutbound.countDocuments({ _id: /^sale-receipt:/ });
+    assert.equal(await receiptCount(), 0, "preview never queues a message");
+    await Product.updateOne(
+      { id: "receipt-product" },
+      { $set: { precio: 999 } },
+    );
+    const receiptRequest = () =>
+      apiRequest("/api/sales/receipt", {
+        saleId: receiptSaleId,
+        phone: "+53 5123 4567",
+        text: "FORGED TOTAL 0",
+        totalCUP: 0,
+      });
+    const sends = await Promise.all([
+      receiptRoute.POST(receiptRequest()),
+      receiptRoute.POST(receiptRequest()),
+    ]);
+    const receipts = await Promise.all(
+      sends.map(async (r) => {
+        const data = await r.json();
+        assert.equal(r.status, 202, JSON.stringify(data));
+        return data;
+      }),
+    );
+    assert.equal(receipts[0].delivery.id, receipts[1].delivery.id);
+    const outboundId = receipts[0].delivery.id;
+    assert.equal(
+      await receiptCount(),
+      1,
+      "concurrent requests enqueue only one receipt",
+    );
+    assert.equal((await Product.findOne({ id: "receipt-product" })).stock, 8);
+    assert.equal(
+      await Sale.countDocuments({ requestId: "receipt-sale-test-0001" }),
+      1,
+    );
+    const receiptMessage = await states.BotOutbound.findById(outboundId);
+    assert.equal(receiptMessage.provider, "bridge");
+    assert.match(receiptMessage.text, /13.25 USD/);
+    assert.match(receiptMessage.text, /22,100.00 CUP/);
+    assert.doesNotMatch(receiptMessage.text, /CONFIDENCIAL|FORGED|999.00/);
+    assert.equal(receipts[0].delivery.status, "queued");
+    const delivery = load("src/lib/whatsapp/delivery.ts");
+    await states.BotOutbound.updateOne(
+      { _id: outboundId },
+      { $set: { status: "failed", providerId: "" } },
+    );
+    const retryReceipt = await receiptRoute.POST(
+      apiRequest("/api/sales/receipt", {
+        saleId: receiptSaleId,
+        phone: "5351234567",
+        retry: true,
+      }),
+    );
+    assert.equal(retryReceipt.status, 202);
+    assert.equal((await retryReceipt.json()).delivery.status, "queued");
+    assert.equal(await receiptCount(), 1);
+    await states.BotOutbound.updateOne(
+      { _id: outboundId },
+      { $set: { status: "failed", providerId: "ambiguous-native-id" } },
+    );
+    const ambiguousReceipt = await receiptRoute.POST(
+      apiRequest("/api/sales/receipt", {
+        saleId: receiptSaleId,
+        phone: "5351234567",
+        retry: true,
+      }),
+    );
+    assert.equal(
+      ambiguousReceipt.status,
+      409,
+      "uncertain native delivery is never blindly repeated",
+    );
+    for (const status of ["sent", "delivered", "read"]) {
+      await delivery.advanceDelivery(outboundId, status, "native-receipt-test");
+      const readReceipt = await receiptRoute.GET(receiptGet());
+      assert.equal((await readReceipt.json()).delivery.status, status);
+    }
+    // The durable audit record prevents duplicate sends after the transport queue expires.
+    await states.BotOutbound.deleteOne({ _id: outboundId });
+    const replayReceipt = await receiptRoute.POST(receiptRequest());
+    assert.equal(replayReceipt.status, 202);
+    assert.equal((await replayReceipt.json()).delivery.status, "read");
+    assert.equal(await receiptCount(), 0);
+    for (const phone of ["pepe 51234567", { to: "5351234567" }, "123"]) {
+      const invalid = await receiptRoute.POST(
+        apiRequest("/api/sales/receipt", { saleId: receiptSaleId, phone }),
+      );
+      assert.equal(invalid.status, 400);
+    }
+    const deniedReceipt = await receiptRoute.GET(
+      new Request(
+        `https://elarca.test/api/sales/receipt?saleId=${receiptSaleId}`,
+      ),
+    );
+    assert.equal(deniedReceipt.status, 401);
+    const foreignReceipt = apiRequest("/api/sales/receipt", {
+      saleId: receiptSaleId,
+      phone: "5351234567",
+    });
+    foreignReceipt.headers.set("origin", "https://foreign.invalid");
+    assert.equal((await receiptRoute.POST(foreignReceipt)).status, 403);
+    console.log(
+      "PASS: venta con WhatsApp, vista previa sin envío, cola deduplicada concurrente, importes históricos privados, reintentos seguros, estados reales y protección de sesión/origen",
+    );
     console.log(
       "Integración completa en base aislada; no se cambiaron permisos del negocio.",
     );

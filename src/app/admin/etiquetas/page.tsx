@@ -96,8 +96,36 @@ export default function EtiquetasPage() {
       const raw = localStorage.getItem(SINGLE_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed.items)) setSingleItems(parsed.items);
-        if (parsed.settings) setSingleSettingsInput(parsed.settings);
+        if (
+          Array.isArray(parsed.items) &&
+          parsed.items.every(
+            (item: SingleStickerItem) =>
+              item &&
+              typeof item.uid === "string" &&
+              typeof item.productId === "string" &&
+              Number.isSafeInteger(item.copies) &&
+              item.copies > 0 &&
+              item.copies <= 10000 &&
+              item.product &&
+              ["marca", "modelo", "calidad"].every(
+                (key) =>
+                  typeof item.product[key as "marca" | "modelo" | "calidad"] ===
+                  "string",
+              ),
+          ) &&
+          parsed.items.reduce(
+            (total: number, item: SingleStickerItem) => total + item.copies,
+            0,
+          ) <= 10000
+        )
+          setSingleItems(parsed.items);
+        if (
+          parsed.settings &&
+          ["widthCm", "heightCm", "marginMm", "gapMm"].every(
+            (key) => typeof parsed.settings[key] === "string",
+          )
+        )
+          setSingleSettingsInput(parsed.settings);
       }
     } catch {
       /* ignore */
@@ -235,6 +263,13 @@ export default function EtiquetasPage() {
   // Lista aplanada de displays para modo individual (según el número de copias)
   const flattenedSingleProducts = useMemo(() => {
     const list: Product[] = [];
+    if (
+      singleItems.some(
+        (item) => !Number.isSafeInteger(item.copies) || item.copies <= 0,
+      ) ||
+      singleItems.reduce((total, item) => total + item.copies, 0) > 10000
+    )
+      return list;
     for (const item of singleItems) {
       for (let i = 0; i < item.copies; i++) {
         list.push(item.product);
@@ -333,6 +368,12 @@ export default function EtiquetasPage() {
         return;
       }
     } else {
+      if (singleItems.reduce((total, item) => total + item.copies, 0) > 10000) {
+        triggerToast(
+          "El lote supera 10.000 stickers. Divídelo en lotes más pequeños para imprimir.",
+        );
+        return;
+      }
       if (flattenedSingleProducts.length === 0) {
         triggerToast("Añade al menos un display para imprimir stickers.");
         return;

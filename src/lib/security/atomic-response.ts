@@ -8,9 +8,9 @@ class AbortResponse extends Error {
 }
 /** Roll back even when an existing route returns an error Response instead of throwing. */
 export async function atomicResponse(run: () => Promise<Response>) {
-  await connect();
-  await prepareMutationLock();
   try {
+    await connect();
+    await prepareMutationLock();
     return await mongoose.connection.transaction(async () => {
       await acquireMutationLock();
       const response = await run();

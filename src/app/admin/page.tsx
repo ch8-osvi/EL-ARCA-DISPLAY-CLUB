@@ -2,6 +2,7 @@
 import RouteLoading from "./loading";
 import {
   productCategory,
+  productQuality,
   productDisplayModel,
   CATEGORIES,
   type ProductCategory,
@@ -338,10 +339,11 @@ export default function AdminPage() {
   const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (savingProduct) return;
-    const calidad =
+    const calidad = productQuality(
       newCalidadSelect === "CUSTOM"
         ? newCalidadCustom.trim().toUpperCase()
-        : newCalidadSelect;
+        : newCalidadSelect,
+    );
     if (
       !newModelo.trim() ||
       !calidad ||
@@ -919,9 +921,7 @@ export default function AdminPage() {
             <h1 className="text-2xl font-extrabold text-white tracking-tight">
               Acceso Administrativo
             </h1>
-            <p className="text-xs text-gray-400">
-              EL ARCA DISPLAY CLUB
-            </p>
+            <p className="text-xs text-gray-400">EL ARCA DISPLAY CLUB</p>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-4">

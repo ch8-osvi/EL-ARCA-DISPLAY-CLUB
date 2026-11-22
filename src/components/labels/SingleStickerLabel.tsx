@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { Smartphone } from "lucide-react";
 import { Product } from "@/lib/types";
 import { productLabel } from "@/lib/labelLayout";
 import { productQuality } from "@/lib/categories";
@@ -11,20 +12,19 @@ interface SingleStickerLabelProps {
   heightMm: number;
 }
 
-/**
- * Etiqueta Monoproducto / Sticker individual (ej. 4 x 2 cm)
- * Diseñada para bolsita de burbujas:
- * - Nombre del modelo y marca en grande y legible
- * - Calidad destacada en negrita
- * - Micro-cabecera con EL ARCA DISPLAY CLUB
- * - Borde gris fino como guía de corte
- */
 export default function SingleStickerLabel({
   product,
   widthMm,
   heightMm,
 }: SingleStickerLabelProps) {
-  const isSmall = heightMm <= 25;
+  const name = productLabel(product);
+  const quality = productQuality(product.calidad || "ORIGINAL");
+  const unit = Math.min(widthMm / 40, heightMm / 20, 1.65);
+  const mm = (value: number) => `${value * unit}mm`;
+  const gold = "#9B711C";
+  const nameLength = name.toUpperCase().length;
+  const nameSize = Math.min(3.45, 14.6 / Math.sqrt(Math.max(nameLength, 1)));
+  const qualitySize = Math.min(1.9, 55 / Math.max(quality.length, 1));
 
   return (
     <div
@@ -32,95 +32,103 @@ export default function SingleStickerLabel({
       style={{
         width: `${widthMm}mm`,
         height: `${heightMm}mm`,
-        padding: isSmall ? "1.2mm 2mm" : "2mm 3mm",
         boxSizing: "border-box",
-        border: "0.2mm solid #9CA3AF",
+        border: "0.2mm solid #85817A",
+        borderLeft: `${mm(0.75)} solid ${gold}`,
+        borderRadius: mm(1.1),
         background: "#FFFFFF",
-        color: "#000000",
-        fontFamily: "Arial, 'Helvetica Neue', Helvetica, sans-serif",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "space-between",
+        color: "#151310",
+        fontFamily: "Arial, Helvetica, sans-serif",
+        display: "grid",
+        gridTemplateRows: "auto minmax(0, 1fr) auto",
+        gap: mm(0.55),
+        padding: `${mm(0.8)} ${mm(1.55)}`,
         overflow: "hidden",
-        lineHeight: 1.1,
+        lineHeight: 1.05,
+        printColorAdjust: "exact",
+        WebkitPrintColorAdjust: "exact",
       }}
     >
-      {/* Micro Cabecera */}
       <div
         style={{
           display: "flex",
-          justifyContent: "space-between",
           alignItems: "center",
-          borderBottom: "0.2mm solid #000",
-          paddingBottom: "0.4mm",
-          marginBottom: "0.5mm",
+          gap: mm(0.95),
+          borderBottom: "0.2mm solid #D8BA76",
+          paddingBottom: mm(0.5),
         }}
       >
-        <span
+        <img
+          src="/logo.png"
+          alt=""
+          width={32}
+          height={32}
           style={{
-            fontSize: isSmall ? "4.5pt" : "5.5pt",
-            fontWeight: 800,
-            letterSpacing: "0.08em",
+            width: mm(4.7),
+            height: mm(4.7),
+            objectFit: "contain",
+            flexShrink: 0,
           }}
-        >
+        />
+        <div style={{ fontSize: mm(2.1), fontWeight: 900, letterSpacing: "0.07em" }}>
           EL ARCA
-        </span>
-        <span
-          style={{
-            fontSize: isSmall ? "4pt" : "5pt",
-            fontWeight: 700,
-            color: "#374151",
-          }}
-        >
-          DISPLAY CLUB
-        </span>
-      </div>
-
-      {/* Modelo del Display en Grande */}
-      <div
-        style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          overflow: "hidden",
-          textAlign: "center",
-        }}
-      >
-        <div
-          style={{
-            fontSize: isSmall ? "8pt" : "10pt",
-            fontWeight: 900,
-            letterSpacing: "-0.01em",
-            overflowWrap: "anywhere",
-            textTransform: "uppercase",
-            maxHeight: isSmall ? "10mm" : "14mm",
-            overflow: "hidden",
-          }}
-        >
-          {productLabel(product)}
+          <div
+            style={{
+              color: "#6D521F",
+              fontSize: mm(1.35),
+              fontWeight: 800,
+              marginTop: mm(0.36),
+              letterSpacing: "0.12em",
+            }}
+          >
+            DISPLAY CLUB
+          </div>
         </div>
       </div>
 
-      {/* Calidad en Bloque Destacado */}
       <div
         style={{
-          borderTop: "0.2mm solid #000",
-          paddingTop: "0.4mm",
-          marginTop: "0.4mm",
-          textAlign: "center",
+          alignSelf: "safe center",
+          fontSize: mm(nameSize),
+          fontWeight: 900,
+          letterSpacing: "-0.025em",
+          overflowWrap: "anywhere",
+          textTransform: "uppercase",
         }}
       >
+        {name}
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: mm(0.75),
+          minWidth: 0,
+          paddingTop: mm(0.43),
+          borderTop: "0.2mm solid #D8BA76",
+        }}
+      >
+        <Smartphone
+          aria-hidden="true"
+          strokeWidth={2.2}
+          style={{
+            width: mm(2.75),
+            height: mm(2.75),
+            color: gold,
+            flexShrink: 0,
+          }}
+        />
         <span
           style={{
-            fontSize: isSmall ? "6pt" : "7.5pt",
-            fontWeight: 800,
+            fontSize: mm(qualitySize),
+            fontWeight: 900,
             letterSpacing: "0.04em",
             textTransform: "uppercase",
-            display: "inline-block",
+            overflowWrap: "anywhere",
           }}
         >
-          {productQuality(product.calidad || "ORIGINAL")}
+          {quality}
         </span>
       </div>
     </div>
